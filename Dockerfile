@@ -34,31 +34,34 @@ FROM python:3.11-slim-bookworm AS runtime
 
 ARG TARGETARCH
 ARG TRIVY_VERSION=0.58.1
+ARG DOCKER_VERSION=27.4.1
+ARG COMPOSE_VERSION=2.32.1
 
-# Install docker CLI (for `docker compose` calls) + trivy + ca-certificates
+# Install docker CLI + compose plugin + trivy from static binaries.
+# We deliberately avoid Docker's apt repository (gpg --dearmor is flaky
+# under QEMU emulation) and pull prebuilt binaries instead.
 RUN set -eux; \
     apt-get update; \
-    apt-get install -y --no-install-recommends \
-        ca-certificates curl gnupg tini; \
-    install -m 0755 -d /etc/apt/keyrings; \
-    curl -fsSL https://download.docker.com/linux/debian/gpg \
-        | gpg --dearmor -o /etc/apt/keyrings/docker.gpg; \
-    chmod a+r /etc/apt/keyrings/docker.gpg; \
-    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] \
-        https://download.docker.com/linux/debian bookworm stable" \
-        > /etc/apt/sources.list.d/docker.list; \
-    apt-get update; \
-    apt-get install -y --no-install-recommends \
-        docker-ce-cli docker-compose-plugin; \
+    apt-get install -y --no-install-recommends ca-certificates curl tini; \
     case "${TARGETARCH:-amd64}" in \
-        amd64) TRIVY_ARCH=64bit ;; \
-        arm64) TRIVY_ARCH=ARM64 ;; \
-        arm)   TRIVY_ARCH=ARM ;; \
-        *)     TRIVY_ARCH=64bit ;; \
+        amd64) DOCKER_ARCH=x86_64;  COMPOSE_ARCH=x86_64;  TRIVY_ARCH=64bit ;; \
+        arm64) DOCKER_ARCH=aarch64; COMPOSE_ARCH=aarch64; TRIVY_ARCH=ARM64 ;; \
+        arm)   DOCKER_ARCH=armhf;   COMPOSE_ARCH=armv7;   TRIVY_ARCH=ARM ;; \
+        *)     DOCKER_ARCH=x86_64;  COMPOSE_ARCH=x86_64;  TRIVY_ARCH=64bit ;; \
     esac; \
+    # Docker CLI (static bundle contains the full client; keep only `docker`)
+    curl -fsSL "https://download.docker.com/linux/static/stable/${DOCKER_ARCH}/docker-${DOCKER_VERSION}.tgz" \
+        | tar -xz -C /usr/local/bin --strip-components=1 docker/docker; \
+    # Compose v2 plugin
+    install -m 0755 -d /usr/local/lib/docker/cli-plugins; \
+    curl -fsSL "https://github.com/docker/compose/releases/download/v${COMPOSE_VERSION}/docker-compose-linux-${COMPOSE_ARCH}" \
+        -o /usr/local/lib/docker/cli-plugins/docker-compose; \
+    chmod +x /usr/local/lib/docker/cli-plugins/docker-compose; \
+    # Trivy CVE scanner
     curl -fsSL "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-${TRIVY_ARCH}.tar.gz" \
         | tar -xz -C /usr/local/bin trivy; \
-    apt-get purge -y curl gnupg; \
+    docker --version; docker compose version; trivy --version; \
+    apt-get purge -y curl; \
     apt-get autoremove -y; \
     rm -rf /var/lib/apt/lists/*
 
