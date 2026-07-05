@@ -1,0 +1,16 @@
+services:
+  paperless:
+    image: ghcr.io/paperless-ngx/paperless-ngx:latest
+    container_name: paperless
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      PAPERLESS_REDIS: redis://redis:6379
+    depends_on:
+      - redis
+
+  redis:
+    image: redis:7
+    container_name: paperless-redis
+    restart: unless-stopped

@@ -1,0 +1,22 @@
+services:
+  harborguard:
+    build: .
+    image: harborguard/harborguard:latest
+    container_name: harborguard
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Mount your Compose repo here — change the host path to yours
+      - ./sample-repo:/repo
+      - harborguard_data:/data
+    environment:
+      - TZ=Europe/Paris
+      - HARBORGUARD_REPO_PATH=/repo
+      - HARBORGUARD_DATA_PATH=/data
+      # Allow the built-in UI (same origin) — no CORS needed in prod
+      - HARBORGUARD_CORS_ORIGINS=[]
+
+volumes:
+  harborguard_data:

@@ -1,0 +1,29 @@
+**/.git
+**/.gitignore
+**/.vscode
+**/.idea
+**/.DS_Store
+
+# Python
+**/__pycache__
+**/*.py[cod]
+**/*.egg-info
+**/.venv
+**/.pytest_cache
+**/.ruff_cache
+
+# Node
+**/node_modules
+**/dist
+**/.vite
+
+# Local data & test fixtures (image should ship empty)
+backend/.data
+sample-repo
+
+# Docs & metadata that don't affect the build
+CLAUDE.md
+README.md
+Dockerfile
+.dockerignore
+docker-compose.yml
