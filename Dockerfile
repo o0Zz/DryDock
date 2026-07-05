@@ -33,13 +33,16 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 FROM python:3.11-slim-bookworm AS runtime
 
 ARG TARGETARCH
-ARG TRIVY_VERSION=0.58.1
+ARG TRIVY_VERSION=0.72.0
 ARG DOCKER_VERSION=27.4.1
 ARG COMPOSE_VERSION=2.32.1
 
 # Install docker CLI + compose plugin + trivy from static binaries.
 # We deliberately avoid Docker's apt repository (gpg --dearmor is flaky
 # under QEMU emulation) and pull prebuilt binaries instead.
+# Use bash with pipefail so a failed curl in a `curl | tar` pipe fails the
+# RUN with curl's error instead of tar's generic exit code 2.
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 RUN set -eux; \
     apt-get update; \
     apt-get install -y --no-install-recommends ca-certificates curl tini; \
