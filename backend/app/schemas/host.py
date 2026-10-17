@@ -1,5 +1,3 @@
-from typing import Literal
-
 from pydantic import BaseModel
 
 from app.schemas.common import UtcDatetime
@@ -27,21 +25,8 @@ class HostUpdates(BaseModel):
     lists_updated_at: UtcDatetime | None = None
     reboot_required: bool = False
     kernel: str | None = None
-
-
-class HostUpgradeStatus(BaseModel):
-    """The host upgrade systemd unit, read straight from the host.
-
-    It outlives DryDock: a Docker upgrade restarts DryDock but not the unit.
-    """
-
-    # none: never run, or gone after a reboot.
-    state: Literal["none", "running", "success", "failed"]
-    started_at: UtcDatetime | None = None
-    finished_at: UtcDatetime | None = None
-    exit_code: int | None = None
-    # The tail of the unit's journal.
-    log: str = ""
+    # unattended-upgrades installed and switched on. None when unknown (older rows).
+    auto_upgrades: bool | None = None
 
 
 class Fail2banJail(BaseModel):

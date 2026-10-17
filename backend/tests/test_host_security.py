@@ -18,6 +18,7 @@ from app.services import docker_service, fail2ban_service, host_updates_service
 
 APT_OUTPUT = """@@kernel 6.12.47+rpt-rpi-2712
 @@lists 1792224583
+@@auto 0
 Listing...
 bsdutils/stable,stable-security 1:2.41.5-0+deb13u1 arm64 [upgradable from: 1:2.41-5]
 7zip/stable 25.01+dfsg-1~deb13u2 arm64 [upgradable from: 25.01+dfsg-1~deb13u1]
@@ -46,6 +47,7 @@ def test_parse_apt_output() -> None:
     assert result.kernel == "6.12.47+rpt-rpi-2712"
     assert result.lists_updated_at == datetime.fromtimestamp(1792224583, tz=UTC)
     assert not result.reboot_required
+    assert result.auto_upgrades is False
     # Security updates first.
     assert [(package.name, package.security) for package in result.packages] == [
         ("bsdutils", True),

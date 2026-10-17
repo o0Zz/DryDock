@@ -36,6 +36,10 @@ if [ -n "$(ls /lib/modules 2>/dev/null)" ] && [ ! -d "/lib/modules/$kernel" ]; t
 fi
 if [ -e /var/run/reboot-required ]; then echo "@@reboot"; fi
 echo "@@lists $(stat -c %Y /var/lib/apt/lists/*Release 2>/dev/null | sort -n | tail -n 1)"
+AUTO=
+eval "$(apt-config shell AUTO APT::Periodic::Unattended-Upgrade 2>/dev/null)"
+command -v unattended-upgrade >/dev/null 2>&1 || AUTO=0
+echo "@@auto ${AUTO:-0}"
 apt list --upgradable 2>/dev/null
 """
 
@@ -53,6 +57,7 @@ class HostUpdateResult:
     lists_updated_at: datetime | None = None
     reboot_required: bool = False
     kernel: str | None = None
+    auto_upgrades: bool | None = None
 
 
 def parse(output: str) -> HostUpdateResult:
@@ -62,6 +67,10 @@ def parse(output: str) -> HostUpdateResult:
             result.supported = False
         elif line.startswith("@@kernel "):
             result.kernel = line.removeprefix("@@kernel ").strip() or None
+        elif line.startswith("@@auto "):
+            # The apt setting is a number of days; 0 or unset is off.
+            value = line.removeprefix("@@auto ").strip()
+            result.auto_upgrades = value.isdigit() and int(value) > 0
         elif line == "@@reboot":
             result.reboot_required = True
         elif line.startswith("@@lists"):
@@ -100,6 +109,7 @@ def check(db: Session) -> HostUpdateCheck:
             ),
             reboot_required=result.reboot_required,
             kernel=result.kernel,
+            auto_upgrades=result.auto_upgrades,
         )
     db.add(row)
     db.commit()
@@ -128,4 +138,5 @@ def latest(db: Session) -> HostUpdates | None:
         lists_updated_at=row.lists_updated_at,
         reboot_required=row.reboot_required,
         kernel=row.kernel,
+        auto_upgrades=row.auto_upgrades,
     )

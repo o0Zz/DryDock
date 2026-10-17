@@ -85,5 +85,11 @@
   "Signing in…": "Connexion…",
   "Sign in": "Se connecter",
   "Filter (e.g. WARNING, trivy)": "Filtrer (ex. WARNING, trivy)",
-  "DryDock backend": "Backend DryDock"
+  "DryDock backend": "Backend DryDock",
+  "Automatic security updates": "Mises à jour de sécurité automatiques",
+  "on": "activées",
+  "off": "désactivées",
+  "To install them, run this on the host:": "Pour les installer, lancez ceci sur l'hôte :",
+  "Then reboot the host to load the new kernel and libraries:": "Redémarrez ensuite l'hôte pour charger le nouveau noyau et les bibliothèques :",
+  "Automatic updates are off. To install security updates every day, turn on unattended-upgrades:": "Les mises à jour automatiques sont désactivées. Pour installer les mises à jour de sécurité chaque jour, activez unattended-upgrades :"
 }

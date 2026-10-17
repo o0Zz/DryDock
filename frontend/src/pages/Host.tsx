@@ -1,4 +1,4 @@
-import { RefreshCw, ShieldBan } from "lucide-react";
+import { Copy, RefreshCw, ShieldBan } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { ApiError, api } from "../api";
 import { useAuth } from "../auth";
@@ -13,6 +13,30 @@ const STALE_LISTS_DAYS = 7;
 
 function daysSince(value: string): number {
   return (Date.now() - new Date(value).getTime()) / 86_400_000;
+}
+
+// Raspberry Pi's documented upgrade. Interactive: apt lists what it removes before asking.
+const UPGRADE_COMMAND = "sudo apt update && sudo apt full-upgrade";
+const AUTO_UPGRADES_COMMAND =
+  "sudo apt install unattended-upgrades\nsudo dpkg-reconfigure -plow unattended-upgrades";
+
+/** A shell command to run on the host, with a copy button. DryDock never runs it. */
+function Command({ command }: { command: string }) {
+  const t = useT();
+  return (
+    <div className="output" style={{ padding: "0.75rem" }}>
+      <div className="row-between">
+        <pre style={{ margin: 0 }}>{command}</pre>
+        <button
+          type="button"
+          className="secondary small"
+          onClick={() => navigator.clipboard?.writeText(command)}
+        >
+          <Copy size={14} /> {t("Copy")}
+        </button>
+      </div>
+    </div>
+  );
 }
 
 function Updates({ updates }: { updates: HostUpdates | null }) {
@@ -66,6 +90,18 @@ function Updates({ updates }: { updates: HostUpdates | null }) {
             {stale && <span className="stat-detail-warn"> · {t("stale")}</span>}
           </strong>
         </li>
+        {updates.auto_upgrades !== null && (
+          <li>
+            <span className="muted">{t("Automatic security updates")}</span>
+            <strong>
+              {updates.auto_upgrades ? (
+                t("on")
+              ) : (
+                <span className="badge sev-high">{t("off")}</span>
+              )}
+            </strong>
+          </li>
+        )}
         <li>
           <span className="muted">{t("Kernel")}</span>
           <strong>{updates.kernel ?? "—"}</strong>
@@ -83,6 +119,28 @@ function Updates({ updates }: { updates: HostUpdates | null }) {
           })}{" "}
           <code>unattended-upgrades</code> {t("to refresh it daily.")}
         </p>
+      )}
+      {updates.upgradable > 0 && (
+        <>
+          <p className="muted">{t("To install them, run this on the host:")}</p>
+          <Command command={UPGRADE_COMMAND} />
+        </>
+      )}
+      {updates.reboot_required && (
+        <>
+          <p className="muted">{t("Then reboot the host to load the new kernel and libraries:")}</p>
+          <Command command="sudo reboot" />
+        </>
+      )}
+      {updates.auto_upgrades === false && (
+        <>
+          <p className="muted">
+            {t(
+              "Automatic updates are off. To install security updates every day, turn on unattended-upgrades:",
+            )}
+          </p>
+          <Command command={AUTO_UPGRADES_COMMAND} />
+        </>
       )}
       {updates.packages.length > 0 && (
         <table className="projects-table">

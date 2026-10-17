@@ -378,6 +378,8 @@ export interface HostUpdates {
   lists_updated_at: string | null;
   reboot_required: boolean;
   kernel: string | null;
+  /** unattended-upgrades installed and on; null when unknown. */
+  auto_upgrades: boolean | null;
 }
 
 export interface Fail2banJail {

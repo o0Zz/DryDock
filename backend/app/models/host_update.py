@@ -27,3 +27,5 @@ class HostUpdateCheck(Base):
     lists_updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     reboot_required: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     kernel: Mapped[str | None] = mapped_column(String, nullable=True)
+    # unattended-upgrades installed and switched on (APT::Periodic::Unattended-Upgrade).
+    auto_upgrades: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
