@@ -59,6 +59,7 @@ Set these environment variables if you need to. Schedules and notifications are 
 | Variable                     | Default      | Purpose                                        |
 | ---------------------------- | ------------ | ---------------------------------------------- |
 | `DRYDOCK_REPO_PATH`          | `/repo`      | Folder with your Compose files                 |
+| `DRYDOCK_REPO_HOST_PATH`     | *(detected)* | Host path of the repo. Only set it if detection fails (see Troubleshooting) |
 | `DRYDOCK_DATA_PATH`          | `/data`      | Database, backups and session key              |
 | `DRYDOCK_ADMIN_USERNAME`     | `admin`      | First admin, created on first start only       |
 | `DRYDOCK_ADMIN_PASSWORD`     | `admin`      | First admin's password. Change it after login. |
