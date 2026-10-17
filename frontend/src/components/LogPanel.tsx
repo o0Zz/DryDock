@@ -1,5 +1,5 @@
 import { ScrollText, X } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { msg, useT } from "../i18n";
 
 type Status = "connecting" | "open" | "closed" | "error";
@@ -15,6 +15,8 @@ const STATUS_LABELS: Record<Status, string> = {
 const MAX_LINES = 5000;
 // Within this many pixels of the end counts as "at the bottom".
 const FOLLOW_SLACK = 24;
+// An inline panel never gets shorter than this, even in a very short window.
+const MIN_INLINE_HEIGHT = 240;
 // SGR colours and other CSI sequences; rendered as text they are noise.
 const ANSI_PATTERN = /\u001b\[[0-9;?]*[ -/]*[@-~]/g;
 
@@ -43,6 +45,8 @@ export default function LogPanel({
   const [status, setStatus] = useState<Status>("connecting");
   const t = useT();
   const bodyRef = useRef<HTMLPreElement | null>(null);
+  const panelRef = useRef<HTMLDivElement | null>(null);
+  const [fitHeight, setFitHeight] = useState<number | null>(null);
   // Follow new lines only while the user has not scrolled up to read back.
   const followRef = useRef(true);
 
@@ -64,6 +68,24 @@ export default function LogPanel({
     return () => eventSource.close();
   }, [url]);
 
+  // Inline, the panel fills the window from where it starts down to the page's
+  // bottom padding, so only the log scrolls, not the page around it. What sits
+  // above it differs per page, so a fixed CSS height cannot get this right.
+  useLayoutEffect(() => {
+    if (!inline) return;
+    const fit = (): void => {
+      const panel = panelRef.current;
+      if (!panel) return;
+      const top = panel.getBoundingClientRect().top + window.scrollY;
+      const content = panel.closest(".content");
+      const padding = content ? parseFloat(getComputedStyle(content).paddingBottom) || 0 : 0;
+      setFitHeight(Math.max(MIN_INLINE_HEIGHT, Math.floor(window.innerHeight - top - padding)));
+    };
+    fit();
+    window.addEventListener("resize", fit);
+    return () => window.removeEventListener("resize", fit);
+  }, [inline]);
+
   const needle = filter.trim().toLowerCase();
   const shownLines = needle
     ? lines.filter((line) => line.toLowerCase().includes(needle))
@@ -81,7 +103,11 @@ export default function LogPanel({
   };
 
   return (
-    <div className={inline ? "log-panel inline" : "log-panel"}>
+    <div
+      ref={panelRef}
+      className={inline ? "log-panel inline" : "log-panel"}
+      style={inline && fitHeight !== null ? { height: fitHeight } : undefined}
+    >
       <div className="log-header">
         <div>
           <ScrollText size={15} /> <strong>{title}</strong>{" "}
