@@ -401,8 +401,9 @@ def _stats_to_schema(container: DockerContainer, raw: dict) -> ContainerStats:
 def _one_stats(container: DockerContainer) -> ContainerStats | None:
     try:
         return _stats_to_schema(container, container.stats(stream=False))
-    except DockerException as exc:
+    except (DockerException, ValueError) as exc:
         # A container stopping mid-poll is normal; skip it rather than fail the batch.
+        # Docker can then answer with an empty body, which fails to parse as JSON.
         logger.debug("Stats unavailable for %s: %s", container.name, exc)
         return None
 

@@ -7,17 +7,22 @@ from types import SimpleNamespace
 from typing import Any, NoReturn
 
 import pytest
+import requests
 from fastapi.testclient import TestClient
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
 
 from app.api import images as images_api
 from app.api import projects as projects_api
 from app.api import volumes as volumes_api
+from app.core.database import Base
 from app.core.security import get_current_user
 from app.main import app
-from app.models.job import JobKind
+from app.models.job import Job, JobKind, JobStatus
 from app.schemas.common import PruneResult
 from app.schemas.project import Project
-from app.services import compose_service, docker_service, tasks
+from app.services import compose_service, docker_service, job_service, tasks
 from app.services.job_service import JobRunner
 
 COMPOSE = Path("/repo/web/docker-compose.yml")
@@ -242,3 +247,36 @@ def test_network_prune_queues_job(client: TestClient, submitted: list[tuple[str,
 
     assert response.status_code == 202
     assert submitted == [(JobKind.NETWORK_PRUNE, "Prune unused networks")]
+
+
+def test_fail_interrupted_marks_leftover_jobs(monkeypatch: pytest.MonkeyPatch) -> None:
+    engine = create_engine("sqlite://", poolclass=StaticPool)
+    Base.metadata.create_all(engine)
+    monkeypatch.setattr(job_service, "SessionLocal", sessionmaker(bind=engine))
+    with job_service.SessionLocal() as db:
+        db.add_all(
+            [
+                Job(id="a", kind=JobKind.SCAN_RUNNING, label="scan", status=JobStatus.RUNNING),
+                Job(id="b", kind=JobKind.UPDATE_CHECK, label="check", status=JobStatus.PENDING),
+                Job(id="c", kind=JobKind.IMAGE_PRUNE, label="prune", status=JobStatus.SUCCESS),
+            ]
+        )
+        db.commit()
+
+    assert job_service.fail_interrupted() == 2
+
+    with job_service.SessionLocal() as db:
+        statuses = {job.id: (job.status, job.error) for job in db.query(Job)}
+    assert statuses["a"][0] == statuses["b"][0] == JobStatus.ERROR
+    assert "restarted" in (statuses["a"][1] or "")
+    assert statuses["c"] == (JobStatus.SUCCESS, None)
+
+
+def test_stats_skip_a_container_that_answers_garbage() -> None:
+    class Stopping:
+        name = "stopping"
+
+        def stats(self, stream: bool) -> NoReturn:
+            raise requests.exceptions.JSONDecodeError("Expecting value", "", 0)
+
+    assert docker_service._one_stats(Stopping()) is None  # type: ignore[arg-type]

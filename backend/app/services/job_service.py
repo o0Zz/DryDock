@@ -82,6 +82,25 @@ def _find_active(kind: str, label: str) -> Job | None:
         )
 
 
+def fail_interrupted() -> int:
+    """Mark jobs left pending or running by an earlier process as failed.
+
+    Jobs run in this process's threads, so after a restart (an image update, a
+    recreate) nothing runs them any more. Without this they show as running
+    forever and block an identical job from being queued. Call once at startup.
+    """
+    with SessionLocal() as db:
+        jobs = list(db.scalars(select(Job).where(Job.status.in_(ACTIVE_STATUSES))))
+        for job in jobs:
+            job.status = JobStatus.ERROR
+            job.error = "Interrupted: DryDock restarted while this job ran"
+            job.finished_at = utcnow()
+        db.commit()
+    if jobs:
+        logger.warning("Marked %d job(s) interrupted by the restart as failed", len(jobs))
+    return len(jobs)
+
+
 def submit(kind: str, label: str, runner: JobRunner, *, trigger: str = "manual") -> Job:
     """Queue a job. An identical job already in flight is returned as-is."""
     existing = _find_active(kind, label)

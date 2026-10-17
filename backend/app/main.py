@@ -69,6 +69,7 @@ def _seed_admin() -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     init_db()
+    job_service.fail_interrupted()
     _seed_admin()
     host_path_service.setup()
     scheduler_service.start()
