@@ -340,6 +340,8 @@ button.linklike svg {
 
 /* CVE badge doubles as a rescan button */
 button.badge.scan-badge { text-transform: none; cursor: pointer; }
+/* One-click "pull & recreate" update badge */
+button.badge.badge-button { text-transform: none; cursor: pointer; border: none; }
 button.linklike.danger { color: #cf222e; }
 button.linklike.danger svg { color: #cf222e; }
 

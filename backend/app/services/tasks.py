@@ -8,12 +8,14 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable, Sequence
+from pathlib import Path
 
 from sqlalchemy.orm import Session
 
 from app.models.scan import Scan, ScanFinding
 from app.models.update import UpdateCheck
 from app.services import (
+    compose_service,
     docker_service,
     notify_service,
     repo_service,
@@ -195,5 +197,23 @@ def update_check_runner(resolve: ImageResolver, *, notify: bool = False):
         ctx.note(message)
         if notify:
             _maybe_notify_updates(ctx.db, checks)
+
+    return run
+
+
+def container_update_runner(
+    compose_path: Path, service: str, image: str, *, project_name: str | None = None
+):
+    """Build a job body that pulls one service's image and recreates its container."""
+
+    def run(ctx: JobContext) -> None:
+        ctx.set_total(3, f"Pulling {image}")
+        compose_service.pull_service(compose_path, service, project_name=project_name)
+        ctx.advance(f"Recreating {service}")
+        compose_service.recreate_service(compose_path, service, project_name=project_name)
+        # Refresh the stored check so the "update available" badge clears.
+        ctx.advance(f"Re-checking {image}")
+        store_update_check(ctx.db, image)
+        ctx.advance(f"{service} updated to the latest {image}")
 
     return run

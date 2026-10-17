@@ -31,6 +31,28 @@ uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8080
 
 Check it's alive: <http://localhost:8080/api/health>
 
+### Database migrations
+
+[Alembic](https://alembic.sqlalchemy.org/) owns the SQLite schema. Revisions live in `backend/migrations/versions/`. On startup DryDock upgrades the database to the latest revision. Before it changes an existing database, it saves a copy to `<data>/backups/db/` (the last 5 are kept).
+
+After you change a model in `backend/app/models/`, generate a revision and review it before you commit:
+
+```powershell
+cd backend
+$env:DRYDOCK_DATA_PATH = "$PWD\.data"
+uv run alembic upgrade head                                # bring the dev DB to the current head
+uv run alembic revision --autogenerate -m "add foo to scans"
+uv run alembic check                                       # fails if models and migrations differ
+```
+
+Rules:
+
+- Never edit a revision that has been released. Add a new one.
+- SQLite cannot alter most things in place, so autogenerate emits `batch_alter_table` blocks that rebuild the table. Keep them.
+- Autogenerate does not detect renames, and does not migrate data. Write those steps by hand.
+- A new `NOT NULL` column on an existing table needs a `server_default`, or a backfill before the constraint is set.
+- `tests/test_migrations.py` checks that a fresh upgrade matches the models, and that a downgrade to base works.
+
 ### Frontend
 
 ```powershell

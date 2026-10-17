@@ -119,6 +119,9 @@ export const api = {
       method: "POST",
     }),
   deleteContainer: (id: string) => request<void>(`/api/containers/${id}`, { method: "DELETE" }),
+  // Pull the image and recreate the Compose service — queued as a job
+  updateContainer: (id: string) =>
+    request<Job>(`/api/containers/${id}/update`, { method: "POST" }),
 
   // CVE scans — the POSTs queue a background job and return it immediately
   listScans: () => request<ScanSummary[]>("/api/scans"),

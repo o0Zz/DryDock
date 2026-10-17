@@ -84,6 +84,9 @@ WORKDIR /app
 # Copy the fully-populated venv + app source from the backend stage
 COPY --from=backend /app/.venv /app/.venv
 COPY --from=backend /app/app /app/app
+# Alembic revisions, applied automatically at startup (app/core/migrations.py).
+COPY backend/migrations /app/migrations
+COPY backend/alembic.ini /app/alembic.ini
 ENV PATH="/app/.venv/bin:${PATH}" \
     PYTHONPATH=/app \
     PYTHONUNBUFFERED=1 \

@@ -71,27 +71,41 @@ def create_compose(name: str, content: str) -> Path:
     return compose_path
 
 
-def run_action(compose_path: Path, action: str, *, detached: bool = True) -> dict:
-    if action not in ALLOWED_ACTIONS:
-        raise ComposeError(f"Unsupported action: {action}")
-
-    cmd = ["docker", "compose", "-f", str(compose_path), action]
-    if action == "up" and detached:
-        cmd.append("-d")
+def _compose(
+    compose_path: Path,
+    args: list[str],
+    *,
+    project_name: str | None = None,
+    timeout: int = 300,
+) -> subprocess.CompletedProcess[str]:
+    cmd = ["docker", "compose", "-f", str(compose_path)]
+    if project_name:
+        cmd += ["-p", project_name]
+    cmd += args
 
     logger.info("Running: %s", " ".join(cmd))
     try:
-        proc = subprocess.run(  # noqa: S603 — args list, no shell
+        return subprocess.run(  # noqa: S603 — args list, no shell
             cmd,
             capture_output=True,
             text=True,
-            timeout=300,
+            timeout=timeout,
             cwd=compose_path.parent,
         )
     except FileNotFoundError as exc:
         raise ComposeError("`docker` CLI not found on PATH") from exc
     except subprocess.TimeoutExpired as exc:
-        raise ComposeError(f"`docker compose {action}` timed out after 300s") from exc
+        raise ComposeError(f"`docker compose {args[0]}` timed out after {timeout}s") from exc
+
+
+def run_action(compose_path: Path, action: str, *, detached: bool = True) -> dict:
+    if action not in ALLOWED_ACTIONS:
+        raise ComposeError(f"Unsupported action: {action}")
+
+    args = [action]
+    if action == "up" and detached:
+        args.append("-d")
+    proc = _compose(compose_path, args)
 
     return {
         "action": action,
@@ -99,6 +113,34 @@ def run_action(compose_path: Path, action: str, *, detached: bool = True) -> dic
         "stdout": proc.stdout,
         "stderr": proc.stderr,
     }
+
+
+# Pulling a large image on a Pi over a slow link easily takes several minutes.
+PULL_TIMEOUT = 1800
+
+
+def _check(proc: subprocess.CompletedProcess[str], step: str) -> None:
+    if proc.returncode != 0:
+        detail = (proc.stderr or proc.stdout or "").strip()[-1000:]
+        raise ComposeError(f"`docker compose {step}` failed (exit {proc.returncode}): {detail}")
+
+
+def pull_service(compose_path: Path, service: str, *, project_name: str | None = None) -> None:
+    """Pull the image of one service."""
+    proc = _compose(
+        compose_path, ["pull", service], project_name=project_name, timeout=PULL_TIMEOUT
+    )
+    _check(proc, "pull")
+
+
+def recreate_service(
+    compose_path: Path, service: str, *, project_name: str | None = None
+) -> None:
+    """Recreate one service on its current image, leaving the rest of the stack alone."""
+    proc = _compose(
+        compose_path, ["up", "-d", "--no-deps", service], project_name=project_name
+    )
+    _check(proc, "up")
 
 
 def stream_logs(compose_path: Path, *, tail: int = 200) -> subprocess.Popen[bytes]:

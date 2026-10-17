@@ -1,14 +1,23 @@
 from collections.abc import Iterator
 
-from sqlalchemy import create_engine, event, inspect, text
-from sqlalchemy.engine import Engine
+from sqlalchemy import MetaData, create_engine, event
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 from app.core.config import settings
 
+# Deterministic constraint names. Alembic batch mode rebuilds SQLite tables to
+# alter them, and it can only drop or change a constraint that has a name.
+NAMING_CONVENTION = {
+    "ix": "ix_%(column_0_label)s",
+    "uq": "uq_%(table_name)s_%(column_0_name)s",
+    "ck": "ck_%(table_name)s_%(constraint_name)s",
+    "fk": "fk_%(table_name)s_%(column_0_name)s_%(referred_table_name)s",
+    "pk": "pk_%(table_name)s",
+}
+
 
 class Base(DeclarativeBase):
-    pass
+    metadata = MetaData(naming_convention=NAMING_CONVENTION)
 
 
 # The rest of the API is synchronous, so we use a plain sync SQLAlchemy engine.
@@ -20,12 +29,14 @@ engine = create_engine(
 SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
 
 
-@event.listens_for(Engine, "connect")
+@event.listens_for(engine, "connect")
 def _sqlite_pragmas(dbapi_connection, connection_record) -> None:  # noqa: ANN001
     """SQLite ignores FK constraints unless asked, and defaults to a slow journal.
 
     ON DELETE CASCADE on scan_findings depends on foreign_keys being ON, and WAL
     keeps background jobs from blocking API reads while they write.
+
+    Bound to the app engine only: the migration engine needs foreign_keys OFF.
     """
     cursor = dbapi_connection.cursor()
     try:
@@ -37,29 +48,11 @@ def _sqlite_pragmas(dbapi_connection, connection_record) -> None:  # noqa: ANN00
 
 
 def init_db() -> None:
-    # Importing the package registers every model on Base.metadata.
-    import app.models  # noqa: F401
+    """Bring the schema up to date. Alembic migrations own the schema, never
+    ``create_all``, so every install follows the same upgrade path."""
+    from app.core.migrations import upgrade_database
 
-    Base.metadata.create_all(bind=engine)
-    _add_missing_columns()
-
-
-def _add_missing_columns() -> None:
-    """Minimal forward migration: `create_all` never alters existing tables, so
-    add any nullable column a model gained since the database was created."""
-    inspector = inspect(engine)
-    with engine.begin() as conn:
-        for table in Base.metadata.sorted_tables:
-            if not inspector.has_table(table.name):
-                continue
-            existing = {c["name"] for c in inspector.get_columns(table.name)}
-            for column in table.columns:
-                if column.name in existing or not column.nullable:
-                    continue
-                col_type = column.type.compile(dialect=engine.dialect)
-                conn.execute(
-                    text(f'ALTER TABLE "{table.name}" ADD COLUMN "{column.name}" {col_type}')
-                )
+    upgrade_database()
 
 
 def get_db() -> Iterator[Session]:

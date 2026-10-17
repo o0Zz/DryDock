@@ -14,13 +14,14 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { lazy, Suspense, useCallback, useEffect, useState, type ReactNode } from "react";
-import { Link, useParams, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { api } from "../api";
 import { useAuth } from "../auth";
 import JobList from "../components/JobList";
 import LogPanel from "../components/LogPanel";
 import Meter, { formatBytes } from "../components/Meter";
 import ScanFindings from "../components/ScanFindings";
+import UpdateAction from "../components/UpdateAction";
 import UpdateBadge from "../components/UpdateBadge";
 import { useContainerStats } from "../hooks/useContainerStats";
 import { useJobs } from "../hooks/useJobs";
@@ -196,7 +197,7 @@ export default function ContainerDetail() {
       {tab === "overview" && <OverviewTab detail={detail} isAdmin={!!user?.is_admin} />}
       {tab === "logs" && <LogsTab id={detail.id} name={detail.name} />}
       {tab === "cves" && <CvesTab image={detail.image} />}
-      {tab === "updates" && <UpdatesTab image={detail.image} project={project} />}
+      {tab === "updates" && <UpdatesTab container={detail} project={project} />}
 
       {live && tab === "overview" && (
         <section className="section">
@@ -527,9 +528,11 @@ function CvesTab({ image }: { image: string }) {
   );
 }
 
-function UpdatesTab({ image, project }: { image: string; project: Project | null }) {
+function UpdatesTab({ container, project }: { container: Detail; project: Project | null }) {
+  const image = container.image;
   const [update, setUpdate] = useState<UpdateSummary | null | undefined>(undefined);
   const [error, setError] = useState<string | null>(null);
+  const navigate = useNavigate();
 
   const load = useCallback(() => {
     api
@@ -538,7 +541,19 @@ function UpdatesTab({ image, project }: { image: string; project: Project | null
       .catch((e: Error) => setError(e.message));
   }, [image]);
 
-  const { jobs, track, dismiss, busy } = useJobs(load);
+  // A finished update recreated the container under a new id: follow it there.
+  const onJobSettled = useCallback(() => {
+    load();
+    api
+      .listContainers()
+      .then((list) => {
+        const next = list.find((c) => c.name === container.name);
+        if (next && next.id !== container.id) navigate(`/containers/${next.id}?tab=updates`);
+      })
+      .catch(() => undefined);
+  }, [load, container.name, container.id, navigate]);
+
+  const { jobs, track, dismiss, busy } = useJobs(onJobSettled);
 
   useEffect(load, [load]);
 
@@ -556,8 +571,16 @@ function UpdatesTab({ image, project }: { image: string; project: Project | null
   return (
     <>
       <div className="row-between">
-        <div>
+        <div className="button-row inline">
           <UpdateBadge update={update ?? undefined} />
+          <UpdateAction
+            container={container}
+            update={update ?? undefined}
+            project={project}
+            pending={busy}
+            onJob={track}
+            onError={setError}
+          />
         </div>
         <button
           type="button"

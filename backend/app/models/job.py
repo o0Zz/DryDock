@@ -22,6 +22,7 @@ class JobKind:
     SCAN_RUNNING = "scan_running"
     SCAN_COMPOSE = "scan_compose"
     UPDATE_CHECK = "update_check"
+    CONTAINER_UPDATE = "container_update"
 
 
 class Job(Base):

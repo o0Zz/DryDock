@@ -58,6 +58,14 @@ def _find_project(project_id: str) -> Project:
     raise HTTPException(status_code=404, detail="Project not found")
 
 
+def project_for_container(container_id: str) -> Project | None:
+    """The repo project a container was deployed from, if any."""
+    for project in _attach_containers(repo_service.discover_projects()):
+        if any(c.id == container_id for c in project.containers):
+            return project
+    return None
+
+
 @router.get("", response_model=list[Project])
 def list_projects() -> list[Project]:
     return _attach_containers(repo_service.discover_projects())

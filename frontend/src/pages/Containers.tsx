@@ -17,9 +17,17 @@ import { useAuth } from "../auth";
 import JobList from "../components/JobList";
 import Meter, { formatBytes } from "../components/Meter";
 import ScanBadge from "../components/ScanBadge";
+import UpdateAction from "../components/UpdateAction";
 import { useContainerStats } from "../hooks/useContainerStats";
 import { useJobs } from "../hooks/useJobs";
-import type { Container, ContainerStats, Job, ScanSummary, UpdateSummary } from "../types";
+import type {
+  Container,
+  ContainerStats,
+  Job,
+  Project,
+  ScanSummary,
+  UpdateSummary,
+} from "../types";
 
 type Action = "start" | "stop" | "restart";
 const ACTIONS: Action[] = ["start", "stop", "restart"];
@@ -37,6 +45,8 @@ export default function Containers() {
   const [scans, setScans] = useState<Record<string, ScanSummary>>({});
   const [error, setError] = useState<string | null>(null);
   const [updates, setUpdates] = useState<Record<string, UpdateSummary>>({});
+  // Owning Compose project per container id, for the "edit tag" shortcut.
+  const [projects, setProjects] = useState<Record<string, Project>>({});
   const [consoleFor, setConsoleFor] = useState<Container | null>(null);
   const { user } = useAuth();
   const stats = useContainerStats();
@@ -61,9 +71,23 @@ export default function Containers() {
       .listUpdates()
       .then((list) => setUpdates(Object.fromEntries(list.map((u) => [u.image, u]))))
       .catch(() => undefined);
+    api
+      .listProjects()
+      .then((list) =>
+        setProjects(
+          Object.fromEntries(list.flatMap((p) => p.containers.map((c) => [c.id, p]))),
+        ),
+      )
+      .catch(() => undefined);
   }, []);
 
-  const { jobs, track, dismiss, busy: jobsRunning } = useJobs(loadScans);
+  // An update job recreates the container, so its id changes: reload both.
+  const onJobSettled = useCallback(() => {
+    loadScans();
+    refresh();
+  }, [loadScans, refresh]);
+
+  const { jobs, track, dismiss, busy: jobsRunning } = useJobs(onJobSettled);
 
   useEffect(() => {
     refresh();
@@ -195,18 +219,17 @@ export default function Containers() {
                 </td>
                 <td>
                   {c.image}
-                  {(updates[c.image]?.update_available || updates[c.image]?.newest_tag) && (
-                    <>
-                      {" "}
-                      <Link
-                        to={`/containers/${c.id}?tab=updates`}
-                        className="badge paused"
-                        title="Newer image available — view details"
-                      >
-                        <ArrowUpCircle size={12} /> update
-                      </Link>
-                    </>
-                  )}
+{" "}
+                  <UpdateAction
+                    container={c}
+                    update={updates[c.image]}
+                    project={projects[c.id]}
+                    pending={jobs.some(
+                      (j) => j.label === `Update ${c.name}` && !["success", "error"].includes(j.status),
+                    )}
+                    onJob={track}
+                    onError={setError}
+                  />
                 </td>
                 <td>
                   <ScanBadge

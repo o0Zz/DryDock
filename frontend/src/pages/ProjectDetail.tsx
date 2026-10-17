@@ -1,5 +1,6 @@
 import {
   ArrowDownCircle,
+  ArrowUpCircle,
   ChevronLeft,
   Circle,
   Download,
@@ -12,10 +13,11 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { lazy, Suspense, useCallback, useEffect, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useParams, useSearchParams } from "react-router-dom";
 import { api } from "../api";
 import LogPanel from "../components/LogPanel";
-import type { ActionResult, Project } from "../types";
+import { imageRepo, retagImage } from "../imageRef";
+import type { ActionResult, Project, UpdateSummary } from "../types";
 
 // CodeMirror is by far the heaviest dependency in the bundle and is only
 // needed on this page, so it loads on demand.
@@ -48,6 +50,13 @@ export default function ProjectDetail() {
   const [busyAction, setBusyAction] = useState<Action | null>(null);
   const [actionResult, setActionResult] = useState<ActionResult | null>(null);
   const [showLogs, setShowLogs] = useState(false);
+  // `?retag=<image>` arrives from a container's update shortcut: offer the
+  // newer tags for that image as a one-click edit of the compose file.
+  const [params, setParams] = useSearchParams();
+  const retag = params.get("retag");
+  const [retagUpdate, setRetagUpdate] = useState<UpdateSummary | null>(null);
+  const [retagApplied, setRetagApplied] = useState<string | null>(null);
+  const [retagNote, setRetagNote] = useState<string | null>(null);
 
   const reloadProject = useCallback(async () => {
     setProject(await api.getProject(id));
@@ -68,15 +77,25 @@ export default function ProjectDetail() {
     };
   }, [id]);
 
-  const save = useCallback(async () => {
+  useEffect(() => {
+    if (!retag) return;
+    api
+      .listUpdates()
+      .then((list) => setRetagUpdate(list.find((u) => u.image === retag) ?? null))
+      .catch(() => undefined);
+  }, [retag]);
+
+  const save = useCallback(async (): Promise<boolean> => {
     setSaving(true);
     setSaveError(null);
     try {
       const res = await api.putCompose(id, compose);
       setOriginalCompose(compose);
       setSavedAt(`Saved. Backup: ${res.backup_path}`);
+      return true;
     } catch (e) {
       setSaveError((e as Error).message);
+      return false;
     } finally {
       setSaving(false);
     }
@@ -107,6 +126,32 @@ export default function ProjectDetail() {
     },
     [id, reloadProject],
   );
+
+  const applyTag = (tag: string) => {
+    if (!retag) return;
+    const result = retagImage(compose, retag, tag);
+    if (result.count === 0) {
+      setRetagNote(`Could not find "image: ${retag}" in this file. Change the tag by hand below.`);
+      return;
+    }
+    setRetagNote(null);
+    setCompose(result.content);
+    setRetagApplied(tag);
+  };
+
+  const dismissRetag = () => {
+    params.delete("retag");
+    setParams(params, { replace: true });
+    setRetagApplied(null);
+    setRetagNote(null);
+  };
+
+  const saveAndDeploy = async () => {
+    if (await save()) {
+      await runAction("up");
+      dismissRetag();
+    }
+  };
 
   if (loadError) return <div className="error">Failed to load: {loadError}</div>;
   if (!project) return <div>Loading…</div>;
@@ -208,6 +253,18 @@ export default function ProjectDetail() {
 
       <section className="section">
         <h2>Compose file</h2>
+        {retag && (
+          <RetagPanel
+            image={retag}
+            update={retagUpdate}
+            applied={retagApplied}
+            note={retagNote}
+            busy={saving || busyAction !== null}
+            onApply={applyTag}
+            onDeploy={saveAndDeploy}
+            onDismiss={dismissRetag}
+          />
+        )}
         <Suspense fallback={<div className="empty">Loading editor…</div>}>
           <YamlEditor value={compose} onChange={setCompose} />
         </Suspense>
@@ -235,6 +292,71 @@ export default function ProjectDetail() {
           onClose={() => setShowLogs(false)}
         />
       )}
+    </div>
+  );
+}
+
+function RetagPanel({
+  image,
+  update,
+  applied,
+  note,
+  busy,
+  onApply,
+  onDeploy,
+  onDismiss,
+}: {
+  image: string;
+  update: UpdateSummary | null;
+  applied: string | null;
+  note: string | null;
+  busy: boolean;
+  onApply: (tag: string) => void;
+  onDeploy: () => void;
+  onDismiss: () => void;
+}) {
+  // Same-major first: it is the safer upgrade; a new major may need config changes.
+  const choices: [string, string][] = [];
+  if (update?.newest_same_major_tag) choices.push([update.newest_same_major_tag, "same major"]);
+  if (update?.newest_tag && update.newest_tag !== update.newest_same_major_tag) {
+    choices.push([update.newest_tag, "newest"]);
+  }
+
+  return (
+    <div className="output" style={{ padding: "0.75rem" }}>
+      {applied ? (
+        <div className="button-row">
+          <span>
+            Image changed to <code>{imageRepo(image)}:{applied}</code> (not saved yet). Review it
+            below, then:
+          </span>
+          <button type="button" disabled={busy} onClick={onDeploy}>
+            <Play size={15} /> Save &amp; deploy
+          </button>
+          <button type="button" className="secondary" disabled={busy} onClick={onDismiss}>
+            Close
+          </button>
+        </div>
+      ) : (
+        <div className="button-row">
+          <span>
+            <ArrowUpCircle size={14} /> Update <code>{image}</code>:
+          </span>
+          {choices.length === 0 ? (
+            <span className="muted">no newer tag recorded. Run an update check first.</span>
+          ) : (
+            choices.map(([tag, label]) => (
+              <button key={tag} type="button" className="small" onClick={() => onApply(tag)}>
+                Use {tag} <span className="muted">({label})</span>
+              </button>
+            ))
+          )}
+          <button type="button" className="secondary small" onClick={onDismiss}>
+            Cancel
+          </button>
+        </div>
+      )}
+      {note && <div className="error">{note}</div>}
     </div>
   );
 }

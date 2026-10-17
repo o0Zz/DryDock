@@ -1,9 +1,14 @@
+from pathlib import Path
+
 from fastapi import APIRouter, Depends, HTTPException, status
 
+from app.api.projects import project_for_container
 from app.core.security import get_current_user
+from app.models.job import Job, JobKind
 from app.models.user import User
 from app.schemas.container import Container, ContainerDetail, ContainerStats
-from app.services import docker_service
+from app.schemas.job import JobRead
+from app.services import docker_service, job_service, tasks
 
 router = APIRouter(prefix="/api/containers", tags=["containers"])
 
@@ -51,6 +56,42 @@ def delete_container(container_id: str) -> None:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except docker_service.DockerUnavailable as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+# Declared before /{container_id}/{action} so "update" is not taken as an action.
+@router.post(
+    "/{container_id}/update", response_model=JobRead, status_code=status.HTTP_202_ACCEPTED
+)
+def update_container(container_id: str) -> Job:
+    """Queue a pull of the container's image and a recreate of its Compose service.
+
+    Only for containers deployed from a Compose file in the repo: anything else
+    would have to be recreated by hand with its original `docker run` options.
+    """
+    try:
+        container = docker_service.get_container(container_id)
+    except docker_service.DockerUnavailable as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    if not container.compose_service:
+        raise HTTPException(
+            status_code=409, detail=f"{container.name} is not managed by Docker Compose"
+        )
+    project = project_for_container(container.id)
+    if project is None:
+        raise HTTPException(
+            status_code=409,
+            detail=f"No Compose file in the repo matches {container.name}",
+        )
+    return job_service.submit(
+        JobKind.CONTAINER_UPDATE,
+        f"Update {container.name}",
+        tasks.container_update_runner(
+            Path(project.compose_path),
+            container.compose_service,
+            container.image,
+            project_name=container.compose_project,
+        ),
+    )
 
 
 @router.post("/{container_id}/{action}")
