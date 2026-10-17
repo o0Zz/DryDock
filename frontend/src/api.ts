@@ -3,6 +3,7 @@ import type {
   AppSettings,
   ComposeContent,
   Container,
+  ContainerDetail,
   ContainerStats,
   DashboardStats,
   Job,
@@ -111,6 +112,8 @@ export const api = {
     request<ActionResult>(`/api/projects/${id}/${action}`, { method: "POST" }),
   listContainers: () => request<Container[]>("/api/containers"),
   containerStats: () => request<ContainerStats[]>("/api/containers/stats"),
+  inspectContainer: (id: string) =>
+    request<ContainerDetail>(`/api/containers/${encodeURIComponent(id)}/inspect`),
   containerAction: (id: string, action: "start" | "stop" | "restart") =>
     request<{ status: string; action: string }>(`/api/containers/${id}/${action}`, {
       method: "POST",

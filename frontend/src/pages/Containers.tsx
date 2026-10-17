@@ -4,20 +4,21 @@ import {
   Play,
   RefreshCw,
   RotateCw,
-  ScrollText,
   ShieldCheck,
   Square,
   SquareTerminal,
   type LucideIcon,
 } from "lucide-react";
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import { api } from "../api";
 import { useAuth } from "../auth";
 import JobList from "../components/JobList";
-import LogPanel from "../components/LogPanel";
+import Meter, { formatBytes } from "../components/Meter";
 import ScanBadge from "../components/ScanBadge";
+import { useContainerStats } from "../hooks/useContainerStats";
 import { useJobs } from "../hooks/useJobs";
-import type { Container, ContainerStats, Job, ScanSummary } from "../types";
+import type { Container, ContainerStats, Job, ScanSummary, UpdateSummary } from "../types";
 
 type Action = "start" | "stop" | "restart";
 const ACTIONS: Action[] = ["start", "stop", "restart"];
@@ -30,59 +31,15 @@ const ACTION_ICONS: Record<Action, LucideIcon> = {
 // xterm.js is heavy; only load it when a console is opened.
 const ContainerConsole = lazy(() => import("../components/ContainerConsole"));
 
-const STATS_INTERVAL_MS = 5000;
-
-function formatBytes(bytes: number): string {
-  if (!bytes) return "0 B";
-  const units = ["B", "KB", "MB", "GB", "TB"];
-  const i = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
-  return `${(bytes / 1024 ** i).toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
-}
-
-function Meter({ percent }: { percent: number }) {
-  const clamped = Math.max(0, Math.min(100, percent));
-  return (
-    <div className={clamped >= 80 ? "meter hot" : "meter"}>
-      <span style={{ width: `${clamped}%` }} />
-    </div>
-  );
-}
-
-/** Polls /api/containers/stats while mounted; each call takes ~1s server-side,
- * so the next poll is scheduled only after the previous one returns. */
-function useContainerStats(): Record<string, ContainerStats> {
-  const [stats, setStats] = useState<Record<string, ContainerStats>>({});
-  useEffect(() => {
-    let timer: number | undefined;
-    let cancelled = false;
-    const poll = () => {
-      api
-        .containerStats()
-        .then((list) => {
-          if (!cancelled) setStats(Object.fromEntries(list.map((s) => [s.id, s])));
-        })
-        .catch(() => undefined) // stats are best-effort; the table still works without them
-        .finally(() => {
-          if (!cancelled) timer = window.setTimeout(poll, STATS_INTERVAL_MS);
-        });
-    };
-    poll();
-    return () => {
-      cancelled = true;
-      window.clearTimeout(timer);
-    };
-  }, []);
-  return stats;
-}
-
 export default function Containers() {
   const [containers, setContainers] = useState<Container[] | null>(null);
   const [scans, setScans] = useState<Record<string, ScanSummary>>({});
   const [error, setError] = useState<string | null>(null);
-  const [selected, setSelected] = useState<Container | null>(null);
+  const [updates, setUpdates] = useState<Record<string, UpdateSummary>>({});
   const [consoleFor, setConsoleFor] = useState<Container | null>(null);
   const { user } = useAuth();
   const stats = useContainerStats();
+  const navigate = useNavigate();
   const [busy, setBusy] = useState<string | null>(null);
 
   const refresh = useCallback(() => {
@@ -93,11 +50,15 @@ export default function Containers() {
   }, []);
 
   const loadScans = useCallback(() => {
-    // Scans are best-effort context for the CVE column; a failure here
-    // shouldn't take down the whole container list.
+    // Scans and update checks are best-effort context for the CVE / image
+    // columns; a failure here shouldn't take down the whole container list.
     api
       .listScans()
       .then((list) => setScans(Object.fromEntries(list.map((s) => [s.image, s]))))
+      .catch(() => undefined);
+    api
+      .listUpdates()
+      .then((list) => setUpdates(Object.fromEntries(list.map((u) => [u.image, u]))))
       .catch(() => undefined);
   }, []);
 
@@ -208,24 +169,34 @@ export default function Containers() {
             {containers.map((c) => (
               <tr key={c.id}>
                 <td>
-                  <button
-                    type="button"
-                    className="linklike"
-                    title="View logs"
-                    onClick={() => setSelected(c)}
-                  >
-                    <ScrollText size={14} /> {c.name}
-                  </button>
+                  <Link to={`/containers/${c.id}`} title="Details, logs, CVEs and updates">
+                    {c.name}
+                  </Link>
                   <div className="muted">
                     created {new Date(c.created_at).toLocaleString()}
                   </div>
                 </td>
-                <td>{c.image}</td>
+                <td>
+                  {c.image}
+                  {(updates[c.image]?.update_available || updates[c.image]?.newest_tag) && (
+                    <>
+                      {" "}
+                      <Link
+                        to={`/containers/${c.id}?tab=updates`}
+                        className="badge paused"
+                        title="Newer image available — view details"
+                      >
+                        <ArrowUpCircle size={12} /> update
+                      </Link>
+                    </>
+                  )}
+                </td>
                 <td>
                   <ScanBadge
                     scan={scans[c.image]}
                     pending={pendingImages.has(c.image)}
                     onScan={() => start(() => api.scanImage(c.image))}
+                    onOpen={() => navigate(`/containers/${c.id}?tab=cves`)}
                   />
                 </td>
                 <td>
@@ -280,13 +251,6 @@ export default function Containers() {
         </table>
       )}
 
-      {selected && (
-        <LogPanel
-          title={selected.name}
-          url={`/api/logs/container/${selected.id}?tail=200`}
-          onClose={() => setSelected(null)}
-        />
-      )}
       {consoleFor && (
         <Suspense fallback={null}>
           <ContainerConsole

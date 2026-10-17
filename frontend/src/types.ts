@@ -82,6 +82,47 @@ export interface Container {
   restart_policy: string | null;
 }
 
+export interface EnvVar {
+  key: string;
+  value: string;
+}
+
+export interface MountInfo {
+  type: string;
+  source: string | null;
+  destination: string;
+  mode: string | null;
+  rw: boolean;
+}
+
+export interface NetworkInfo {
+  name: string;
+  ip_address: string | null;
+  gateway: string | null;
+  mac_address: string | null;
+}
+
+/** Curated `docker inspect` view; `raw` and real env values are admin-only. */
+export interface ContainerDetail extends Container {
+  image_id: string | null;
+  command: string[] | null;
+  entrypoint: string[] | null;
+  working_dir: string | null;
+  user: string | null;
+  hostname: string | null;
+  started_at: string | null;
+  finished_at: string | null;
+  exit_code: number | null;
+  restart_count: number;
+  health: string | null;
+  env: EnvVar[];
+  env_revealed: boolean;
+  mounts: MountInfo[];
+  networks: NetworkInfo[];
+  labels: Record<string, string>;
+  raw: Record<string, unknown> | null;
+}
+
 export interface ScanSummary {
   id: number;
   image: string;

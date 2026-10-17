@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { NavLink, Route, Routes } from "react-router-dom";
 import { useAuth } from "./auth";
+import ContainerDetail from "./pages/ContainerDetail";
 import Containers from "./pages/Containers";
 import Dashboard from "./pages/Dashboard";
 import Login from "./pages/Login";
@@ -91,6 +92,7 @@ export default function App() {
           <Route path="/projects/new" element={<NewProject />} />
           <Route path="/projects/:id" element={<ProjectDetail />} />
           <Route path="/containers" element={<Containers />} />
+          <Route path="/containers/:id" element={<ContainerDetail />} />
           <Route path="/volumes" element={<Volumes />} />
           <Route path="/scans" element={<Scans />} />
           <Route path="/settings" element={<Settings />} />

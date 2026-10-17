@@ -25,6 +25,50 @@ class Container(BaseModel):
     restart_policy: str | None = None
 
 
+class EnvVar(BaseModel):
+    key: str
+    value: str
+
+
+class MountInfo(BaseModel):
+    type: str
+    source: str | None = None
+    destination: str
+    mode: str | None = None
+    rw: bool = True
+
+
+class NetworkInfo(BaseModel):
+    name: str
+    ip_address: str | None = None
+    gateway: str | None = None
+    mac_address: str | None = None
+
+
+class ContainerDetail(Container):
+    """Curated `docker inspect` view for the container detail page."""
+
+    image_id: str | None = None
+    command: list[str] | None = None
+    entrypoint: list[str] | None = None
+    working_dir: str | None = None
+    user: str | None = None
+    hostname: str | None = None
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
+    exit_code: int | None = None
+    restart_count: int = 0
+    health: str | None = None
+    env: list[EnvVar] = []
+    # False when env values were masked for a non-admin viewer.
+    env_revealed: bool = False
+    mounts: list[MountInfo] = []
+    networks: list[NetworkInfo] = []
+    labels: dict[str, str] = {}
+    # Full inspect payload; admins only, since it includes env values.
+    raw: dict | None = None
+
+
 class ContainerStats(BaseModel):
     id: str
     name: str

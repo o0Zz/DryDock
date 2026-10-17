@@ -14,7 +14,15 @@ from docker.models.containers import Container as DockerContainer
 from docker.models.images import Image as DockerImage
 from docker.models.volumes import Volume as DockerVolume
 
-from app.schemas.container import Container, ContainerPort, ContainerStats
+from app.schemas.container import (
+    Container,
+    ContainerDetail,
+    ContainerPort,
+    ContainerStats,
+    EnvVar,
+    MountInfo,
+    NetworkInfo,
+)
 from app.schemas.image import ContainerRef, Image
 from app.schemas.volume import PruneResult, Volume
 
@@ -135,6 +143,84 @@ def get_container(container_id: str) -> Container:
     except DockerException as exc:
         raise DockerUnavailable(str(exc)) from exc
     return _to_schema(c)
+
+
+MASKED_VALUE = "••••••"
+
+
+def _optional_time(raw: str | None) -> datetime | None:
+    # Docker reports "never" as the zero time, 0001-01-01T00:00:00Z.
+    if not raw or raw.startswith("0001-01-01"):
+        return None
+    return _parse_created(raw)
+
+
+def _as_list(value: str | list[str] | None) -> list[str] | None:
+    if value is None:
+        return None
+    return [value] if isinstance(value, str) else list(value)
+
+
+def get_container_detail(container_id: str, *, privileged: bool) -> ContainerDetail:
+    """Inspect one container. `privileged` (admin) reveals env values and
+    includes the raw inspect payload; otherwise env values are masked."""
+    try:
+        c = _client().containers.get(container_id)
+    except NotFound as exc:
+        raise DockerUnavailable(f"container {container_id} not found") from exc
+    except DockerException as exc:
+        raise DockerUnavailable(str(exc)) from exc
+
+    attrs = c.attrs or {}
+    config = attrs.get("Config") or {}
+    state = attrs.get("State") or {}
+
+    env: list[EnvVar] = []
+    for entry in config.get("Env") or []:
+        key, _, value = entry.partition("=")
+        env.append(EnvVar(key=key, value=value if privileged else MASKED_VALUE))
+
+    mounts = [
+        MountInfo(
+            type=m.get("Type") or "bind",
+            source=m.get("Source") or m.get("Name") or None,
+            destination=m.get("Destination") or "",
+            mode=m.get("Mode") or None,
+            rw=bool(m.get("RW", True)),
+        )
+        for m in attrs.get("Mounts") or []
+    ]
+
+    networks = [
+        NetworkInfo(
+            name=name,
+            ip_address=net.get("IPAddress") or None,
+            gateway=net.get("Gateway") or None,
+            mac_address=net.get("MacAddress") or None,
+        )
+        for name, net in ((attrs.get("NetworkSettings") or {}).get("Networks") or {}).items()
+    ]
+
+    return ContainerDetail(
+        **_to_schema(c).model_dump(),
+        image_id=attrs.get("Image"),
+        command=_as_list(config.get("Cmd")),
+        entrypoint=_as_list(config.get("Entrypoint")),
+        working_dir=config.get("WorkingDir") or None,
+        user=config.get("User") or None,
+        hostname=config.get("Hostname") or None,
+        started_at=_optional_time(state.get("StartedAt")),
+        finished_at=_optional_time(state.get("FinishedAt")),
+        exit_code=state.get("ExitCode"),
+        restart_count=attrs.get("RestartCount") or 0,
+        health=(state.get("Health") or {}).get("Status"),
+        env=env,
+        env_revealed=privileged,
+        mounts=mounts,
+        networks=networks,
+        labels=config.get("Labels") or {},
+        raw=attrs if privileged else None,
+    )
 
 
 def perform_action(container_id: str, action: str) -> None:

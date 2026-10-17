@@ -1,7 +1,5 @@
 import {
   ArrowUpCircle,
-  CheckCircle2,
-  ExternalLink,
   RefreshCw,
   ShieldCheck,
   Trash2,
@@ -10,7 +8,10 @@ import {
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "../api";
 import JobList from "../components/JobList";
+import { formatBytes } from "../components/Meter";
 import ScanBadge from "../components/ScanBadge";
+import ScanFindings from "../components/ScanFindings";
+import UpdateBadge from "../components/UpdateBadge";
 import { useJobs } from "../hooks/useJobs";
 import type { Job, LocalImage, ScanDetail, ScanSummary, UpdateSummary } from "../types";
 
@@ -22,21 +23,6 @@ interface Row {
   local?: LocalImage;
   inUse: boolean;
   inCompose: boolean;
-}
-
-const SEVERITY_ORDER = ["CRITICAL", "HIGH", "MEDIUM", "LOW", "UNKNOWN"];
-
-function severityClass(severity: string): string {
-  if (severity === "CRITICAL") return "exited";
-  if (severity === "HIGH") return "paused";
-  return "";
-}
-
-function formatBytes(bytes: number): string {
-  if (!bytes) return "0 B";
-  const units = ["B", "KB", "MB", "GB", "TB"];
-  const i = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
-  return `${(bytes / 1024 ** i).toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
 }
 
 /** "nginx" and "nginx:latest" name the same image; Docker always lists the latter. */
@@ -332,7 +318,7 @@ export default function Scans() {
                 </td>
                 <td>{row.scan && !row.scan.error ? row.scan.fixable : "—"}</td>
                 <td>
-                  <UpdateCell update={row.update} />
+                  <UpdateBadge update={row.update} />
                 </td>
                 <td className="muted">
                   {row.scan ? new Date(row.scan.scanned_at).toLocaleString() : "never"}
@@ -383,66 +369,7 @@ export default function Scans() {
   );
 }
 
-function UpdateCell({ update }: { update: UpdateSummary | undefined }) {
-  if (!update) return <span className="muted">not checked</span>;
-  const checked = new Date(update.checked_at).toLocaleString();
-  // A newer version tag wins over digest status: it is what a pinned tag needs,
-  // and it is known even when the image is not pulled locally.
-  if (update.newest_tag) {
-    const lines = [`Checked ${checked}`, `Newest tag: ${update.newest_tag}`];
-    if (update.newest_same_major_tag) {
-      lines.push(`Newest in current major: ${update.newest_same_major_tag}`);
-    }
-    if (update.update_available) lines.push("Current tag was also rebuilt (run pull).");
-    lines.push("Change the image tag in the compose file to upgrade.");
-    return (
-      <span className="badge paused" title={lines.join("\n")}>
-        <ArrowUpCircle size={12} /> {update.newest_tag}
-        {update.newest_same_major_tag && ` · ${update.newest_same_major_tag}`}
-      </span>
-    );
-  }
-  if (update.error) {
-    return (
-      <span className="badge" title={update.error}>
-        unknown
-      </span>
-    );
-  }
-  if (!update.update_available) {
-    const tagNote = update.tag_error
-      ? `\nTag check failed: ${update.tag_error}`
-      : "\nNo newer version tag found.";
-    return (
-      <span className="badge running" title={`Checked ${checked}${tagNote}`}>
-        <CheckCircle2 size={12} /> up to date
-      </span>
-    );
-  }
-  return (
-    <span
-      className="badge paused"
-      title={
-        `Checked ${checked}\nlocal  ${update.local_digest}\n` +
-        `remote ${update.remote_digest}\nSame tag was rebuilt. Run "pull" on the project to update.`
-      }
-    >
-      <ArrowUpCircle size={12} /> available
-    </span>
-  );
-}
-
 function FindingsPanel({ detail, onClose }: { detail: ScanDetail; onClose: () => void }) {
-  const [severity, setSeverity] = useState<string>("ALL");
-
-  const findings = useMemo(
-    () =>
-      severity === "ALL"
-        ? detail.findings
-        : detail.findings.filter((f) => f.severity === severity),
-    [detail.findings, severity],
-  );
-
   return (
     <div className="drawer">
       <div className="log-header">
@@ -458,82 +385,7 @@ function FindingsPanel({ detail, onClose }: { detail: ScanDetail; onClose: () =>
       </div>
 
       <div className="drawer-body">
-        {detail.error ? (
-          <div className="error">{detail.error}</div>
-        ) : (
-          <>
-            <div className="button-row">
-              {["ALL", ...SEVERITY_ORDER].map((level) => (
-                <button
-                  key={level}
-                  type="button"
-                  className={severity === level ? "small" : "secondary small"}
-                  onClick={() => setSeverity(level)}
-                >
-                  {level.toLowerCase()}
-                </button>
-              ))}
-            </div>
-            {detail.truncated && (
-              <div className="muted">
-                Showing the most severe findings only — the full list was capped.
-              </div>
-            )}
-            {findings.length === 0 ? (
-              <div className="empty">No vulnerabilities at this level.</div>
-            ) : (
-              <table className="projects-table">
-                <thead>
-                  <tr>
-                    <th>Severity</th>
-                    <th>CVE</th>
-                    <th>Package</th>
-                    <th>Installed</th>
-                    <th>Fixed in</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {findings.map((f, i) => (
-                    <tr key={`${f.vulnerability_id}-${f.package_name}-${i}`}>
-                      <td>
-                        <span className={`badge ${severityClass(f.severity)}`}>
-                          {f.severity.toLowerCase()}
-                        </span>
-                      </td>
-                      <td>
-                        {f.primary_url ? (
-                          <a
-                            className="icon-link"
-                            href={f.primary_url}
-                            target="_blank"
-                            rel="noreferrer"
-                            title={f.title ?? undefined}
-                          >
-                            {f.vulnerability_id} <ExternalLink size={13} />
-                          </a>
-                        ) : (
-                          <span title={f.title ?? undefined}>{f.vulnerability_id}</span>
-                        )}
-                      </td>
-                      <td>
-                        {f.package_name}
-                        {f.target && <div className="muted">{f.target}</div>}
-                      </td>
-                      <td className="muted">{f.installed_version ?? "—"}</td>
-                      <td>
-                        {f.fixed_version ? (
-                          <span className="badge running">{f.fixed_version}</span>
-                        ) : (
-                          <span className="muted">no fix</span>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </>
-        )}
+        <ScanFindings detail={detail} />
       </div>
     </div>
   );

@@ -1,6 +1,8 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
-from app.schemas.container import Container, ContainerStats
+from app.core.security import get_current_user
+from app.models.user import User
+from app.schemas.container import Container, ContainerDetail, ContainerStats
 from app.services import docker_service
 
 router = APIRouter(prefix="/api/containers", tags=["containers"])
@@ -27,6 +29,16 @@ def container_stats() -> list[ContainerStats]:
 def get_container(container_id: str) -> Container:
     try:
         return docker_service.get_container(container_id)
+    except docker_service.DockerUnavailable as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.get("/{container_id}/inspect", response_model=ContainerDetail)
+def inspect_container(
+    container_id: str, user: User = Depends(get_current_user)
+) -> ContainerDetail:
+    try:
+        return docker_service.get_container_detail(container_id, privileged=user.is_admin)
     except docker_service.DockerUnavailable as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
