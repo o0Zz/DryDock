@@ -7,6 +7,7 @@ import {
   ShieldCheck,
   Square,
   SquareTerminal,
+  Trash2,
   type LucideIcon,
 } from "lucide-react";
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
@@ -87,6 +88,22 @@ export default function Containers() {
       setBusy(key);
       try {
         await api.containerAction(id, action);
+        refresh();
+      } catch (e) {
+        setError((e as Error).message);
+      } finally {
+        setBusy(null);
+      }
+    },
+    [refresh],
+  );
+
+  const remove = useCallback(
+    async (c: Container) => {
+      if (!window.confirm(`Delete container "${c.name}"? Its named volumes are kept.`)) return;
+      setBusy(`${c.id}:delete`);
+      try {
+        await api.deleteContainer(c.id);
         refresh();
       } catch (e) {
         setError((e as Error).message);
@@ -246,6 +263,18 @@ export default function Containers() {
                         onClick={() => setConsoleFor(c)}
                       >
                         <SquareTerminal size={14} />
+                      </button>
+                    )}
+                    {["exited", "created", "dead"].includes(c.state) && (
+                      <button
+                        type="button"
+                        className="secondary small icon-only"
+                        title="Delete this container"
+                        aria-label="delete"
+                        disabled={busy === `${c.id}:delete`}
+                        onClick={() => remove(c)}
+                      >
+                        <Trash2 size={14} />
                       </button>
                     )}
                   </div>

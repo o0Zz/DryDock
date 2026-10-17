@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - "release/**"
     tags:
       - "v*"
   # Allow manual runs from the Actions tab
@@ -27,6 +28,26 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          # Full history so the commit count used as the patch number is correct.
+          fetch-depth: 0
+
+      # release/X.Y -> X.Y.<commit count>; tag vX.Y.Z -> X.Y.Z;
+      # any other branch -> 0.0.<commit count>-<branch>.
+      - name: Compute version
+        id: version
+        run: |
+          count=$(git rev-list --count HEAD)
+          ref="${GITHUB_REF_NAME}"
+          if [[ "$GITHUB_REF_TYPE" == "tag" ]]; then
+            version="${ref#v}"
+          elif [[ "$ref" =~ ^release/([0-9]+)\.([0-9]+) ]]; then
+            version="${BASH_REMATCH[1]}.${BASH_REMATCH[2]}.${count}"
+          else
+            version="0.0.${count}-${ref//\//-}"
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "Version: $version"
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -55,6 +76,8 @@ jobs:
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=semver,pattern={{major}}
+            # Computed version for release branches (release/1.2 -> 1.2.<count>)
+            type=raw,value=${{ steps.version.outputs.version }},enable=${{ startsWith(github.ref, 'refs/heads/release/') }}
             # Short commit SHA for traceability
             type=sha,format=short
 
@@ -70,5 +93,7 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            APP_VERSION=${{ steps.version.outputs.version }}
           cache-from: type=gha
           cache-to: type=gha,mode=max

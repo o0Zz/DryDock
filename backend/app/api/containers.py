@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.core.security import get_current_user
 from app.models.user import User
@@ -39,6 +39,16 @@ def inspect_container(
 ) -> ContainerDetail:
     try:
         return docker_service.get_container_detail(container_id, privileged=user.is_admin)
+    except docker_service.DockerUnavailable as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.delete("/{container_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_container(container_id: str) -> None:
+    try:
+        docker_service.remove_container(container_id)
+    except docker_service.ContainerRunning as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except docker_service.DockerUnavailable as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 

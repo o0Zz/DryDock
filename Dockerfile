@@ -2,6 +2,9 @@
 
 # ---------- Stage 1: build the frontend ----------
 FROM node:20-alpine AS frontend
+# Computed by CI from the branch name and commit count (.git is not in the context).
+ARG APP_VERSION=0.0.0-dev
+ENV APP_VERSION=${APP_VERSION}
 WORKDIR /build
 COPY frontend/package.json frontend/package-lock.json* ./
 RUN --mount=type=cache,target=/root/.npm \
@@ -33,6 +36,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 FROM python:3.11-slim-trixie AS runtime
 
 ARG TARGETARCH
+ARG APP_VERSION=0.0.0-dev
 # These are Go binaries that embed their own Go stdlib, so stale versions are
 # the main source of CVEs in this image. Keep them current.
 ARG TRIVY_VERSION=0.76.0
@@ -83,6 +87,7 @@ COPY --from=backend /app/app /app/app
 ENV PATH="/app/.venv/bin:${PATH}" \
     PYTHONPATH=/app \
     PYTHONUNBUFFERED=1 \
+    DRYDOCK_VERSION=${APP_VERSION} \
     DRYDOCK_REPO_PATH=/repo \
     DRYDOCK_DATA_PATH=/data
 

@@ -37,6 +37,10 @@ class VolumeInUse(Exception):
     """Raised when trying to remove a volume that is attached to a container."""
 
 
+class ContainerRunning(Exception):
+    """Raised when trying to remove a container that is still running."""
+
+
 class ImageNotFound(Exception):
     """Raised when an image reference is not present in the local image store."""
 
@@ -235,6 +239,23 @@ def perform_action(container_id: str, action: str) -> None:
         raise DockerUnavailable(str(exc)) from exc
 
     getattr(c, action)()
+
+
+def remove_container(container_id: str) -> None:
+    """Remove a stopped container. Its named volumes are left alone."""
+    try:
+        c = _client().containers.get(container_id)
+    except NotFound as exc:
+        raise DockerUnavailable(f"container {container_id} not found") from exc
+    except DockerException as exc:
+        raise DockerUnavailable(str(exc)) from exc
+    try:
+        c.remove()
+    except APIError as exc:
+        # Docker returns 409 Conflict when the container is still running.
+        if exc.response is not None and exc.response.status_code == 409:
+            raise ContainerRunning(f"container {c.name} is running; stop it first") from exc
+        raise DockerUnavailable(str(exc)) from exc
 
 
 def stream_logs(container_id: str, *, tail: int = 200) -> Iterator[bytes]:

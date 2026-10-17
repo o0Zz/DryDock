@@ -8,6 +8,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="DRYDOCK_", env_file=".env", extra="ignore")
 
+    # Injected at image build time from the git branch and commit count.
+    version: str = "0.0.0-dev"
     repo_path: Path = Field(default=Path("/repo"))
     data_path: Path = Field(default=Path("/data"))
     host: str = "0.0.0.0"

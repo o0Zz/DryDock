@@ -68,7 +68,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="DryDock",
-    version="0.1.0",
+    version=settings.version,
     lifespan=lifespan,
     # Non-empty when a reverse proxy serves the app under a sub-path.
     root_path=settings.root_path,
@@ -113,7 +113,7 @@ app.include_router(console.router)  # WebSocket; checks the session itself
 
 @app.get("/api/health")
 def health() -> dict[str, str]:
-    return {"status": "ok", "repo_path": str(settings.repo_path)}
+    return {"status": "ok", "version": settings.version, "repo_path": str(settings.repo_path)}
 
 
 # Serve the built frontend when it's present (Docker image bakes it into /app/static).

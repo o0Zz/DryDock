@@ -118,6 +118,7 @@ export const api = {
     request<{ status: string; action: string }>(`/api/containers/${id}/${action}`, {
       method: "POST",
     }),
+  deleteContainer: (id: string) => request<void>(`/api/containers/${id}`, { method: "DELETE" }),
 
   // CVE scans — the POSTs queue a background job and return it immediately
   listScans: () => request<ScanSummary[]>("/api/scans"),
