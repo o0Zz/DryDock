@@ -8,7 +8,7 @@ import type { Project } from "../types";
 function StackStatus({ project }: { project: Project }) {
   const total = project.containers.length;
   if (total === 0) return <span className="badge">down</span>;
-  const running = project.containers.filter((c) => c.state === "running").length;
+  const running = project.containers.filter((container) => container.state === "running").length;
   if (running === total) return <span className="badge running">up ({running})</span>;
   if (running === 0) return <span className="badge exited">stopped ({total})</span>;
   return (
@@ -27,7 +27,7 @@ export default function Projects() {
     api
       .listProjects()
       .then(setProjects)
-      .catch((e: Error) => setError(e.message));
+      .catch((loadError: Error) => setError(loadError.message));
   }, []);
 
   if (error) return <div className="error">Failed to load projects: {error}</div>;
@@ -55,21 +55,21 @@ export default function Projects() {
             </tr>
           </thead>
           <tbody>
-            {projects.map((p) => (
-              <tr key={p.id}>
+            {projects.map((project) => (
+              <tr key={project.id}>
                 <td>
-                  <Link className="icon-link" to={`/projects/${p.id}`}>
-                    <FolderGit2 size={15} /> {p.name}
+                  <Link className="icon-link" to={`/projects/${project.id}`}>
+                    <FolderGit2 size={15} /> {project.name}
                   </Link>
                 </td>
                 <td>
-                  <StackStatus project={p} />
+                  <StackStatus project={project} />
                 </td>
-                <td>{p.services.map((s) => s.name).join(", ") || "—"}</td>
+                <td>{project.services.map((service) => service.name).join(", ") || "—"}</td>
                 <td>
-                  <code>{p.relative_path}</code>
+                  <code>{project.relative_path}</code>
                 </td>
-                <td>{formatDate(p.modified_at)}</td>
+                <td>{formatDate(project.modified_at)}</td>
               </tr>
             ))}
           </tbody>

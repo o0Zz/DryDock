@@ -31,12 +31,12 @@ export default function UpdateAction({
 }) {
   const confirm = useConfirm();
   if (!update) return null;
-  const details = `/containers/${container.id}?tab=updates`;
+  const detailsUrl = `/containers/${container.id}?tab=updates`;
 
   if (update.newest_tag) {
     if (!project) {
       return (
-        <Link to={details} className="badge paused" title="Newer version tag available — view details">
+        <Link to={detailsUrl} className="badge paused" title="Newer version tag available — view details">
           <ArrowUpCircle size={12} /> {update.newest_tag}
         </Link>
       );
@@ -57,7 +57,7 @@ export default function UpdateAction({
   if (!container.compose_service) {
     return (
       <Link
-        to={details}
+        to={detailsUrl}
         className="badge paused"
         title="Newer image available, but this container is not managed by Compose — view details"
       >
@@ -66,8 +66,8 @@ export default function UpdateAction({
     );
   }
 
-  async function run() {
-    const ok = await confirm({
+  async function run(): Promise<void> {
+    const confirmed = await confirm({
       title: `Update ${container.name}?`,
       icon: ArrowUpCircle,
       confirmLabel: "Pull & recreate",
@@ -90,11 +90,11 @@ export default function UpdateAction({
         </>
       ),
     });
-    if (!ok) return;
+    if (!confirmed) return;
     try {
       onJob(await api.updateContainer(container.id));
-    } catch (e) {
-      onError((e as Error).message);
+    } catch (error) {
+      onError((error as Error).message);
     }
   }
 

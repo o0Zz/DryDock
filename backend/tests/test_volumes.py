@@ -2,14 +2,18 @@
 
 from types import SimpleNamespace
 
+import pytest
+
 from app.services import docker_service
 
 
-def _container(cid, name, status, mounts):
-    return SimpleNamespace(id=cid, name=name, status=status, attrs={"Mounts": mounts})
+def _container(
+    container_id: str, name: str, status: str, mounts: list[dict[str, object]]
+) -> SimpleNamespace:
+    return SimpleNamespace(id=container_id, name=name, status=status, attrs={"Mounts": mounts})
 
 
-def test_volume_users_include_id_state_and_mount(monkeypatch):
+def test_volume_users_include_id_state_and_mount(monkeypatch: pytest.MonkeyPatch) -> None:
     containers = [
         _container(
             "c1",
@@ -33,7 +37,9 @@ def test_volume_users_include_id_state_and_mount(monkeypatch):
     usage = docker_service._volume_usage()
 
     assert list(usage) == ["data"]
-    assert [(u.id, u.name, u.running, u.destination, u.rw) for u in usage["data"]] == [
+    assert [
+        (user.id, user.name, user.running, user.destination, user.rw) for user in usage["data"]
+    ] == [
         ("c1", "web", True, "/data", True),
         ("c2", "backup", False, "/backup", False),
     ]

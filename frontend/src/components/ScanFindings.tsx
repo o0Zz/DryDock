@@ -18,7 +18,7 @@ export default function ScanFindings({ detail }: { detail: ScanDetail }) {
     () =>
       severity === "ALL"
         ? detail.findings
-        : detail.findings.filter((f) => f.severity === severity),
+        : detail.findings.filter((finding) => finding.severity === severity),
     [detail.findings, severity],
   );
 
@@ -57,37 +57,37 @@ export default function ScanFindings({ detail }: { detail: ScanDetail }) {
             </tr>
           </thead>
           <tbody>
-            {findings.map((f, i) => (
-              <tr key={`${f.vulnerability_id}-${f.package_name}-${i}`}>
+            {findings.map((finding, index) => (
+              <tr key={`${finding.vulnerability_id}-${finding.package_name}-${index}`}>
                 <td>
-                  <span className={`badge ${severityClass(f.severity)}`}>
-                    {f.severity.toLowerCase()}
+                  <span className={`badge ${severityClass(finding.severity)}`}>
+                    {finding.severity.toLowerCase()}
                   </span>
                 </td>
                 <td>
-                  {f.primary_url ? (
+                  {finding.primary_url ? (
                     <a
                       className="icon-link"
-                      href={f.primary_url}
+                      href={finding.primary_url}
                       target="_blank"
                       rel="noreferrer"
-                      title={f.title ?? undefined}
+                      title={finding.title ?? undefined}
                     >
-                      {f.vulnerability_id} <ExternalLink size={13} />
+                      {finding.vulnerability_id} <ExternalLink size={13} />
                     </a>
                   ) : (
-                    <span title={f.title ?? undefined}>{f.vulnerability_id}</span>
+                    <span title={finding.title ?? undefined}>{finding.vulnerability_id}</span>
                   )}
-                  {f.title && <div className="muted">{f.title}</div>}
+                  {finding.title && <div className="muted">{finding.title}</div>}
                 </td>
                 <td>
-                  {f.package_name}
-                  {f.target && <div className="muted">{f.target}</div>}
+                  {finding.package_name}
+                  {finding.target && <div className="muted">{finding.target}</div>}
                 </td>
-                <td className="muted">{f.installed_version ?? "—"}</td>
+                <td className="muted">{finding.installed_version ?? "—"}</td>
                 <td>
-                  {f.fixed_version ? (
-                    <span className="badge running">{f.fixed_version}</span>
+                  {finding.fixed_version ? (
+                    <span className="badge running">{finding.fixed_version}</span>
                   ) : (
                     <span className="muted">no fix</span>
                   )}

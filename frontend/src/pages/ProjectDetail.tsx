@@ -21,15 +21,14 @@ import LogPanel from "../components/LogPanel";
 import { formatPorts } from "../format";
 import { isActive, useJobs } from "../hooks/useJobs";
 import { imageRepo, retagImage } from "../imageRef";
-import type { Project, UpdateSummary } from "../types";
+import type { Project, ProjectAction, UpdateSummary } from "../types";
 
 // CodeMirror is by far the heaviest dependency in the bundle and is only
 // needed on this page, so it loads on demand.
 const YamlEditor = lazy(() => import("../components/YamlEditor"));
 
-type Action = "up" | "down" | "pull" | "restart" | "stop";
-const ACTIONS: Action[] = ["up", "down", "pull", "restart", "stop"];
-const ACTION_ICONS: Record<Action, LucideIcon> = {
+const ACTIONS: ProjectAction[] = ["up", "down", "pull", "restart", "stop"];
+const ACTION_ICONS: Record<ProjectAction, LucideIcon> = {
   up: Play,
   down: ArrowDownCircle,
   pull: Download,
@@ -38,7 +37,7 @@ const ACTION_ICONS: Record<Action, LucideIcon> = {
 };
 
 // `down` removes containers and networks, so it gets a confirmation step.
-const CONFIRM: Partial<Record<Action, ConfirmOptions>> = {
+const ACTION_CONFIRMATIONS: Partial<Record<ProjectAction, ConfirmOptions>> = {
   down: {
     title: "Bring this stack down?",
     message: "Its containers and networks will be removed. Named volumes are kept.",
@@ -48,8 +47,8 @@ const CONFIRM: Partial<Record<Action, ConfirmOptions>> = {
 };
 
 // Must match the job label built by the backend route (`Up web`, `Pull web`).
-function actionLabel(action: Action, project: string): string {
-  return `${action[0].toUpperCase()}${action.slice(1)} ${project}`;
+function actionLabel(action: ProjectAction, projectName: string): string {
+  return `${action[0].toUpperCase()}${action.slice(1)} ${projectName}`;
 }
 
 export default function ProjectDetail() {
@@ -66,26 +65,26 @@ export default function ProjectDetail() {
   const [showLogs, setShowLogs] = useState(false);
   // `?retag=<image>` arrives from a container's update shortcut: offer the
   // newer tags for that image as a one-click edit of the compose file.
-  const [params, setParams] = useSearchParams();
-  const retag = params.get("retag");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const retag = searchParams.get("retag");
   const [retagUpdate, setRetagUpdate] = useState<UpdateSummary | null>(null);
   const [retagApplied, setRetagApplied] = useState<string | null>(null);
   const [retagNote, setRetagNote] = useState<string | null>(null);
 
-  const reloadProject = useCallback(async () => {
+  const reloadProject = useCallback(async (): Promise<void> => {
     setProject(await api.getProject(id));
   }, [id]);
 
   useEffect(() => {
     let cancelled = false;
     Promise.all([api.getProject(id), api.getCompose(id)])
-      .then(([p, c]) => {
+      .then(([loadedProject, composeFile]) => {
         if (cancelled) return;
-        setProject(p);
-        setCompose(c.content);
-        setOriginalCompose(c.content);
+        setProject(loadedProject);
+        setCompose(composeFile.content);
+        setOriginalCompose(composeFile.content);
       })
-      .catch((e: Error) => !cancelled && setLoadError(e.message));
+      .catch((error: Error) => !cancelled && setLoadError(error.message));
     return () => {
       cancelled = true;
     };
@@ -95,7 +94,9 @@ export default function ProjectDetail() {
     if (!retag) return;
     api
       .listUpdates()
-      .then((list) => setRetagUpdate(list.find((u) => u.image === retag) ?? null))
+      .then((updateList) =>
+        setRetagUpdate(updateList.find((summary) => summary.image === retag) ?? null),
+      )
       .catch(() => undefined);
   }, [retag]);
 
@@ -103,12 +104,12 @@ export default function ProjectDetail() {
     setSaving(true);
     setSaveError(null);
     try {
-      const res = await api.putCompose(id, compose);
+      const saved = await api.putCompose(id, compose);
       setOriginalCompose(compose);
-      setSavedAt(`Saved. Backup: ${res.backup_path}`);
+      setSavedAt(`Saved. Backup: ${saved.backup_path}`);
       return true;
-    } catch (e) {
-      setSaveError((e as Error).message);
+    } catch (error) {
+      setSaveError((error as Error).message);
       return false;
     } finally {
       setSaving(false);
@@ -120,15 +121,15 @@ export default function ProjectDetail() {
   const { jobs, start } = useJobs(() => reloadProject().catch(() => undefined), setActionError);
 
   const runAction = useCallback(
-    async (action: Action) => {
-      const question = CONFIRM[action];
+    async (action: ProjectAction): Promise<void> => {
+      const question = ACTION_CONFIRMATIONS[action];
       if (question && !(await confirm(question))) return;
       await start(() => api.runAction(id, action));
     },
     [id, start],
   );
 
-  const applyTag = (tag: string) => {
+  const applyTag = (tag: string): void => {
     if (!retag) return;
     const result = retagImage(compose, retag, tag);
     if (result.count === 0) {
@@ -140,14 +141,14 @@ export default function ProjectDetail() {
     setRetagApplied(tag);
   };
 
-  const dismissRetag = () => {
-    params.delete("retag");
-    setParams(params, { replace: true });
+  const dismissRetag = (): void => {
+    searchParams.delete("retag");
+    setSearchParams(searchParams, { replace: true });
     setRetagApplied(null);
     setRetagNote(null);
   };
 
-  const saveAndDeploy = async () => {
+  const saveAndDeploy = async (): Promise<void> => {
     if (await save()) {
       await runAction("up");
       dismissRetag();
@@ -158,15 +159,16 @@ export default function ProjectDetail() {
   if (!project) return <div>Loading…</div>;
 
   const dirty = compose !== originalCompose;
-  const running = project.containers.filter((c) => c.state === "running").length;
+  const running = project.containers.filter((container) => container.state === "running").length;
   // useJobs also re-attaches to unrelated jobs (scans); keep this stack's own.
   const actionJobs = jobs.filter(
-    (j) =>
-      j.kind === "project_action" && ACTIONS.some((a) => j.label === actionLabel(a, project.name)),
+    (job) =>
+      job.kind === "project_action" &&
+      ACTIONS.some((action) => job.label === actionLabel(action, project.name)),
   );
   const lastJob = actionJobs[actionJobs.length - 1];
-  const busyAction = ACTIONS.find((a) =>
-    actionJobs.some((j) => isActive(j) && j.label === actionLabel(a, project.name)),
+  const busyAction = ACTIONS.find((action) =>
+    actionJobs.some((job) => isActive(job) && job.label === actionLabel(action, project.name)),
   );
 
   return (
@@ -189,16 +191,16 @@ export default function ProjectDetail() {
       <section className="section">
         <h2>Actions</h2>
         <div className="button-row">
-          {ACTIONS.map((a) => {
-            const Icon = ACTION_ICONS[a];
+          {ACTIONS.map((action) => {
+            const Icon = ACTION_ICONS[action];
             return (
               <button
-                key={a}
+                key={action}
                 type="button"
                 disabled={busyAction !== undefined}
-                onClick={() => runAction(a)}
+                onClick={() => runAction(action)}
               >
-                <Icon size={15} /> {busyAction === a ? `${a}…` : a}
+                <Icon size={15} /> {busyAction === action ? `${action}…` : action}
               </button>
             );
           })}
@@ -243,20 +245,20 @@ export default function ProjectDetail() {
               </tr>
             </thead>
             <tbody>
-              {project.containers.map((c) => (
-                <tr key={c.id}>
-                  <td>{c.name}</td>
-                  <td>{c.compose_service ?? "—"}</td>
+              {project.containers.map((container) => (
+                <tr key={container.id}>
+                  <td>{container.name}</td>
+                  <td>{container.compose_service ?? "—"}</td>
                   <td>
-                    <ImageName image={c.image} version={c.image_version} />
+                    <ImageName image={container.image} version={container.image_version} />
                   </td>
                   <td>
-                    <span className={`badge ${c.state}`}>
-                      <Circle size={8} fill="currentColor" /> {c.state}
+                    <span className={`badge ${container.state}`}>
+                      <Circle size={8} fill="currentColor" /> {container.state}
                     </span>
                   </td>
                   <td>
-                    {formatPorts(c.ports)}
+                    {formatPorts(container.ports)}
                   </td>
                 </tr>
               ))}

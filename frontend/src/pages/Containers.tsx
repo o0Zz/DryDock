@@ -10,15 +10,17 @@ import Meter from "../components/Meter";
 import ScanBadge from "../components/ScanBadge";
 import UpdateAction from "../components/UpdateAction";
 import { useContainerStats } from "../hooks/useContainerStats";
-import {
-  CONTAINER_ACTION_ICONS,
-  CONTAINER_ACTIONS,
-  ContainerConsole,
-  type ContainerAction,
-} from "../containerActions";
+import { CONTAINER_ACTION_ICONS, CONTAINER_ACTIONS, ContainerConsole } from "../containerActions";
 import { formatBytes, formatDate, formatPorts } from "../format";
 import { isActive, useJobs } from "../hooks/useJobs";
-import type { Container, ContainerStats, Project, ScanSummary, UpdateSummary } from "../types";
+import type {
+  Container,
+  ContainerAction,
+  ContainerStats,
+  Project,
+  ScanSummary,
+  UpdateSummary,
+} from "../types";
 
 export default function Containers() {
   const [containers, setContainers] = useState<Container[] | null>(null);
@@ -34,36 +36,42 @@ export default function Containers() {
   const [busy, setBusy] = useState<string | null>(null);
   const confirm = useConfirm();
 
-  const refresh = useCallback(() => {
+  const refresh = useCallback((): void => {
     api
       .listContainers()
       .then(setContainers)
-      .catch((e: Error) => setError(e.message));
+      .catch((loadError: Error) => setError(loadError.message));
   }, []);
 
-  const loadScans = useCallback(() => {
+  const loadScans = useCallback((): void => {
     // Scans and update checks are best-effort context for the CVE / image
     // columns; a failure here shouldn't take down the whole container list.
     api
       .listScans()
-      .then((list) => setScans(Object.fromEntries(list.map((s) => [s.image, s]))))
+      .then((scanList) => setScans(Object.fromEntries(scanList.map((scan) => [scan.image, scan]))))
       .catch(() => undefined);
     api
       .listUpdates()
-      .then((list) => setUpdates(Object.fromEntries(list.map((u) => [u.image, u]))))
+      .then((updateList) =>
+        setUpdates(Object.fromEntries(updateList.map((update) => [update.image, update]))),
+      )
       .catch(() => undefined);
     api
       .listProjects()
-      .then((list) =>
+      .then((projectList) =>
         setProjects(
-          Object.fromEntries(list.flatMap((p) => p.containers.map((c) => [c.id, p]))),
+          Object.fromEntries(
+            projectList.flatMap((project) =>
+              project.containers.map((container) => [container.id, project]),
+            ),
+          ),
         ),
       )
       .catch(() => undefined);
   }, []);
 
   // An update job recreates the container, so its id changes: reload both.
-  const onJobSettled = useCallback(() => {
+  const onJobSettled = useCallback((): void => {
     loadScans();
     refresh();
   }, [loadScans, refresh]);
@@ -76,14 +84,13 @@ export default function Containers() {
   }, [refresh, loadScans]);
 
   const runAction = useCallback(
-    async (id: string, action: ContainerAction) => {
-      const key = `${id}:${action}`;
-      setBusy(key);
+    async (id: string, action: ContainerAction): Promise<void> => {
+      setBusy(`${id}:${action}`);
       try {
         await api.containerAction(id, action);
         refresh();
-      } catch (e) {
-        setError((e as Error).message);
+      } catch (actionError) {
+        setError((actionError as Error).message);
       } finally {
         setBusy(null);
       }
@@ -92,20 +99,20 @@ export default function Containers() {
   );
 
   const remove = useCallback(
-    async (c: Container) => {
-      const ok = await confirm({
-        title: `Delete container ${c.name}?`,
+    async (container: Container): Promise<void> => {
+      const confirmed = await confirm({
+        title: `Delete container ${container.name}?`,
         message: "Its named volumes are kept.",
         confirmLabel: "Delete",
         tone: "danger",
       });
-      if (!ok) return;
-      setBusy(`${c.id}:delete`);
+      if (!confirmed) return;
+      setBusy(`${container.id}:delete`);
       try {
-        await api.deleteContainer(c.id);
+        await api.deleteContainer(container.id);
         refresh();
-      } catch (e) {
-        setError((e as Error).message);
+      } catch (deleteError) {
+        setError((deleteError as Error).message);
       } finally {
         setBusy(null);
       }
@@ -182,89 +189,91 @@ export default function Containers() {
             </tr>
           </thead>
           <tbody>
-            {containers.map((c) => (
-              <tr key={c.id}>
+            {containers.map((container) => (
+              <tr key={container.id}>
                 <td>
                   <Link
-                    to={`/containers/${c.id}`}
-                    title={`Details, logs, CVEs and updates\nCreated ${formatDate(c.created_at)}`}
+                    to={`/containers/${container.id}`}
+                    title={`Details, logs, CVEs and updates\nCreated ${formatDate(container.created_at)}`}
                   >
-                    {c.name}
+                    {container.name}
                   </Link>
                 </td>
                 <td>
-                  <ImageName image={c.image} version={c.image_version} />{" "}
+                  <ImageName image={container.image} version={container.image_version} />{" "}
                   <UpdateAction
-                    container={c}
-                    update={updates[c.image]}
-                    project={projects[c.id]}
-                    pending={jobs.some((j) => j.label === `Update ${c.name}` && isActive(j))}
+                    container={container}
+                    update={updates[container.image]}
+                    project={projects[container.id]}
+                    pending={jobs.some(
+                      (job) => job.label === `Update ${container.name}` && isActive(job),
+                    )}
                     onJob={track}
                     onError={setError}
                   />
                 </td>
                 <td>
                   <ScanBadge
-                    scan={scans[c.image]}
-                    pending={pendingImages.has(c.image)}
-                    onScan={() => start(() => api.scanImage(c.image))}
-                    onOpen={() => navigate(`/containers/${c.id}?tab=cves`)}
+                    scan={scans[container.image]}
+                    pending={pendingImages.has(container.image)}
+                    onScan={() => start(() => api.scanImage(container.image))}
+                    onOpen={() => navigate(`/containers/${container.id}?tab=cves`)}
                   />
                 </td>
                 <td>
                   <span
-                    className={`badge ${c.state}`}
-                    title={`Restart policy: ${c.restart_policy || "no"}`}
+                    className={`badge ${container.state}`}
+                    title={`Restart policy: ${container.restart_policy || "no"}`}
                   >
-                    <Circle size={8} fill="currentColor" /> {c.state}
+                    <Circle size={8} fill="currentColor" /> {container.state}
                   </span>
                 </td>
-                <StatsCells stats={stats[c.id]} />
+                <StatsCells stats={stats[container.id]} />
                 <td>
-                  {formatPorts(c.ports)}
+                  {formatPorts(container.ports)}
                 </td>
                 <td>
-                  {c.compose_project
-                    ? `${c.compose_project} / ${c.compose_service ?? ""}`
+                  {container.compose_project
+                    ? `${container.compose_project} / ${container.compose_service ?? ""}`
                     : "—"}
                 </td>
                 <td>
                   <div className="button-row inline">
-                    {CONTAINER_ACTIONS.map((a) => {
-                      const Icon = CONTAINER_ACTION_ICONS[a];
+                    {CONTAINER_ACTIONS.map((action) => {
+                      const Icon = CONTAINER_ACTION_ICONS[action];
                       return (
                         <button
-                          key={a}
+                          key={action}
                           type="button"
                           className="secondary small icon-only"
-                          title={a}
-                          aria-label={a}
-                          disabled={busy === `${c.id}:${a}`}
-                          onClick={() => runAction(c.id, a)}
+                          title={action}
+                          aria-label={action}
+                          disabled={busy === `${container.id}:${action}`}
+                          onClick={() => runAction(container.id, action)}
                         >
                           <Icon size={14} />
                         </button>
                       );
                     })}
-                    {user?.is_admin && c.state === "running" && (
+                    {user?.is_admin && container.state === "running" && (
                       <button
                         type="button"
                         className="secondary small icon-only"
                         title="Open a shell in this container"
                         aria-label="console"
-                        onClick={() => setConsoleFor(c)}
+                        onClick={() => setConsoleFor(container)}
                       >
                         <SquareTerminal size={14} />
                       </button>
                     )}
-                    {["exited", "created", "dead"].includes(c.state) && (
+                    {["exited", "created", "dead"].includes(container.state) && (
                       <button
                         type="button"
                         className="secondary small icon-only"
                         title="Delete this container"
                         aria-label="delete"
-                        disabled={busy === `${c.id}:delete`}
-                        onClick={() => remove(c)}
+                        disabled={busy === `${container.id}:delete`}
+                        onClick={() => remove(container)}
                       >
                         <Trash2 size={14} />
                       </button>

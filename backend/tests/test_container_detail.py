@@ -40,51 +40,53 @@ ATTRS = {
 
 
 class FakeContainers:
-    def get(self, container_id):
+    def get(self, container_id: str) -> SimpleNamespace:
         if container_id != "abc":
             raise NotFound("missing")
         return SimpleNamespace(id="abc", name="web", status="running", image=None, attrs=ATTRS)
 
 
 @pytest.fixture(autouse=True)
-def fake(monkeypatch):
+def fake(monkeypatch: pytest.MonkeyPatch) -> None:
     client = SimpleNamespace(containers=FakeContainers())
     monkeypatch.setattr(docker_service, "_client", lambda: client)
 
 
-def test_detail_maps_inspect_fields():
-    d = docker_service.get_container_detail("abc", privileged=True)
+def test_detail_maps_inspect_fields() -> None:
+    detail = docker_service.get_container_detail("abc", privileged=True)
 
-    assert d.name == "web" and d.image == "nginx:latest"
-    assert d.compose_project == "web"
-    assert d.restart_policy == "unless-stopped"
-    assert d.command == ["nginx", "-g", "daemon off;"]
-    assert d.entrypoint == ["/docker-entrypoint.sh"]
-    assert d.working_dir is None
-    assert d.started_at is not None and d.started_at.year == 2026
-    assert d.finished_at is None  # zero time means "never"
-    assert d.health == "healthy"
-    assert d.restart_count == 2
-    assert [(m.type, m.source, m.rw) for m in d.mounts] == [
+    assert detail.name == "web" and detail.image == "nginx:latest"
+    assert detail.compose_project == "web"
+    assert detail.restart_policy == "unless-stopped"
+    assert detail.command == ["nginx", "-g", "daemon off;"]
+    assert detail.entrypoint == ["/docker-entrypoint.sh"]
+    assert detail.working_dir is None
+    assert detail.started_at is not None and detail.started_at.year == 2026
+    assert detail.finished_at is None  # zero time means "never"
+    assert detail.health == "healthy"
+    assert detail.restart_count == 2
+    assert [(mount.type, mount.source, mount.rw) for mount in detail.mounts] == [
         ("bind", "/srv/www", False),
         ("volume", "data", True),
     ]
-    assert [(n.name, n.ip_address) for n in d.networks] == [("web_default", "172.18.0.2")]
+    assert [(network.name, network.ip_address) for network in detail.networks] == [
+        ("web_default", "172.18.0.2")
+    ]
 
 
-def test_admin_sees_env_and_raw():
-    d = docker_service.get_container_detail("abc", privileged=True)
-    assert {e.key: e.value for e in d.env}["DB_PASSWORD"] == "hunter2"
-    assert d.env_revealed is True
-    assert d.raw == ATTRS
+def test_admin_sees_env_and_raw() -> None:
+    detail = docker_service.get_container_detail("abc", privileged=True)
+    assert {variable.key: variable.value for variable in detail.env}["DB_PASSWORD"] == "hunter2"
+    assert detail.env_revealed is True
+    assert detail.raw == ATTRS
 
 
-def test_non_admin_gets_masked_env_and_no_raw():
-    d = docker_service.get_container_detail("abc", privileged=False)
-    assert [e.key for e in d.env] == ["PATH", "DB_PASSWORD"]
-    assert all(e.value == docker_service.MASKED_VALUE for e in d.env)
-    assert d.env_revealed is False
-    assert d.raw is None
+def test_non_admin_gets_masked_env_and_no_raw() -> None:
+    detail = docker_service.get_container_detail("abc", privileged=False)
+    assert [variable.key for variable in detail.env] == ["PATH", "DB_PASSWORD"]
+    assert all(variable.value == docker_service.MASKED_VALUE for variable in detail.env)
+    assert detail.env_revealed is False
+    assert detail.raw is None
 
 
 @pytest.mark.parametrize(
@@ -120,10 +122,10 @@ def test_non_admin_gets_masked_env_and_no_raw():
         ),
     ],
 )
-def test_image_version_label(image, labels, expected):
+def test_image_version_label(image: str, labels: dict[str, str], expected: str | None) -> None:
     assert docker_service._image_version(image, labels) == expected
 
 
-def test_missing_container():
+def test_missing_container() -> None:
     with pytest.raises(docker_service.DockerUnavailable):
         docker_service.get_container_detail("nope", privileged=True)

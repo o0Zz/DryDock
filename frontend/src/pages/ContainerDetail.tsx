@@ -20,17 +20,13 @@ import Meter from "../components/Meter";
 import ScanFindings from "../components/ScanFindings";
 import UpdateAction from "../components/UpdateAction";
 import UpdateBadge, { hasUpdate } from "../components/UpdateBadge";
-import {
-  CONTAINER_ACTION_ICONS,
-  CONTAINER_ACTIONS,
-  ContainerConsole,
-  type ContainerAction,
-} from "../containerActions";
+import { CONTAINER_ACTION_ICONS, CONTAINER_ACTIONS, ContainerConsole } from "../containerActions";
 import { formatBytes, formatDate } from "../format";
 import { useContainerStats } from "../hooks/useContainerStats";
 import { useJobs } from "../hooks/useJobs";
 import type {
-  ContainerDetail as Detail,
+  ContainerAction,
+  ContainerDetail as ContainerDetailData,
   Project,
   ScanDetail,
   ScanSummary,
@@ -47,28 +43,28 @@ type Tab = (typeof TABS)[number]["key"];
 
 export default function ContainerDetail() {
   const { id = "" } = useParams();
-  const [params, setParams] = useSearchParams();
-  const tab: Tab = TABS.some((t) => t.key === params.get("tab"))
-    ? (params.get("tab") as Tab)
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tab: Tab = TABS.some((tabEntry) => tabEntry.key === searchParams.get("tab"))
+    ? (searchParams.get("tab") as Tab)
     : "overview";
   const { user } = useAuth();
-  const stats = useContainerStats()[id];
+  const liveStats = useContainerStats()[id];
 
-  const [detail, setDetail] = useState<Detail | null>(null);
+  const [detail, setDetail] = useState<ContainerDetailData | null>(null);
   const [project, setProject] = useState<Project | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<ContainerAction | null>(null);
   const [showConsole, setShowConsole] = useState(false);
 
-  const load = useCallback(() => {
+  const load = useCallback((): void => {
     api
       .inspectContainer(id)
-      .then((d) => {
-        setDetail(d);
+      .then((inspected) => {
+        setDetail(inspected);
         setLoadError(null);
       })
-      .catch((e: Error) => setLoadError(e.message));
+      .catch((inspectError: Error) => setLoadError(inspectError.message));
   }, [id]);
 
   useEffect(() => {
@@ -76,19 +72,25 @@ export default function ContainerDetail() {
     // The owning project gives a link back to the stack and its pull/redeploy actions.
     api
       .listProjects()
-      .then((list) => setProject(list.find((p) => p.containers.some((c) => c.id === id)) ?? null))
+      .then((projectList) =>
+        setProject(
+          projectList.find((candidate) =>
+            candidate.containers.some((container) => container.id === id),
+          ) ?? null,
+        ),
+      )
       .catch(() => undefined);
   }, [id, load]);
 
   const runAction = useCallback(
-    async (action: ContainerAction) => {
+    async (action: ContainerAction): Promise<void> => {
       setBusy(action);
       setError(null);
       try {
         await api.containerAction(id, action);
         load();
-      } catch (e) {
-        setError((e as Error).message);
+      } catch (actionError) {
+        setError((actionError as Error).message);
       } finally {
         setBusy(null);
       }
@@ -98,8 +100,6 @@ export default function ContainerDetail() {
 
   if (loadError && !detail) return <div className="error">Failed to load: {loadError}</div>;
   if (!detail) return <div>Loading…</div>;
-
-  const live = stats;
 
   return (
     <div>
@@ -121,17 +121,17 @@ export default function ContainerDetail() {
           )}
         </h1>
         <div className="button-row inline">
-          {CONTAINER_ACTIONS.map((a) => {
-            const Icon = CONTAINER_ACTION_ICONS[a];
+          {CONTAINER_ACTIONS.map((action) => {
+            const Icon = CONTAINER_ACTION_ICONS[action];
             return (
               <button
-                key={a}
+                key={action}
                 type="button"
                 className="secondary"
                 disabled={busy !== null}
-                onClick={() => runAction(a)}
+                onClick={() => runAction(action)}
               >
-                <Icon size={15} /> {busy === a ? `${a}…` : a}
+                <Icon size={15} /> {busy === action ? `${action}…` : action}
               </button>
             );
           })}
@@ -161,11 +161,11 @@ export default function ContainerDetail() {
             {detail.compose_service && ` / ${detail.compose_service}`}
           </>
         )}
-        {live && (
+        {liveStats && (
           <>
             {" · CPU "}
-            {live.cpu_percent.toFixed(1)}% · RAM {formatBytes(live.memory_usage)} /{" "}
-            {formatBytes(live.memory_limit)}
+            {liveStats.cpu_percent.toFixed(1)}% · RAM {formatBytes(liveStats.memory_usage)} /{" "}
+            {formatBytes(liveStats.memory_limit)}
           </>
         )}
       </div>
@@ -177,7 +177,9 @@ export default function ContainerDetail() {
             key={key}
             type="button"
             className={tab === key ? "tab active" : "tab"}
-            onClick={() => setParams(key === "overview" ? {} : { tab: key }, { replace: true })}
+            onClick={() =>
+              setSearchParams(key === "overview" ? {} : { tab: key }, { replace: true })
+            }
           >
             <Icon size={15} /> {label}
           </button>
@@ -189,38 +191,38 @@ export default function ContainerDetail() {
       {tab === "cves" && <CvesTab image={detail.image} />}
       {tab === "updates" && <UpdatesTab container={detail} project={project} />}
 
-      {live && tab === "overview" && (
+      {liveStats && tab === "overview" && (
         <section className="section">
           <h2>Resources</h2>
           <ul className="fact-list">
             <li>
               <span>CPU</span>
               <span>
-                {live.cpu_percent.toFixed(1)}% <Meter percent={live.cpu_percent} />
+                {liveStats.cpu_percent.toFixed(1)}% <Meter percent={liveStats.cpu_percent} />
               </span>
             </li>
             <li>
               <span>Memory</span>
               <span>
-                {formatBytes(live.memory_usage)} / {formatBytes(live.memory_limit)}
-                <Meter percent={live.memory_percent} />
+                {formatBytes(liveStats.memory_usage)} / {formatBytes(liveStats.memory_limit)}
+                <Meter percent={liveStats.memory_percent} />
               </span>
             </li>
             <li>
               <span>Network rx / tx</span>
               <span>
-                {formatBytes(live.network_rx)} / {formatBytes(live.network_tx)}
+                {formatBytes(liveStats.network_rx)} / {formatBytes(liveStats.network_tx)}
               </span>
             </li>
             <li>
               <span>Disk read / write</span>
               <span>
-                {formatBytes(live.block_read)} / {formatBytes(live.block_write)}
+                {formatBytes(liveStats.block_read)} / {formatBytes(liveStats.block_write)}
               </span>
             </li>
             <li>
               <span>PIDs</span>
-              <span>{live.pids ?? "—"}</span>
+              <span>{liveStats.pids ?? "—"}</span>
             </li>
           </ul>
         </section>
@@ -242,19 +244,21 @@ export default function ContainerDetail() {
 function Facts({ rows }: { rows: [string, ReactNode][] }) {
   return (
     <dl className="kv-grid">
-      {rows.map(([k, v]) => (
-        <div key={k}>
-          <dt>{k}</dt>
-          <dd>{v ?? "—"}</dd>
+      {rows.map(([label, value]) => (
+        <div key={label}>
+          <dt>{label}</dt>
+          <dd>{value ?? "—"}</dd>
         </div>
       ))}
     </dl>
   );
 }
 
-function OverviewTab({ detail, isAdmin }: { detail: Detail; isAdmin: boolean }) {
-  const ports = detail.ports.filter((p) => p.public_port);
-  const labels = Object.entries(detail.labels).sort(([a], [b]) => a.localeCompare(b));
+function OverviewTab({ detail, isAdmin }: { detail: ContainerDetailData; isAdmin: boolean }) {
+  const ports = detail.ports.filter((port) => port.public_port);
+  const labels = Object.entries(detail.labels).sort(([leftKey], [rightKey]) =>
+    leftKey.localeCompare(rightKey),
+  );
 
   return (
     <>
@@ -278,7 +282,10 @@ function OverviewTab({ detail, isAdmin }: { detail: Detail; isAdmin: boolean }) 
             "Ports",
             ports.length
               ? ports
-                  .map((p) => `${p.host_ip ? `${p.host_ip}:` : ""}${p.public_port}→${p.private_port}/${p.protocol}`)
+                  .map(
+                    (port) =>
+                      `${port.host_ip ? `${port.host_ip}:` : ""}${port.public_port}→${port.private_port}/${port.protocol}`,
+                  )
                   .join(", ")
               : "—",
           ],
@@ -300,12 +307,12 @@ function OverviewTab({ detail, isAdmin }: { detail: Detail; isAdmin: boolean }) 
               </tr>
             </thead>
             <tbody>
-              {detail.networks.map((n) => (
-                <tr key={n.name}>
-                  <td>{n.name}</td>
-                  <td>{n.ip_address ?? "—"}</td>
-                  <td className="muted">{n.gateway ?? "—"}</td>
-                  <td className="muted">{n.mac_address ?? "—"}</td>
+              {detail.networks.map((network) => (
+                <tr key={network.name}>
+                  <td>{network.name}</td>
+                  <td>{network.ip_address ?? "—"}</td>
+                  <td className="muted">{network.gateway ?? "—"}</td>
+                  <td className="muted">{network.mac_address ?? "—"}</td>
                 </tr>
               ))}
             </tbody>
@@ -328,18 +335,18 @@ function OverviewTab({ detail, isAdmin }: { detail: Detail; isAdmin: boolean }) 
               </tr>
             </thead>
             <tbody>
-              {detail.mounts.map((m) => (
-                <tr key={m.destination}>
+              {detail.mounts.map((mount) => (
+                <tr key={mount.destination}>
                   <td>
-                    <span className="badge">{m.type}</span>
+                    <span className="badge">{mount.type}</span>
                   </td>
                   <td>
-                    <code>{m.source ?? "—"}</code>
+                    <code>{mount.source ?? "—"}</code>
                   </td>
                   <td>
-                    <code>{m.destination}</code>
+                    <code>{mount.destination}</code>
                   </td>
-                  <td className="muted">{m.rw ? "read-write" : "read-only"}</td>
+                  <td className="muted">{mount.rw ? "read-write" : "read-only"}</td>
                 </tr>
               ))}
             </tbody>
@@ -357,13 +364,13 @@ function OverviewTab({ detail, isAdmin }: { detail: Detail; isAdmin: boolean }) 
         ) : (
           <table className="projects-table">
             <tbody>
-              {detail.env.map((e) => (
-                <tr key={e.key}>
+              {detail.env.map((variable) => (
+                <tr key={variable.key}>
                   <td>
-                    <code>{e.key}</code>
+                    <code>{variable.key}</code>
                   </td>
                   <td className="break-all">
-                    <code>{e.value}</code>
+                    <code>{variable.value}</code>
                   </td>
                 </tr>
               ))}
@@ -379,12 +386,12 @@ function OverviewTab({ detail, isAdmin }: { detail: Detail; isAdmin: boolean }) 
           </summary>
           <table className="projects-table">
             <tbody>
-              {labels.map(([k, v]) => (
-                <tr key={k}>
+              {labels.map(([key, value]) => (
+                <tr key={key}>
                   <td>
-                    <code>{k}</code>
+                    <code>{key}</code>
                   </td>
-                  <td className="break-all">{v}</td>
+                  <td className="break-all">{value}</td>
                 </tr>
               ))}
             </tbody>
@@ -414,7 +421,7 @@ function LogsTab({ id, name }: { id: string; name: string }) {
         <input
           placeholder="Filter lines…"
           value={filter}
-          onChange={(e) => setFilter(e.target.value)}
+          onChange={(event) => setFilter(event.target.value)}
         />
       </div>
       <LogPanel
@@ -432,21 +439,21 @@ function CvesTab({ image }: { image: string }) {
   const [scan, setScan] = useState<ScanDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const openScan = useCallback((summary: ScanSummary) => {
+  const openScan = useCallback((summary: ScanSummary): void => {
     api
       .getScan(summary.id)
       .then(setScan)
-      .catch((e: Error) => setError(e.message));
+      .catch((scanError: Error) => setError(scanError.message));
   }, []);
 
-  const load = useCallback(() => {
+  const load = useCallback((): void => {
     api
       .scanHistory(image)
-      .then((list) => {
-        setHistory(list);
-        if (list.length) openScan(list[0]);
+      .then((pastScans) => {
+        setHistory(pastScans);
+        if (pastScans.length) openScan(pastScans[0]);
       })
-      .catch((e: Error) => setError(e.message));
+      .catch((historyError: Error) => setError(historyError.message));
   }, [image, openScan]);
 
   const { jobs, start, dismiss, busy } = useJobs(load, setError);
@@ -485,18 +492,18 @@ function CvesTab({ image }: { image: string }) {
           <h2>Scan history</h2>
           <table className="projects-table">
             <tbody>
-              {history.map((h) => (
-                <tr key={h.id} className={scan?.id === h.id ? "selected" : undefined}>
+              {history.map((pastScan) => (
+                <tr key={pastScan.id} className={scan?.id === pastScan.id ? "selected" : undefined}>
                   <td>
-                    <button type="button" className="linklike" onClick={() => openScan(h)}>
-                      {formatDate(h.scanned_at)}
+                    <button type="button" className="linklike" onClick={() => openScan(pastScan)}>
+                      {formatDate(pastScan.scanned_at)}
                     </button>
                   </td>
                   <td>
-                    {h.error ? (
+                    {pastScan.error ? (
                       <span className="muted">failed</span>
                     ) : (
-                      `${h.critical}C · ${h.high}H · ${h.medium}M · ${h.low}L`
+                      `${pastScan.critical}C · ${pastScan.high}H · ${pastScan.medium}M · ${pastScan.low}L`
                     )}
                   </td>
                 </tr>
@@ -509,27 +516,37 @@ function CvesTab({ image }: { image: string }) {
   );
 }
 
-function UpdatesTab({ container, project }: { container: Detail; project: Project | null }) {
+function UpdatesTab({
+  container,
+  project,
+}: {
+  container: ContainerDetailData;
+  project: Project | null;
+}) {
   const image = container.image;
   const [update, setUpdate] = useState<UpdateSummary | null | undefined>(undefined);
   const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
 
-  const load = useCallback(() => {
+  const load = useCallback((): void => {
     api
       .listUpdates()
-      .then((list) => setUpdate(list.find((u) => u.image === image) ?? null))
-      .catch((e: Error) => setError(e.message));
+      .then((updateList) =>
+        setUpdate(updateList.find((summary) => summary.image === image) ?? null),
+      )
+      .catch((loadError: Error) => setError(loadError.message));
   }, [image]);
 
   // A finished update recreated the container under a new id: follow it there.
-  const onJobSettled = useCallback(() => {
+  const onJobSettled = useCallback((): void => {
     load();
     api
       .listContainers()
-      .then((list) => {
-        const next = list.find((c) => c.name === container.name);
-        if (next && next.id !== container.id) navigate(`/containers/${next.id}?tab=updates`);
+      .then((containerList) => {
+        const recreated = containerList.find((candidate) => candidate.name === container.name);
+        if (recreated && recreated.id !== container.id) {
+          navigate(`/containers/${recreated.id}?tab=updates`);
+        }
       })
       .catch(() => undefined);
   }, [load, container.name, container.id, navigate]);

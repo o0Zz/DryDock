@@ -1,6 +1,7 @@
 """docker_service image helpers, against a fake Docker client."""
 
 from types import SimpleNamespace
+from typing import Any, NoReturn
 
 import pytest
 from docker.errors import APIError, DockerException
@@ -12,59 +13,61 @@ NGINX_ID = "sha256:nginx"
 OLD_ID = "sha256:old"
 
 
-def _image(image_id, tags, size=0, created="2026-01-02T03:04:05.123456789Z"):
+def _image(
+    image_id: str, tags: list[str], size: int = 0, created: str = "2026-01-02T03:04:05.123456789Z"
+) -> SimpleNamespace:
     return SimpleNamespace(id=image_id, tags=tags, attrs={"Size": size, "Created": created})
 
 
-def _container(name, image_id, status="running"):
+def _container(name: str, image_id: str, status: str = "running") -> SimpleNamespace:
     return SimpleNamespace(name=name, status=status, attrs={"Image": image_id})
 
 
-def _api_error(code, explanation="conflict"):
+def _api_error(status_code: int, explanation: str = "conflict") -> APIError:
     return APIError(
         "error",
-        response=SimpleNamespace(status_code=code, url="http://docker/images", reason="x"),
+        response=SimpleNamespace(status_code=status_code, url="http://docker/images", reason="x"),
         explanation=explanation,
     )
 
 
 class FakeImages:
-    def __init__(self, images):
+    def __init__(self, images: list[SimpleNamespace]) -> None:
         self.images = images
-        self.removed = []
-        self.remove_error = None
-        self.prune_filters = None
-        self.prune_result = {}
+        self.removed: list[tuple[str, bool]] = []
+        self.remove_error: Exception | None = None
+        self.prune_filters: dict[str, bool] | None = None
+        self.prune_result: dict[str, Any] = {}
 
-    def list(self):
+    def list(self) -> list[SimpleNamespace]:
         return list(self.images)
 
-    def get(self, ref):
-        for img in self.images:
-            if ref in img.tags or ref == img.id:
-                return img
-        raise DockerImageNotFound(f"No such image: {ref}")
+    def get(self, reference: str) -> SimpleNamespace:
+        for image in self.images:
+            if reference in image.tags or reference == image.id:
+                return image
+        raise DockerImageNotFound(f"No such image: {reference}")
 
-    def remove(self, ref, force=False):
+    def remove(self, reference: str, force: bool = False) -> None:
         if self.remove_error:
             raise self.remove_error
-        self.removed.append((ref, force))
+        self.removed.append((reference, force))
 
-    def prune(self, filters=None):
+    def prune(self, filters: dict[str, bool] | None = None) -> dict[str, Any]:
         self.prune_filters = filters
         return self.prune_result
 
 
 class FakeContainers:
-    def __init__(self, containers):
+    def __init__(self, containers: list[SimpleNamespace]) -> None:
         self.containers = containers
 
-    def list(self, all=False):
-        return [c for c in self.containers if all or c.status == "running"]
+    def list(self, all: bool = False) -> list[SimpleNamespace]:
+        return [container for container in self.containers if all or container.status == "running"]
 
 
 @pytest.fixture
-def fake(monkeypatch):
+def fake(monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace:
     client = SimpleNamespace(
         images=FakeImages(
             [
@@ -87,35 +90,38 @@ def fake(monkeypatch):
 # --- list_images --------------------------------------------------------------
 
 
-def test_list_images_maps_fields_and_usage(fake):
-    images = {(i.tags[0] if i.tags else i.id): i for i in docker_service.list_images()}
+def test_list_images_maps_fields_and_usage(fake: SimpleNamespace) -> None:
+    images = {
+        (image.tags[0] if image.tags else image.id): image for image in docker_service.list_images()
+    }
 
     nginx = images["nginx:latest"]
     assert nginx.id == NGINX_ID
     assert nginx.tags == ["nginx:latest", "nginx:1.27"]
     assert nginx.size == 1024
     assert nginx.created_at is not None and nginx.created_at.year == 2026
-    assert [(u.name, u.running) for u in nginx.used_by] == [("web", True)]
+    assert [(container.name, container.running) for container in nginx.used_by] == [("web", True)]
 
     # Stopped containers still count as users.
-    assert [(u.name, u.running) for u in images["alpine:3.18"].used_by] == [("job", False)]
+    alpine_users = images["alpine:3.18"].used_by
+    assert [(container.name, container.running) for container in alpine_users] == [("job", False)]
     assert images["sha256:dangling"].used_by == []
 
 
-def test_list_images_sorts_by_tag_with_untagged_last(fake):
-    order = [i.tags[0] if i.tags else None for i in docker_service.list_images()]
+def test_list_images_sorts_by_tag_with_untagged_last(fake: SimpleNamespace) -> None:
+    order = [image.tags[0] if image.tags else None for image in docker_service.list_images()]
     assert order == ["alpine:3.18", "nginx:latest", None]
 
 
-def test_list_images_handles_missing_created(fake):
+def test_list_images_handles_missing_created(fake: SimpleNamespace) -> None:
     fake.images.images = [SimpleNamespace(id="sha256:x", tags=["x:1"], attrs={})]
-    [img] = docker_service.list_images()
-    assert img.created_at is None
-    assert img.size == 0
+    [image] = docker_service.list_images()
+    assert image.created_at is None
+    assert image.size == 0
 
 
-def test_list_images_docker_down(monkeypatch):
-    def boom():
+def test_list_images_docker_down(monkeypatch: pytest.MonkeyPatch) -> None:
+    def boom() -> NoReturn:
         raise DockerException("socket gone")
 
     client = SimpleNamespace(images=SimpleNamespace(list=boom), containers=FakeContainers([]))
@@ -127,43 +133,43 @@ def test_list_images_docker_down(monkeypatch):
 # --- remove_image -------------------------------------------------------------
 
 
-def test_remove_unused_image(fake):
+def test_remove_unused_image(fake: SimpleNamespace) -> None:
     fake.containers.containers = []
     docker_service.remove_image("alpine:3.18")
     assert fake.images.removed == [("alpine:3.18", False)]
 
 
-def test_remove_passes_force(fake):
+def test_remove_passes_force(fake: SimpleNamespace) -> None:
     docker_service.remove_image("alpine:3.18", force=True)
     assert fake.images.removed == [("alpine:3.18", True)]
 
 
-def test_remove_missing_image(fake):
+def test_remove_missing_image(fake: SimpleNamespace) -> None:
     with pytest.raises(docker_service.ImageNotFound):
         docker_service.remove_image("ghost:1")
     assert fake.images.removed == []
 
 
 @pytest.mark.parametrize("force", [False, True])
-def test_remove_refuses_running_image_even_with_force(fake, force):
+def test_remove_refuses_running_image_even_with_force(fake: SimpleNamespace, force: bool) -> None:
     with pytest.raises(docker_service.ImageInUse, match="web"):
         docker_service.remove_image("nginx:1.27", force=force)
     assert fake.images.removed == []
 
 
-def test_remove_conflict_from_docker_is_in_use(fake):
+def test_remove_conflict_from_docker_is_in_use(fake: SimpleNamespace) -> None:
     fake.images.remove_error = _api_error(409, "image is being used by stopped container")
     with pytest.raises(docker_service.ImageInUse, match="stopped container"):
         docker_service.remove_image("alpine:3.18")
 
 
-def test_remove_other_api_error_is_unavailable(fake):
+def test_remove_other_api_error_is_unavailable(fake: SimpleNamespace) -> None:
     fake.images.remove_error = _api_error(500, "daemon exploded")
     with pytest.raises(docker_service.DockerUnavailable):
         docker_service.remove_image("alpine:3.18")
 
 
-def test_remove_race_where_image_vanishes(fake):
+def test_remove_race_where_image_vanishes(fake: SimpleNamespace) -> None:
     fake.images.remove_error = DockerImageNotFound("gone")
     with pytest.raises(docker_service.ImageNotFound):
         docker_service.remove_image("alpine:3.18")
@@ -173,12 +179,12 @@ def test_remove_race_where_image_vanishes(fake):
 
 
 @pytest.mark.parametrize(("all_unused", "dangling"), [(False, True), (True, False)])
-def test_prune_filter(fake, all_unused, dangling):
+def test_prune_filter(fake: SimpleNamespace, all_unused: bool, dangling: bool) -> None:
     docker_service.prune_images(all_unused=all_unused)
     assert fake.images.prune_filters == {"dangling": dangling}
 
 
-def test_prune_counts_deleted_layers_not_untags(fake):
+def test_prune_counts_deleted_layers_not_untags(fake: SimpleNamespace) -> None:
     fake.images.prune_result = {
         "ImagesDeleted": [
             {"Untagged": "alpine:3.18"},
@@ -192,7 +198,7 @@ def test_prune_counts_deleted_layers_not_untags(fake):
     assert result.space_reclaimed == 4096
 
 
-def test_prune_nothing_to_do(fake):
+def test_prune_nothing_to_do(fake: SimpleNamespace) -> None:
     # Docker sends null rather than [] when nothing was removed.
     fake.images.prune_result = {"ImagesDeleted": None, "SpaceReclaimed": 0}
     result = docker_service.prune_images()
@@ -200,8 +206,8 @@ def test_prune_nothing_to_do(fake):
     assert result.space_reclaimed == 0
 
 
-def test_prune_docker_down(monkeypatch):
-    def boom(filters=None):
+def test_prune_docker_down(monkeypatch: pytest.MonkeyPatch) -> None:
+    def boom(filters: dict[str, bool] | None = None) -> NoReturn:
         raise DockerException("socket gone")
 
     client = SimpleNamespace(images=SimpleNamespace(prune=boom))

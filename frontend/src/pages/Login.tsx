@@ -9,14 +9,14 @@ export default function Login() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  async function onSubmit(e: FormEvent) {
-    e.preventDefault();
+  async function onSubmit(event: FormEvent): Promise<void> {
+    event.preventDefault();
     setError(null);
     setBusy(true);
     try {
       await login(username, password);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Login failed");
+    } catch (loginError) {
+      setError(loginError instanceof Error ? loginError.message : "Login failed");
     } finally {
       setBusy(false);
     }
@@ -35,7 +35,7 @@ export default function Login() {
           <input
             autoFocus
             value={username}
-            onChange={(e) => setUsername(e.target.value)}
+            onChange={(event) => setUsername(event.target.value)}
             autoComplete="username"
           />
         </label>
@@ -44,7 +44,7 @@ export default function Login() {
           <input
             type="password"
             value={password}
-            onChange={(e) => setPassword(e.target.value)}
+            onChange={(event) => setPassword(event.target.value)}
             autoComplete="current-password"
           />
         </label>

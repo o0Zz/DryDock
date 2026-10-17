@@ -14,15 +14,18 @@ export default function Settings() {
   const [notice, setNotice] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (): Promise<void> => {
     try {
-      const [current, jobList] = await Promise.all([api.getSettings(), api.listJobs(10)]);
-      setSettings(current);
+      const [currentSettings, recentJobs] = await Promise.all([
+        api.getSettings(),
+        api.listJobs(10),
+      ]);
+      setSettings(currentSettings);
       setDraft({});
-      setJobs(jobList);
+      setJobs(recentJobs);
       setError(null);
-    } catch (e) {
-      setError((e as Error).message);
+    } catch (loadError) {
+      setError((loadError as Error).message);
     }
   }, []);
 
@@ -34,16 +37,16 @@ export default function Settings() {
   if (!settings) return <div>Loading…</div>;
 
   // The draft holds only fields the user touched, so a save is always a patch.
-  const value = { ...settings, ...draft };
+  const formValues = { ...settings, ...draft };
   const dirty = Object.keys(draft).length > 0;
 
-  function edit(patch: SettingsPatch) {
-    setDraft((prev) => ({ ...prev, ...patch }));
+  function edit(patch: SettingsPatch): void {
+    setDraft((previous) => ({ ...previous, ...patch }));
     setNotice(null);
   }
 
-  async function save(e: FormEvent) {
-    e.preventDefault();
+  async function save(event: FormEvent): Promise<void> {
+    event.preventDefault();
     setSaving(true);
     setError(null);
     try {
@@ -51,8 +54,8 @@ export default function Settings() {
       setSettings(updated);
       setDraft({});
       setNotice("Settings saved.");
-    } catch (err) {
-      setError((err as Error).message);
+    } catch (saveError) {
+      setError((saveError as Error).message);
     } finally {
       setSaving(false);
     }
@@ -89,8 +92,8 @@ export default function Settings() {
             <input
               type="checkbox"
               disabled={!user?.is_admin}
-              checked={value.scan_schedule_enabled}
-              onChange={(e) => edit({ scan_schedule_enabled: e.target.checked })}
+              checked={formValues.scan_schedule_enabled}
+              onChange={(event) => edit({ scan_schedule_enabled: event.target.checked })}
             />
             Scan automatically
           </label>
@@ -101,9 +104,9 @@ export default function Settings() {
                 type="number"
                 min={1}
                 max={720}
-                disabled={!user?.is_admin || !value.scan_schedule_enabled}
-                value={value.scan_interval_hours}
-                onChange={(e) => edit({ scan_interval_hours: Number(e.target.value) })}
+                disabled={!user?.is_admin || !formValues.scan_schedule_enabled}
+                value={formValues.scan_interval_hours}
+                onChange={(event) => edit({ scan_interval_hours: Number(event.target.value) })}
               />
             </label>
             <div className="muted">Next run: {formatDate(settings.next_scan_run, "not scheduled")}</div>
@@ -119,8 +122,8 @@ export default function Settings() {
             <input
               type="checkbox"
               disabled={!user?.is_admin}
-              checked={value.update_check_enabled}
-              onChange={(e) => edit({ update_check_enabled: e.target.checked })}
+              checked={formValues.update_check_enabled}
+              onChange={(event) => edit({ update_check_enabled: event.target.checked })}
             />
             Check automatically
           </label>
@@ -131,9 +134,9 @@ export default function Settings() {
                 type="number"
                 min={1}
                 max={720}
-                disabled={!user?.is_admin || !value.update_check_enabled}
-                value={value.update_check_interval_hours}
-                onChange={(e) => edit({ update_check_interval_hours: Number(e.target.value) })}
+                disabled={!user?.is_admin || !formValues.update_check_enabled}
+                value={formValues.update_check_interval_hours}
+                onChange={(event) => edit({ update_check_interval_hours: Number(event.target.value) })}
               />
             </label>
             <div className="muted">Next run: {formatDate(settings.next_update_run, "not scheduled")}</div>
@@ -152,16 +155,16 @@ export default function Settings() {
               type="text"
               placeholder="https://example.com/hooks/drydock"
               disabled={!user?.is_admin}
-              value={value.notify_webhook_url}
-              onChange={(e) => edit({ notify_webhook_url: e.target.value })}
+              value={formValues.notify_webhook_url}
+              onChange={(event) => edit({ notify_webhook_url: event.target.value })}
             />
           </label>
           <label className="checkbox-label">
             <input
               type="checkbox"
               disabled={!user?.is_admin}
-              checked={value.notify_on_critical}
-              onChange={(e) => edit({ notify_on_critical: e.target.checked })}
+              checked={formValues.notify_on_critical}
+              onChange={(event) => edit({ notify_on_critical: event.target.checked })}
             />
             Notify when a scan finds critical CVEs
           </label>
@@ -169,8 +172,8 @@ export default function Settings() {
             <input
               type="checkbox"
               disabled={!user?.is_admin}
-              checked={value.notify_on_update}
-              onChange={(e) => edit({ notify_on_update: e.target.checked })}
+              checked={formValues.notify_on_update}
+              onChange={(event) => edit({ notify_on_update: event.target.checked })}
             />
             Notify when image updates are available
           </label>
@@ -257,30 +260,30 @@ export default function Settings() {
 }
 
 function ChangePassword() {
-  const [current, setCurrent] = useState("");
-  const [next, setNext] = useState("");
-  const [confirm, setConfirm] = useState("");
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  async function submit(e: FormEvent) {
-    e.preventDefault();
+  async function submit(event: FormEvent): Promise<void> {
+    event.preventDefault();
     setError(null);
     setNotice(null);
-    if (next !== confirm) {
+    if (newPassword !== confirmPassword) {
       setError("The new passwords do not match.");
       return;
     }
     setBusy(true);
     try {
-      await api.changePassword(current, next);
-      setCurrent("");
-      setNext("");
-      setConfirm("");
+      await api.changePassword(currentPassword, newPassword);
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
       setNotice("Password changed.");
-    } catch (err) {
-      setError((err as Error).message);
+    } catch (changeError) {
+      setError((changeError as Error).message);
     } finally {
       setBusy(false);
     }
@@ -300,8 +303,8 @@ function ChangePassword() {
           Current password
           <input
             type="password"
-            value={current}
-            onChange={(e) => setCurrent(e.target.value)}
+            value={currentPassword}
+            onChange={(event) => setCurrentPassword(event.target.value)}
             autoComplete="current-password"
           />
         </label>
@@ -309,8 +312,8 @@ function ChangePassword() {
           New password
           <input
             type="password"
-            value={next}
-            onChange={(e) => setNext(e.target.value)}
+            value={newPassword}
+            onChange={(event) => setNewPassword(event.target.value)}
             autoComplete="new-password"
           />
         </label>
@@ -318,13 +321,13 @@ function ChangePassword() {
           Confirm new password
           <input
             type="password"
-            value={confirm}
-            onChange={(e) => setConfirm(e.target.value)}
+            value={confirmPassword}
+            onChange={(event) => setConfirmPassword(event.target.value)}
             autoComplete="new-password"
           />
         </label>
         <div className="button-row">
-          <button type="submit" disabled={busy || !current || next.length < 6}>
+          <button type="submit" disabled={busy || !currentPassword || newPassword.length < 6}>
             <KeyRound size={15} /> {busy ? "Saving…" : "Change password"}
           </button>
         </div>

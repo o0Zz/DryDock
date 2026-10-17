@@ -39,6 +39,10 @@ line-length = 100
 target-version = "py311"
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "UP", "B", "SIM"]
-# Depends()/Query() in argument defaults is the FastAPI idiom, not a bug.
-ignore = ["B008"]
+select = ["E", "F", "I", "UP", "B", "SIM", "ANN"]
+ignore = [
+    # Depends()/Query() in argument defaults is the FastAPI idiom, not a bug.
+    "B008",
+    # Any is the honest type for untyped docker-py sockets and catch-all test stubs.
+    "ANN401",
+]

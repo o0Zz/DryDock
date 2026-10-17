@@ -16,7 +16,7 @@ import type { User } from "../types";
 
 export default function Users() {
   const confirm = useConfirm();
-  const { user: me } = useAuth();
+  const { user: currentUser } = useAuth();
   const [users, setUsers] = useState<User[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -27,12 +27,12 @@ export default function Users() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [creating, setCreating] = useState(false);
 
-  async function load() {
+  async function load(): Promise<void> {
     try {
       setUsers(await api.listUsers());
       setError(null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load users");
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : "Failed to load users");
     } finally {
       setLoading(false);
     }
@@ -42,17 +42,17 @@ export default function Users() {
     load();
   }, []);
 
-  async function run(fn: () => Promise<unknown>) {
+  async function run(action: () => Promise<unknown>): Promise<void> {
     try {
-      await fn();
+      await action();
       await load();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Action failed");
+    } catch (actionError) {
+      setError(actionError instanceof Error ? actionError.message : "Action failed");
     }
   }
 
-  async function onCreate(e: FormEvent) {
-    e.preventDefault();
+  async function onCreate(event: FormEvent): Promise<void> {
+    event.preventDefault();
     setCreating(true);
     await run(async () => {
       await api.createUser(username, password, isAdmin);
@@ -63,25 +63,25 @@ export default function Users() {
     setCreating(false);
   }
 
-  function resetPassword(u: User) {
-    const pw = window.prompt(`New password for "${u.username}" (min 6 chars):`);
-    if (pw == null) return;
-    if (pw.length < 6) {
+  function resetPassword(user: User): void {
+    const newPassword = window.prompt(`New password for "${user.username}" (min 6 chars):`);
+    if (newPassword == null) return;
+    if (newPassword.length < 6) {
       setError("Password must be at least 6 characters");
       return;
     }
-    run(() => api.updateUser(u.id, { password: pw }));
+    run(() => api.updateUser(user.id, { password: newPassword }));
   }
 
-  async function remove(u: User) {
-    const ok = await confirm({
-      title: `Delete user ${u.username}?`,
+  async function remove(user: User): Promise<void> {
+    const confirmed = await confirm({
+      title: `Delete user ${user.username}?`,
       message: "This cannot be undone.",
       confirmLabel: "Delete",
       tone: "danger",
     });
-    if (!ok) return;
-    run(() => api.deleteUser(u.id));
+    if (!confirmed) return;
+    run(() => api.deleteUser(user.id));
   }
 
   return (
@@ -95,19 +95,19 @@ export default function Users() {
           <input
             placeholder="username"
             value={username}
-            onChange={(e) => setUsername(e.target.value)}
+            onChange={(event) => setUsername(event.target.value)}
           />
           <input
             type="password"
             placeholder="password"
             value={password}
-            onChange={(e) => setPassword(e.target.value)}
+            onChange={(event) => setPassword(event.target.value)}
           />
           <label className="checkbox-label">
             <input
               type="checkbox"
               checked={isAdmin}
-              onChange={(e) => setIsAdmin(e.target.checked)}
+              onChange={(event) => setIsAdmin(event.target.checked)}
             />
             Admin
           </label>
@@ -131,51 +131,59 @@ export default function Users() {
             </tr>
           </thead>
           <tbody>
-            {users.map((u) => {
-              const self = u.id === me?.id;
+            {users.map((user) => {
+              const isSelf = user.id === currentUser?.id;
               return (
-                <tr key={u.id}>
+                <tr key={user.id}>
                   <td>
-                    {u.username}
-                    {self && <span className="muted"> (you)</span>}
+                    {user.username}
+                    {isSelf && <span className="muted"> (you)</span>}
                   </td>
                   <td>
-                    <span className={`badge ${u.is_admin ? "admin-badge" : ""}`}>
-                      {u.is_admin ? <ShieldCheck size={12} /> : <UserIcon size={12} />}
-                      {u.is_admin ? "admin" : "user"}
+                    <span className={`badge ${user.is_admin ? "admin-badge" : ""}`}>
+                      {user.is_admin ? <ShieldCheck size={12} /> : <UserIcon size={12} />}
+                      {user.is_admin ? "admin" : "user"}
                     </span>
                   </td>
                   <td>
-                    <span className={`badge ${u.is_active ? "running" : "exited"}`}>
+                    <span className={`badge ${user.is_active ? "running" : "exited"}`}>
                       <Circle size={8} fill="currentColor" />
-                      {u.is_active ? "active" : "disabled"}
+                      {user.is_active ? "active" : "disabled"}
                     </span>
                   </td>
-                  <td className="muted">{new Date(u.created_at).toLocaleDateString()}</td>
+                  <td className="muted">{new Date(user.created_at).toLocaleDateString()}</td>
                   <td>
                     <div className="button-row">
                       <button
                         className="secondary small"
-                        onClick={() => resetPassword(u)}
+                        onClick={() => resetPassword(user)}
                       >
                         <KeyRound size={14} /> Reset password
                       </button>
                       <button
                         className="secondary small"
-                        disabled={self}
-                        onClick={() => run(() => api.updateUser(u.id, { is_admin: !u.is_admin }))}
+                        disabled={isSelf}
+                        onClick={() =>
+                          run(() => api.updateUser(user.id, { is_admin: !user.is_admin }))
+                        }
                       >
-                        {u.is_admin ? <ShieldOff size={14} /> : <ShieldCheck size={14} />}
-                        {u.is_admin ? "Revoke admin" : "Make admin"}
+                        {user.is_admin ? <ShieldOff size={14} /> : <ShieldCheck size={14} />}
+                        {user.is_admin ? "Revoke admin" : "Make admin"}
                       </button>
                       <button
                         className="secondary small"
-                        disabled={self}
-                        onClick={() => run(() => api.updateUser(u.id, { is_active: !u.is_active }))}
+                        disabled={isSelf}
+                        onClick={() =>
+                          run(() => api.updateUser(user.id, { is_active: !user.is_active }))
+                        }
                       >
-                        <Power size={14} /> {u.is_active ? "Disable" : "Enable"}
+                        <Power size={14} /> {user.is_active ? "Disable" : "Enable"}
                       </button>
-                      <button className="secondary small" disabled={self} onClick={() => remove(u)}>
+                      <button
+                        className="secondary small"
+                        disabled={isSelf}
+                        onClick={() => remove(user)}
+                      >
                         <Trash2 size={14} /> Delete
                       </button>
                     </div>

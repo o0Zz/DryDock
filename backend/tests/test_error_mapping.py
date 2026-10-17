@@ -1,6 +1,8 @@
 """Service exceptions map to HTTP statuses through the handlers in app.main."""
 
+from collections.abc import Callable, Iterator
 from types import SimpleNamespace
+from typing import Any, NoReturn
 
 import pytest
 from fastapi.testclient import TestClient
@@ -11,7 +13,7 @@ from app.services import compose_service, docker_service
 
 
 @pytest.fixture
-def client():
+def client() -> Iterator[TestClient]:
     app.dependency_overrides[get_current_user] = lambda: SimpleNamespace(id=1, is_admin=True)
     try:
         yield TestClient(app)
@@ -19,11 +21,11 @@ def client():
         app.dependency_overrides.clear()
 
 
-def _raise(exc):
-    def fn(*args, **kwargs):
+def _raise(exc: Exception) -> Callable[..., NoReturn]:
+    def raise_exc(*args: Any, **kwargs: Any) -> NoReturn:
         raise exc
 
-    return fn
+    return raise_exc
 
 
 @pytest.mark.parametrize(
@@ -33,14 +35,20 @@ def _raise(exc):
         (docker_service.DockerUnavailable("down"), 503, "Docker unavailable: down"),
     ],
 )
-def test_not_found_and_daemon_down_differ(client, monkeypatch, exc, code, detail):
+def test_not_found_and_daemon_down_differ(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    exc: Exception,
+    code: int,
+    detail: str,
+) -> None:
     monkeypatch.setattr(docker_service, "get_container", _raise(exc))
-    res = client.get("/api/containers/x")
-    assert res.status_code == code
-    assert res.json() == {"detail": detail}
+    response = client.get("/api/containers/x")
+    assert response.status_code == code
+    assert response.json() == {"detail": detail}
 
 
-def test_container_running_is_conflict(client, monkeypatch):
+def test_container_running_is_conflict(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         docker_service, "remove_container", _raise(docker_service.ContainerRunning("running"))
     )
@@ -54,7 +62,9 @@ def test_container_running_is_conflict(client, monkeypatch):
         (compose_service.ComposeError("Invalid YAML"), 400),
     ],
 )
-def test_compose_errors(client, monkeypatch, exc, code):
+def test_compose_errors(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch, exc: Exception, code: int
+) -> None:
     monkeypatch.setattr(compose_service, "create_compose", _raise(exc))
-    res = client.post("/api/projects", json={"name": "web", "content": "services: {}"})
-    assert res.status_code == code
+    response = client.post("/api/projects", json={"name": "web", "content": "services: {}"})
+    assert response.status_code == code

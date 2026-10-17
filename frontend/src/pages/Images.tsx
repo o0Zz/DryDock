@@ -16,7 +16,7 @@ import { formatBytes, formatDate } from "../format";
 import { useJobs } from "../hooks/useJobs";
 import type { LocalImage, ScanDetail, ScanSummary, UpdateSummary } from "../types";
 
-interface Row {
+interface ImageRow {
   image: string;
   scan?: ScanSummary;
   update?: UpdateSummary;
@@ -33,7 +33,7 @@ function withDefaultTag(image: string): string {
 }
 
 /** Sort worst first: criticals, then highs, then pending updates, then name. */
-function rank(row: Row): [number, number, number, string] {
+function rank(row: ImageRow): [number, number, number, string] {
   return [
     row.scan?.critical ? 0 : 1,
     row.scan?.high ? 0 : 1,
@@ -56,20 +56,20 @@ export default function Images() {
   const [filter, setFilter] = useState("");
   const [detail, setDetail] = useState<ScanDetail | null>(null);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (): Promise<void> => {
     try {
       const [scanList, updateList] = await Promise.all([api.listScans(), api.listUpdates()]);
       setScans(scanList);
       setUpdates(updateList);
       setError(null);
-    } catch (e) {
-      setError((e as Error).message);
+    } catch (loadError) {
+      setError((loadError as Error).message);
     } finally {
       setLoading(false);
     }
   }, []);
 
-  const loadImages = useCallback(async () => {
+  const loadImages = useCallback(async (): Promise<void> => {
     // Images worth listing even when never scanned: anything running, plus
     // anything a Compose file references. Docker being down is not fatal here.
     const [containers, projects, images] = await Promise.all([
@@ -78,18 +78,24 @@ export default function Images() {
       api.listImages().catch(() => []),
     ]);
     setLocalImages(images);
-    setRunning(new Set(containers.filter((c) => c.state === "running").map((c) => c.image)));
+    setRunning(
+      new Set(
+        containers
+          .filter((container) => container.state === "running")
+          .map((container) => container.image),
+      ),
+    );
     setComposeImages(
       new Set(
         projects.flatMap(
-          (p) => p.services.map((s) => s.image).filter(Boolean) as string[],
+          (project) => project.services.map((service) => service.image).filter(Boolean) as string[],
         ),
       ),
     );
   }, []);
 
   // Scans and update checks change the summaries, prunes change the local list.
-  const onJobSettled = useCallback(() => {
+  const onJobSettled = useCallback((): void => {
     load();
     loadImages();
   }, [load, loadImages]);
@@ -101,8 +107,8 @@ export default function Images() {
   }, [load, loadImages]);
 
   const rows = useMemo(() => {
-    const byImage = new Map<string, Row>();
-    const ensure = (image: string): Row => {
+    const byImage = new Map<string, ImageRow>();
+    const rowFor = (image: string): ImageRow => {
       let row = byImage.get(image);
       if (!row) {
         row = { image, inUse: running.has(image), inCompose: composeImages.has(image) };
@@ -110,45 +116,50 @@ export default function Images() {
       }
       return row;
     };
-    running.forEach((i) => ensure(i));
-    composeImages.forEach((i) => ensure(i));
-    scans.forEach((s) => {
-      ensure(s.image).scan = s;
+    running.forEach((image) => rowFor(image));
+    composeImages.forEach((image) => rowFor(image));
+    scans.forEach((scan) => {
+      rowFor(scan.image).scan = scan;
     });
-    updates.forEach((u) => {
-      ensure(u.image).update = u;
+    updates.forEach((update) => {
+      rowFor(update.image).update = update;
     });
     // Attach local images to the rows that name them, and list the ones
     // nothing else mentions — those are the usual cleanup candidates.
-    const byTag = new Map<string, Row>();
+    const byTag = new Map<string, ImageRow>();
     byImage.forEach((row) => byTag.set(withDefaultTag(row.image), row));
-    localImages.forEach((img) =>
-      img.tags.forEach((tag) => {
-        const row = byTag.get(withDefaultTag(tag)) ?? ensure(tag);
-        row.local = img;
-        if (img.used_by.some((u) => u.running)) row.inUse = true;
+    localImages.forEach((localImage) =>
+      localImage.tags.forEach((tag) => {
+        const row = byTag.get(withDefaultTag(tag)) ?? rowFor(tag);
+        row.local = localImage;
+        if (localImage.used_by.some((imageUser) => imageUser.running)) row.inUse = true;
       }),
     );
 
     const needle = filter.trim().toLowerCase();
     return [...byImage.values()]
-      .filter((r) => !needle || r.image.toLowerCase().includes(needle))
-      .sort((a, b) => {
-        const [ac, ah, au, an] = rank(a);
-        const [bc, bh, bu, bn] = rank(b);
-        return ac - bc || ah - bh || au - bu || an.localeCompare(bn);
+      .filter((row) => !needle || row.image.toLowerCase().includes(needle))
+      .sort((left, right) => {
+        const [leftCritical, leftHigh, leftUpdate, leftName] = rank(left);
+        const [rightCritical, rightHigh, rightUpdate, rightName] = rank(right);
+        return (
+          leftCritical - rightCritical ||
+          leftHigh - rightHigh ||
+          leftUpdate - rightUpdate ||
+          leftName.localeCompare(rightName)
+        );
       });
   }, [scans, updates, running, composeImages, localImages, filter]);
 
   const remove = useCallback(
-    async (fn: () => Promise<string>) => {
+    async (removeImage: () => Promise<string>): Promise<void> => {
       setRemoving(true);
       setError(null);
       setNotice(null);
       try {
-        setNotice(await fn());
-      } catch (e) {
-        setError((e as Error).message);
+        setNotice(await removeImage());
+      } catch (removeError) {
+        setError((removeError as Error).message);
       } finally {
         setRemoving(false);
         loadImages();
@@ -158,20 +169,20 @@ export default function Images() {
   );
 
   const onDelete = useCallback(
-    async (row: Row) => {
-      const stopped = (row.local?.used_by ?? []).map((u) => u.name);
-      const ok = await confirm({
+    async (row: ImageRow): Promise<void> => {
+      const stoppedContainers = (row.local?.used_by ?? []).map((imageUser) => imageUser.name);
+      const confirmed = await confirm({
         title: `Delete image ${row.image}?`,
-        message: stopped.length
-          ? `Stopped container(s) ${stopped.join(", ")} still use it, so Docker will only ` +
+        message: stoppedContainers.length
+          ? `Stopped container(s) ${stoppedContainers.join(", ")} still use it, so Docker will only ` +
             "untag it. Remove those containers to free the space."
           : "It will need to be pulled again to be used.",
         confirmLabel: "Delete",
         tone: "danger",
       });
-      if (!ok) return;
+      if (!confirmed) return;
       remove(async () => {
-        await api.deleteImage(row.image, stopped.length > 0);
+        await api.deleteImage(row.image, stoppedContainers.length > 0);
         return `Image "${row.image}" removed.`;
       });
     },
@@ -179,8 +190,8 @@ export default function Images() {
   );
 
   const onPrune = useCallback(
-    async (all: boolean) => {
-      const ok = await confirm(
+    async (all: boolean): Promise<void> => {
+      const confirmed = await confirm(
         all
           ? {
               title: "Prune unused images?",
@@ -197,17 +208,17 @@ export default function Images() {
               tone: "danger",
             },
       );
-      if (!ok) return;
+      if (!confirmed) return;
       start(() => api.pruneImages(all));
     },
     [start, confirm],
   );
 
-  const openDetail = useCallback(async (scan: ScanSummary) => {
+  const openDetail = useCallback(async (scan: ScanSummary): Promise<void> => {
     try {
       setDetail(await api.getScan(scan.id));
-    } catch (e) {
-      setError((e as Error).message);
+    } catch (scanError) {
+      setError((scanError as Error).message);
     }
   }, []);
 
@@ -282,7 +293,7 @@ export default function Images() {
         <input
           placeholder="Filter images…"
           value={filter}
-          onChange={(e) => setFilter(e.target.value)}
+          onChange={(event) => setFilter(event.target.value)}
         />
         <span className="muted">
           {rows.length} image{rows.length === 1 ? "" : "s"}

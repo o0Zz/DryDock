@@ -13,7 +13,7 @@ export default function Logs() {
           type="search"
           placeholder="Filter (e.g. WARNING, trivy)"
           value={filter}
-          onChange={(e) => setFilter(e.target.value)}
+          onChange={(event) => setFilter(event.target.value)}
         />
       </div>
       <LogPanel title="DryDock backend" url="/api/logs/app?tail=500" filter={filter} inline />

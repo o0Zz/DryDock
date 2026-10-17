@@ -26,15 +26,15 @@ export default function NewProject() {
 
   const nameValid = NAME_PATTERN.test(name);
 
-  async function onSubmit(e: FormEvent) {
-    e.preventDefault();
+  async function onSubmit(event: FormEvent): Promise<void> {
+    event.preventDefault();
     setError(null);
     setBusy(true);
     try {
       const project = await api.createProject(name, content);
       navigate(`/projects/${project.id}`);
-    } catch (err) {
-      setError((err as Error).message);
+    } catch (createError) {
+      setError((createError as Error).message);
       setBusy(false);
     }
   }
@@ -53,7 +53,7 @@ export default function NewProject() {
             value={name}
             placeholder="my-stack"
             maxLength={64}
-            onChange={(e) => setName(e.target.value)}
+            onChange={(event) => setName(event.target.value)}
             autoFocus
           />
           <div className="muted">

@@ -53,7 +53,7 @@ export default function Dashboard() {
     api
       .dashboard()
       .then(setStats)
-      .catch((e: Error) => setError(e.message));
+      .catch((loadError: Error) => setError(loadError.message));
   }, []);
 
   if (error) return <div className="error">Failed to load dashboard: {error}</div>;

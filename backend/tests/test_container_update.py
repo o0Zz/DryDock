@@ -1,9 +1,11 @@
 """One-click container update: compose helpers, job body and API route."""
 
 import subprocess
+from collections.abc import Callable, Iterator
 from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any, NoReturn
 
 import pytest
 from fastapi.testclient import TestClient
@@ -15,14 +17,22 @@ from app.models.job import JobKind
 from app.schemas.container import Container
 from app.schemas.project import Project
 from app.services import compose_service, docker_service, repo_service, tasks
+from app.services.job_service import JobRunner
 
 COMPOSE = Path("/repo/web/docker-compose.yml")
 NOW = datetime(2026, 1, 1, tzinfo=UTC)
 
 
-def _container(cid="abc", name="web-nginx-1", *, service="nginx", project="web", files=None):
+def _container(
+    container_id: str = "abc",
+    name: str = "web-nginx-1",
+    *,
+    service: str | None = "nginx",
+    project: str = "web",
+    files: str | None = None,
+) -> Container:
     return Container(
-        id=cid,
+        id=container_id,
         name=name,
         image="nginx:latest",
         status="running",
@@ -35,12 +45,12 @@ def _container(cid="abc", name="web-nginx-1", *, service="nginx", project="web",
     )
 
 
-def _project(pid="web", path=COMPOSE):
+def _project(project_id: str = "web", compose_path: Path = COMPOSE) -> Project:
     return Project(
-        id=pid,
-        name=pid,
-        compose_path=str(path),
-        relative_path=f"{pid}/docker-compose.yml",
+        id=project_id,
+        name=project_id,
+        compose_path=str(compose_path),
+        relative_path=f"{project_id}/docker-compose.yml",
         modified_at=NOW,
         services=[],
     )
@@ -50,37 +60,37 @@ def _project(pid="web", path=COMPOSE):
 
 
 @pytest.fixture
-def runs(monkeypatch):
+def runs(monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace:
     """Record subprocess.run calls; each returns the next queued result."""
-    calls = []
-    results = []
+    calls: list[tuple[list[str], dict[str, Any]]] = []
+    results: list[tuple[int, str, str] | Exception] = []
 
-    def fake_run(cmd, **kwargs):
-        calls.append((cmd, kwargs))
+    def fake_run(command: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        calls.append((command, kwargs))
         result = results.pop(0) if results else (0, "", "")
         if isinstance(result, Exception):
             raise result
-        code, out, err = result
-        return subprocess.CompletedProcess(cmd, code, out, err)
+        exit_code, stdout, stderr = result
+        return subprocess.CompletedProcess(command, exit_code, stdout, stderr)
 
     monkeypatch.setattr(compose_service.subprocess, "run", fake_run)
     return SimpleNamespace(calls=calls, results=results)
 
 
-def test_pull_service_command(runs):
+def test_pull_service_command(runs: SimpleNamespace) -> None:
     compose_service.pull_service(COMPOSE, "nginx", project_name="web")
 
-    [(cmd, kwargs)] = runs.calls
-    assert cmd == ["docker", "compose", "-f", str(COMPOSE), "-p", "web", "pull", "nginx"]
+    [(command, kwargs)] = runs.calls
+    assert command == ["docker", "compose", "-f", str(COMPOSE), "-p", "web", "pull", "nginx"]
     assert kwargs["cwd"] == COMPOSE.parent
     assert kwargs["timeout"] == compose_service.PULL_TIMEOUT
 
 
-def test_recreate_service_only_touches_that_service(runs):
+def test_recreate_service_only_touches_that_service(runs: SimpleNamespace) -> None:
     compose_service.recreate_service(COMPOSE, "nginx", project_name="web")
 
-    [(cmd, _)] = runs.calls
-    assert cmd == [
+    [(command, _)] = runs.calls
+    assert command == [
         "docker",
         "compose",
         "-f",
@@ -94,31 +104,35 @@ def test_recreate_service_only_touches_that_service(runs):
     ]
 
 
-def test_project_name_is_optional(runs):
+def test_project_name_is_optional(runs: SimpleNamespace) -> None:
     compose_service.pull_service(COMPOSE, "nginx")
     assert "-p" not in runs.calls[0][0]
 
 
-@pytest.mark.parametrize("fn", [compose_service.pull_service, compose_service.recreate_service])
-def test_non_zero_exit_raises_with_stderr(runs, fn):
+@pytest.mark.parametrize(
+    "compose_step", [compose_service.pull_service, compose_service.recreate_service]
+)
+def test_non_zero_exit_raises_with_stderr(
+    runs: SimpleNamespace, compose_step: Callable[[Path, str], None]
+) -> None:
     runs.results.append((1, "", "manifest unknown"))
     with pytest.raises(compose_service.ComposeError, match="manifest unknown"):
-        fn(COMPOSE, "nginx")
+        compose_step(COMPOSE, "nginx")
 
 
-def test_missing_docker_cli(runs):
+def test_missing_docker_cli(runs: SimpleNamespace) -> None:
     runs.results.append(FileNotFoundError("docker"))
     with pytest.raises(compose_service.ComposeError, match="not found"):
         compose_service.pull_service(COMPOSE, "nginx")
 
 
-def test_timeout(runs):
+def test_timeout(runs: SimpleNamespace) -> None:
     runs.results.append(subprocess.TimeoutExpired("docker", 1800))
     with pytest.raises(compose_service.ComposeError, match="pull` timed out"):
         compose_service.pull_service(COMPOSE, "nginx")
 
 
-def test_run_action_unchanged(runs):
+def test_run_action_unchanged(runs: SimpleNamespace) -> None:
     runs.results.append((0, "ok", ""))
     result = compose_service.run_action(COMPOSE, "up")
 
@@ -127,7 +141,7 @@ def test_run_action_unchanged(runs):
     assert result == {"action": "up", "exit_code": 0, "stdout": "ok", "stderr": ""}
 
 
-def test_run_action_reports_failure_instead_of_raising(runs):
+def test_run_action_reports_failure_instead_of_raising(runs: SimpleNamespace) -> None:
     runs.results.append((1, "", "boom"))
     assert compose_service.run_action(COMPOSE, "pull")["exit_code"] == 1
 
@@ -135,44 +149,48 @@ def test_run_action_reports_failure_instead_of_raising(runs):
 # --- job body -----------------------------------------------------------------
 
 
-class FakeCtx:
-    def __init__(self):
+class FakeJobContext:
+    def __init__(self) -> None:
         self.db = object()
         self.total = 0
         self.done = 0
-        self.messages = []
+        self.messages: list[str | None] = []
 
-    def set_total(self, total, message=None):
+    def set_total(self, total: int, message: str | None = None) -> None:
         self.total = total
         self.messages.append(message)
 
-    def advance(self, message=None):
+    def advance(self, message: str | None = None) -> None:
         self.done += 1
         self.messages.append(message)
 
-    def note(self, message):
+    def note(self, message: str) -> None:
         self.messages.append(message)
 
 
 @pytest.fixture
-def steps(monkeypatch):
-    log = []
+def steps(monkeypatch: pytest.MonkeyPatch) -> list[tuple[Any, ...]]:
+    log: list[tuple[Any, ...]] = []
     monkeypatch.setattr(
         compose_service,
         "pull_service",
-        lambda p, s, project_name: log.append(("pull", p, s, project_name)),
+        lambda compose_path, service, project_name: log.append(
+            ("pull", compose_path, service, project_name)
+        ),
     )
     monkeypatch.setattr(
         compose_service,
         "recreate_service",
-        lambda p, s, project_name: log.append(("up", p, s, project_name)),
+        lambda compose_path, service, project_name: log.append(
+            ("up", compose_path, service, project_name)
+        ),
     )
     monkeypatch.setattr(tasks, "store_update_check", lambda db, image: log.append(("check", image)))
     return log
 
 
-def test_runner_pulls_recreates_then_rechecks(steps):
-    ctx = FakeCtx()
+def test_runner_pulls_recreates_then_rechecks(steps: list[tuple[Any, ...]]) -> None:
+    ctx = FakeJobContext()
     tasks.container_update_runner(COMPOSE, "nginx", "nginx:latest", project_name="web")(ctx)
 
     assert steps == [
@@ -184,14 +202,16 @@ def test_runner_pulls_recreates_then_rechecks(steps):
     assert ctx.messages[-1] == "nginx updated to the latest nginx:latest"
 
 
-def test_runner_stops_when_pull_fails(steps, monkeypatch):
-    def fail(*args, **kwargs):
+def test_runner_stops_when_pull_fails(
+    steps: list[tuple[Any, ...]], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def fail(*args: Any, **kwargs: Any) -> NoReturn:
         raise compose_service.ComposeError("pull failed")
 
     monkeypatch.setattr(compose_service, "pull_service", fail)
 
     with pytest.raises(compose_service.ComposeError):
-        tasks.container_update_runner(COMPOSE, "nginx", "nginx:latest")(FakeCtx())
+        tasks.container_update_runner(COMPOSE, "nginx", "nginx:latest")(FakeJobContext())
     # The running container is left untouched.
     assert steps == []
 
@@ -199,7 +219,7 @@ def test_runner_stops_when_pull_fails(steps, monkeypatch):
 # --- project_for_container ------------------------------------------------------
 
 
-def test_project_for_container_matches_by_config_file(monkeypatch):
+def test_project_for_container_matches_by_config_file(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         repo_service,
         "discover_projects",
@@ -215,8 +235,8 @@ def test_project_for_container_matches_by_config_file(monkeypatch):
     assert repo_service.project_for_container("nope") is None
 
 
-def test_project_for_container_docker_down(monkeypatch):
-    def down(all_states=True):
+def test_project_for_container_docker_down(monkeypatch: pytest.MonkeyPatch) -> None:
+    def down(all_states: bool = True) -> NoReturn:
         raise docker_service.DockerUnavailable("down")
 
     monkeypatch.setattr(repo_service, "discover_projects", lambda: [_project()])
@@ -229,7 +249,7 @@ def test_project_for_container_docker_down(monkeypatch):
 
 
 @pytest.fixture
-def client():
+def client() -> Iterator[TestClient]:
     app.dependency_overrides[get_current_user] = lambda: SimpleNamespace(id=1, is_admin=True)
     try:
         yield TestClient(app)
@@ -238,10 +258,10 @@ def client():
 
 
 @pytest.fixture
-def submitted(monkeypatch):
-    calls = []
+def submitted(monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, str, JobRunner]]:
+    calls: list[tuple[str, str, JobRunner]] = []
 
-    def submit(kind, label, runner):
+    def submit(kind: str, label: str, runner: JobRunner) -> SimpleNamespace:
         calls.append((kind, label, runner))
         return SimpleNamespace(
             id="job1",
@@ -262,38 +282,50 @@ def submitted(monkeypatch):
     return calls
 
 
-def test_update_requires_login():
+def test_update_requires_login() -> None:
     assert TestClient(app).post("/api/containers/abc/update").status_code == 401
 
 
-def test_update_queues_job(client, submitted, monkeypatch):
-    monkeypatch.setattr(containers_api.docker_service, "get_container", lambda cid: _container())
-    monkeypatch.setattr(repo_service, "project_for_container", lambda cid: _project())
-    built = {}
+def test_update_queues_job(
+    client: TestClient,
+    submitted: list[tuple[str, str, JobRunner]],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        containers_api.docker_service, "get_container", lambda container_id: _container()
+    )
+    monkeypatch.setattr(repo_service, "project_for_container", lambda container_id: _project())
+    built: dict[str, Any] = {}
     monkeypatch.setattr(
         containers_api.tasks,
         "container_update_runner",
-        lambda path, service, image, project_name: (
-            built.update(path=path, service=service, image=image, project_name=project_name)
+        lambda compose_path, service, image, project_name: (
+            built.update(
+                compose_path=compose_path, service=service, image=image, project_name=project_name
+            )
             or "runner"
         ),
     )
 
-    res = client.post("/api/containers/abc/update")
+    response = client.post("/api/containers/abc/update")
 
-    assert res.status_code == 202
-    assert res.json()["id"] == "job1"
+    assert response.status_code == 202
+    assert response.json()["id"] == "job1"
     assert submitted == [(JobKind.CONTAINER_UPDATE, "Update web-nginx-1", "runner")]
     assert built == {
-        "path": COMPOSE,
+        "compose_path": COMPOSE,
         "service": "nginx",
         "image": "nginx:latest",
         "project_name": "web",
     }
 
 
-def test_update_unknown_container(client, submitted, monkeypatch):
-    def missing(cid):
+def test_update_unknown_container(
+    client: TestClient,
+    submitted: list[tuple[str, str, JobRunner]],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def missing(container_id: str) -> NoReturn:
         raise docker_service.DockerNotFound("container x not found")
 
     monkeypatch.setattr(containers_api.docker_service, "get_container", missing)
@@ -301,29 +333,43 @@ def test_update_unknown_container(client, submitted, monkeypatch):
     assert submitted == []
 
 
-def test_update_refuses_plain_container(client, submitted, monkeypatch):
+def test_update_refuses_plain_container(
+    client: TestClient,
+    submitted: list[tuple[str, str, JobRunner]],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.setattr(
-        containers_api.docker_service, "get_container", lambda cid: _container(service=None)
+        containers_api.docker_service,
+        "get_container",
+        lambda container_id: _container(service=None),
     )
-    res = client.post("/api/containers/abc/update")
-    assert res.status_code == 409
-    assert "not managed by Docker Compose" in res.json()["detail"]
+    response = client.post("/api/containers/abc/update")
+    assert response.status_code == 409
+    assert "not managed by Docker Compose" in response.json()["detail"]
     assert submitted == []
 
 
-def test_update_refuses_compose_container_outside_repo(client, submitted, monkeypatch):
-    monkeypatch.setattr(containers_api.docker_service, "get_container", lambda cid: _container())
-    monkeypatch.setattr(repo_service, "project_for_container", lambda cid: None)
-    res = client.post("/api/containers/abc/update")
-    assert res.status_code == 409
-    assert "No Compose file" in res.json()["detail"]
-    assert submitted == []
-
-
-def test_other_actions_still_routed(client, monkeypatch):
-    calls = []
+def test_update_refuses_compose_container_outside_repo(
+    client: TestClient,
+    submitted: list[tuple[str, str, JobRunner]],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.setattr(
-        containers_api.docker_service, "perform_action", lambda cid, a: calls.append((cid, a))
+        containers_api.docker_service, "get_container", lambda container_id: _container()
+    )
+    monkeypatch.setattr(repo_service, "project_for_container", lambda container_id: None)
+    response = client.post("/api/containers/abc/update")
+    assert response.status_code == 409
+    assert "No Compose file" in response.json()["detail"]
+    assert submitted == []
+
+
+def test_other_actions_still_routed(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[tuple[str, str]] = []
+    monkeypatch.setattr(
+        containers_api.docker_service,
+        "perform_action",
+        lambda container_id, action: calls.append((container_id, action)),
     )
     assert client.post("/api/containers/abc/restart").status_code == 200
     assert calls == [("abc", "restart")]

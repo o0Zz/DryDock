@@ -16,14 +16,14 @@ export default function Volumes() {
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
 
-  const refresh = useCallback(() => {
+  const refresh = useCallback((): void => {
     api
       .listVolumes()
-      .then((v) => {
-        setVolumes(v);
+      .then((volumeList) => {
+        setVolumes(volumeList);
         setError(null);
       })
-      .catch((e: Error) => setError(e.message));
+      .catch((loadError: Error) => setError(loadError.message));
   }, []);
 
   useEffect(() => {
@@ -33,51 +33,51 @@ export default function Volumes() {
   // Prunes run as background jobs; useJobs also re-attaches to unrelated ones
   // (scans), so only this page's own kind is shown.
   const { jobs, track, dismiss } = useJobs(refresh);
-  const pruneJobs = jobs.filter((j) => j.kind === "volume_prune");
+  const pruneJobs = jobs.filter((job) => job.kind === "volume_prune");
   const pruning = pruneJobs.some(isActive);
 
-  async function run(fn: () => Promise<unknown>, ok?: string) {
+  async function run(action: () => Promise<unknown>, successNotice?: string): Promise<void> {
     setBusy(true);
     setError(null);
     setNotice(null);
     try {
-      await fn();
-      if (ok) setNotice(ok);
+      await action();
+      if (successNotice) setNotice(successNotice);
       refresh();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Action failed");
+    } catch (actionError) {
+      setError(actionError instanceof Error ? actionError.message : "Action failed");
     } finally {
       setBusy(false);
     }
   }
 
-  function onCreate(e: FormEvent) {
-    e.preventDefault();
+  function onCreate(event: FormEvent): void {
+    event.preventDefault();
     run(async () => {
       await api.createVolume(name.trim());
       setName("");
     }, `Volume "${name.trim()}" created.`);
   }
 
-  async function onDelete(v: Volume) {
-    const ok = await confirm({
-      title: `Delete volume ${v.name}?`,
+  async function onDelete(volume: Volume): Promise<void> {
+    const confirmed = await confirm({
+      title: `Delete volume ${volume.name}?`,
       message: "The data in it will be lost.",
       confirmLabel: "Delete",
       tone: "danger",
     });
-    if (!ok) return;
-    run(() => api.deleteVolume(v.name), `Volume "${v.name}" removed.`);
+    if (!confirmed) return;
+    run(() => api.deleteVolume(volume.name), `Volume "${volume.name}" removed.`);
   }
 
-  async function onPrune() {
-    const ok = await confirm({
+  async function onPrune(): Promise<void> {
+    const confirmed = await confirm({
       title: "Prune unused volumes?",
       message: "Removes every volume no container uses. This cannot be undone.",
       confirmLabel: "Prune",
       tone: "danger",
     });
-    if (!ok) return;
+    if (!confirmed) return;
     run(async () => track(await api.pruneVolumes()));
   }
 
@@ -105,7 +105,7 @@ export default function Volumes() {
           <input
             placeholder="volume name"
             value={name}
-            onChange={(e) => setName(e.target.value)}
+            onChange={(event) => setName(event.target.value)}
           />
           <button type="submit" disabled={busy || !name.trim()}>
             <HardDrive size={15} /> Create
@@ -130,38 +130,38 @@ export default function Volumes() {
             </tr>
           </thead>
           <tbody>
-            {volumes.map((v) => {
-              const inUse = v.used_by.length > 0;
+            {volumes.map((volume) => {
+              const inUse = volume.used_by.length > 0;
               return (
-                <tr key={v.name}>
+                <tr key={volume.name}>
                   <td>
                     <span className="icon-link">
-                      <HardDrive size={15} /> {v.name}
+                      <HardDrive size={15} /> {volume.name}
                     </span>
                     <div className="muted">
-                      <code>{v.mountpoint}</code>
+                      <code>{volume.mountpoint}</code>
                     </div>
                   </td>
-                  <td>{v.driver}</td>
+                  <td>{volume.driver}</td>
                   <td>
                     {inUse ? (
-                      v.used_by.map((u) => (
-                        <div key={`${u.id}:${u.destination}`}>
+                      volume.used_by.map((attachment) => (
+                        <div key={`${attachment.id}:${attachment.destination}`}>
                           <Link
                             className="icon-link"
-                            to={`/containers/${u.id}`}
-                            title={u.running ? "running" : "stopped"}
+                            to={`/containers/${attachment.id}`}
+                            title={attachment.running ? "running" : "stopped"}
                           >
                             <Circle
                               size={8}
                               fill="currentColor"
-                              className={u.running ? "dot-running" : "dot-stopped"}
+                              className={attachment.running ? "dot-running" : "dot-stopped"}
                             />{" "}
-                            {u.name}
+                            {attachment.name}
                           </Link>
                           <div className="muted">
-                            <code>{u.destination}</code>
-                            {!u.rw && " (ro)"}
+                            <code>{attachment.destination}</code>
+                            {!attachment.rw && " (ro)"}
                           </div>
                         </div>
                       ))
@@ -169,9 +169,9 @@ export default function Volumes() {
                       <span className="badge">unused</span>
                     )}
                   </td>
-                  <td>{v.compose_project ?? "—"}</td>
+                  <td>{volume.compose_project ?? "—"}</td>
                   <td className="muted">
-                    {formatDate(v.created_at)}
+                    {formatDate(volume.created_at)}
                   </td>
                   <td>
                     <button
@@ -179,7 +179,7 @@ export default function Volumes() {
                       className="secondary small"
                       disabled={busy || inUse}
                       title={inUse ? "Volume is attached to a container" : "Delete volume"}
-                      onClick={() => onDelete(v)}
+                      onClick={() => onDelete(volume)}
                     >
                       <Trash2 size={14} /> Delete
                     </button>

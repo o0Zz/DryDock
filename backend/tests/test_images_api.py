@@ -1,6 +1,8 @@
 """/api/images routes, with docker_service stubbed out."""
 
+from collections.abc import Callable, Iterator
 from types import SimpleNamespace
+from typing import Any, NoReturn
 
 import pytest
 from fastapi.testclient import TestClient
@@ -12,7 +14,7 @@ from app.services import docker_service
 
 
 @pytest.fixture
-def client():
+def client() -> Iterator[TestClient]:
     # No `with`: the lifespan (DB init, scheduler) is not needed for these routes.
     app.dependency_overrides[get_current_user] = lambda: SimpleNamespace(id=1, is_admin=True)
     try:
@@ -21,21 +23,21 @@ def client():
         app.dependency_overrides.clear()
 
 
-def _raise(exc):
-    def fn(*args, **kwargs):
+def _raise(exc: Exception) -> Callable[..., NoReturn]:
+    def raise_exc(*args: Any, **kwargs: Any) -> NoReturn:
         raise exc
 
-    return fn
+    return raise_exc
 
 
-def test_requires_login():
-    anon = TestClient(app)
-    assert anon.get("/api/images").status_code == 401
-    assert anon.delete("/api/images", params={"image": "nginx"}).status_code == 401
-    assert anon.post("/api/images/prune").status_code == 401
+def test_requires_login() -> None:
+    anonymous = TestClient(app)
+    assert anonymous.get("/api/images").status_code == 401
+    assert anonymous.delete("/api/images", params={"image": "nginx"}).status_code == 401
+    assert anonymous.post("/api/images/prune").status_code == 401
 
 
-def test_list(client, monkeypatch):
+def test_list(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
     image = Image(
         id="sha256:1",
         tags=["nginx:latest"],
@@ -44,10 +46,10 @@ def test_list(client, monkeypatch):
     )
     monkeypatch.setattr(docker_service, "list_images", lambda: [image])
 
-    res = client.get("/api/images")
+    response = client.get("/api/images")
 
-    assert res.status_code == 200
-    assert res.json() == [
+    assert response.status_code == 200
+    assert response.json() == [
         {
             "id": "sha256:1",
             "tags": ["nginx:latest"],
@@ -58,13 +60,13 @@ def test_list(client, monkeypatch):
     ]
 
 
-def test_list_docker_down(client, monkeypatch):
+def test_list_docker_down(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         docker_service, "list_images", _raise(docker_service.DockerUnavailable("down"))
     )
-    res = client.get("/api/images")
-    assert res.status_code == 503
-    assert "down" in res.json()["detail"]
+    response = client.get("/api/images")
+    assert response.status_code == 503
+    assert "down" in response.json()["detail"]
 
 
 @pytest.mark.parametrize(
@@ -77,19 +79,24 @@ def test_list_docker_down(client, monkeypatch):
         ({"image": "localhost:5000/app:1.0", "force": "true"}, ("localhost:5000/app:1.0", True)),
     ],
 )
-def test_delete_passes_reference_and_force(client, monkeypatch, params, expected):
-    calls = []
+def test_delete_passes_reference_and_force(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    params: dict[str, str],
+    expected: tuple[str, bool],
+) -> None:
+    calls: list[tuple[str, bool]] = []
     monkeypatch.setattr(
         docker_service, "remove_image", lambda image, force: calls.append((image, force))
     )
 
-    res = client.delete("/api/images", params=params)
+    response = client.delete("/api/images", params=params)
 
-    assert res.status_code == 204
+    assert response.status_code == 204
     assert calls == [expected]
 
 
-def test_delete_requires_image(client):
+def test_delete_requires_image(client: TestClient) -> None:
     assert client.delete("/api/images").status_code == 422
     assert client.delete("/api/images", params={"image": ""}).status_code == 422
 
@@ -102,7 +109,9 @@ def test_delete_requires_image(client):
         (docker_service.DockerUnavailable("down"), 503),
     ],
 )
-def test_delete_errors(client, monkeypatch, exc, code):
+def test_delete_errors(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch, exc: Exception, code: int
+) -> None:
     monkeypatch.setattr(docker_service, "remove_image", _raise(exc))
-    res = client.delete("/api/images", params={"image": "ghost:1"})
-    assert res.status_code == code
+    response = client.delete("/api/images", params={"image": "ghost:1"})
+    assert response.status_code == code
