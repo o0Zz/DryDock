@@ -76,8 +76,8 @@ def project_from_path(compose_path: Path) -> Project:
     return _project_from_compose(compose_path, settings.repo_path.resolve())
 
 
-def discover_projects(repo_root: Path | None = None) -> list[Project]:
-    root = (repo_root or settings.repo_path).resolve()
+def discover_projects() -> list[Project]:
+    root = settings.repo_path.resolve()
     if not root.exists() or not root.is_dir():
         logger.info("Repo path %s does not exist or is not a directory", root)
         return []
@@ -117,11 +117,11 @@ def _filename_priority(name: str) -> int:
     return order.get(name, 99)
 
 
-def referenced_images(repo_root: Path | None = None) -> list[str]:
+def referenced_images() -> list[str]:
     """Distinct images named by any service across every discovered project."""
     images = {
         service.image
-        for project in discover_projects(repo_root)
+        for project in discover_projects()
         for service in project.services
         if service.image
     }

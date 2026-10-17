@@ -46,8 +46,6 @@ class Finding:
 class ScanResult:
     counts: dict[str, int]
     findings: list[Finding] = field(default_factory=list)
-    # True when findings were cut off by MAX_FINDINGS.
-    truncated: bool = False
 
 
 def _parse(payload: dict) -> ScanResult:
@@ -87,8 +85,7 @@ def _parse(payload: dict) -> ScanResult:
             f.vulnerability_id,
         )
     )
-    truncated = len(findings) > MAX_FINDINGS
-    return ScanResult(counts=counts, findings=findings[:MAX_FINDINGS], truncated=truncated)
+    return ScanResult(counts=counts, findings=findings[:MAX_FINDINGS])
 
 
 def scan_image(image: str) -> ScanResult:

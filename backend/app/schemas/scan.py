@@ -22,10 +22,6 @@ class ScanSummary(BaseModel):
     # Populated when the scan itself failed (e.g. trivy error); counts are 0.
     error: str | None = None
 
-    @property
-    def total(self) -> int:
-        return self.critical + self.high + self.medium + self.low + self.unknown
-
 
 class ScanFindingRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)

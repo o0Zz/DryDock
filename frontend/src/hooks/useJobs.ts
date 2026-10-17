@@ -72,7 +72,7 @@ export function useJobs(onSettled?: () => void) {
       window.clearInterval(timer);
     };
     // Re-arm whenever the set of unfinished jobs changes.
-  }, [active.map((j) => j.id).join(",")]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [active.map((j) => j.id).join(",")]);
 
   return { jobs, track, dismiss, busy: active.length > 0 };
 }

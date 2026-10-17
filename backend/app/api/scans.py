@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import logging
-
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
@@ -12,8 +10,6 @@ from app.models.scan import Scan
 from app.schemas.job import JobRead
 from app.schemas.scan import ScanDetail, ScanRequest, ScanSummary
 from app.services import job_service, tasks, trivy_service
-
-logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/scans", tags=["scans"])
 

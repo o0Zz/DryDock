@@ -105,12 +105,12 @@ def _compose(
 PULL_TIMEOUT = 1800
 
 
-def run_action(compose_path: Path, action: str, *, detached: bool = True) -> dict:
+def run_action(compose_path: Path, action: str) -> dict:
     if action not in ALLOWED_ACTIONS:
         raise ComposeError(f"Unsupported action: {action}")
 
     args = [action]
-    if action == "up" and detached:
+    if action == "up":
         args.append("-d")
     # `up` pulls missing images too, so both can take as long as a pull.
     timeout = PULL_TIMEOUT if action in ("up", "pull") else 300

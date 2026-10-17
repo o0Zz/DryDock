@@ -46,7 +46,6 @@ def update_user(
     user_id: int,
     body: UserUpdate,
     db: Session = Depends(get_db),
-    current: User = Depends(require_admin),
 ) -> User:
     user = db.get(User, user_id)
     if user is None:
@@ -69,7 +68,6 @@ def update_user(
     if body.is_active is not None:
         user.is_active = body.is_active
 
-    db.add(user)
     db.commit()
     db.refresh(user)
     return user

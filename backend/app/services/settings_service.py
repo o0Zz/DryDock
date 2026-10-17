@@ -72,10 +72,6 @@ def get_all(db: Session) -> dict[str, Any]:
     return values
 
 
-def get(db: Session, key: str) -> Any:
-    return get_all(db).get(key, DEFAULTS.get(key))
-
-
 def set_many(db: Session, values: dict[str, Any]) -> dict[str, Any]:
     unknown = sorted(set(values) - set(DEFAULTS))
     if unknown:

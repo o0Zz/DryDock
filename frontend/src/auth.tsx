@@ -6,7 +6,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { api, ApiError } from "./api";
+import { api } from "./api";
 import type { User } from "./types";
 
 interface AuthState {
@@ -14,7 +14,6 @@ interface AuthState {
   loading: boolean;
   login: (username: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
-  refresh: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthState | undefined>(undefined);
@@ -26,9 +25,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const refresh = useCallback(async () => {
     try {
       setUser(await api.me());
-    } catch (err) {
-      if (err instanceof ApiError && err.status === 401) setUser(null);
-      else setUser(null);
+    } catch {
+      setUser(null);
     } finally {
       setLoading(false);
     }
@@ -58,7 +56,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout, refresh }}>
+    <AuthContext.Provider value={{ user, loading, login, logout }}>
       {children}
     </AuthContext.Provider>
   );
