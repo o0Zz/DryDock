@@ -15,6 +15,7 @@ import {
 import { lazy, Suspense, useCallback, useEffect, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { api } from "../api";
+import { useConfirm, type ConfirmOptions } from "../components/ConfirmDialog";
 import LogPanel from "../components/LogPanel";
 import { useJobs } from "../hooks/useJobs";
 import { imageRepo, retagImage } from "../imageRef";
@@ -35,8 +36,13 @@ const ACTION_ICONS: Record<Action, LucideIcon> = {
 };
 
 // `down` removes containers and networks, so it gets a confirmation step.
-const CONFIRM: Partial<Record<Action, string>> = {
-  down: "Bring this stack down? Its containers and networks will be removed.",
+const CONFIRM: Partial<Record<Action, ConfirmOptions>> = {
+  down: {
+    title: "Bring this stack down?",
+    message: "Its containers and networks will be removed. Named volumes are kept.",
+    confirmLabel: "Down",
+    tone: "danger",
+  },
 };
 
 // Must match the job label built by the backend route (`Up web`, `Pull web`).
@@ -49,6 +55,7 @@ function isRunning(job: Job): boolean {
 }
 
 export default function ProjectDetail() {
+  const confirm = useConfirm();
   const { id = "" } = useParams();
   const [project, setProject] = useState<Project | null>(null);
   const [compose, setCompose] = useState<string>("");
@@ -117,7 +124,7 @@ export default function ProjectDetail() {
   const runAction = useCallback(
     async (action: Action) => {
       const question = CONFIRM[action];
-      if (question && !window.confirm(question)) return;
+      if (question && !(await confirm(question))) return;
 
       setActionError(null);
       try {

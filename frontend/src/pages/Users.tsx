@@ -11,9 +11,11 @@ import {
 import { useEffect, useState, type FormEvent } from "react";
 import { api } from "../api";
 import { useAuth } from "../auth";
+import { useConfirm } from "../components/ConfirmDialog";
 import type { User } from "../types";
 
 export default function Users() {
+  const confirm = useConfirm();
   const { user: me } = useAuth();
   const [users, setUsers] = useState<User[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -71,8 +73,14 @@ export default function Users() {
     run(() => api.updateUser(u.id, { password: pw }));
   }
 
-  function remove(u: User) {
-    if (!window.confirm(`Delete user "${u.username}"? This cannot be undone.`)) return;
+  async function remove(u: User) {
+    const ok = await confirm({
+      title: `Delete user ${u.username}?`,
+      message: "This cannot be undone.",
+      confirmLabel: "Delete",
+      tone: "danger",
+    });
+    if (!ok) return;
     run(() => api.deleteUser(u.id));
   }
 

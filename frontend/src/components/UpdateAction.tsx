@@ -1,6 +1,7 @@
-import { ArrowUpCircle } from "lucide-react";
+import { ArrowUpCircle, Download, HardDrive, RotateCw } from "lucide-react";
 import { Link } from "react-router-dom";
 import { api } from "../api";
+import { useConfirm } from "./ConfirmDialog";
 import type { Container, Job, Project, UpdateSummary } from "../types";
 
 /**
@@ -28,6 +29,7 @@ export default function UpdateAction({
   onJob: (job: Job) => void;
   onError: (message: string) => void;
 }) {
+  const confirm = useConfirm();
   if (!update) return null;
   const details = `/containers/${container.id}?tab=updates`;
 
@@ -65,10 +67,30 @@ export default function UpdateAction({
   }
 
   async function run() {
-    const question =
-      `Pull the latest ${container.image} and recreate ${container.name}?\n` +
-      "The container restarts; data in volumes is kept.";
-    if (!window.confirm(question)) return;
+    const ok = await confirm({
+      title: `Update ${container.name}?`,
+      icon: ArrowUpCircle,
+      confirmLabel: "Pull & recreate",
+      message: (
+        <>
+          <p>
+            A newer <code>{container.image}</code> was published.
+          </p>
+          <ol className="confirm-steps">
+            <li>
+              <Download size={15} /> Pull the new image
+            </li>
+            <li>
+              <RotateCw size={15} /> Recreate the container (brief downtime)
+            </li>
+            <li>
+              <HardDrive size={15} /> Volumes and their data are kept
+            </li>
+          </ol>
+        </>
+      ),
+    });
+    if (!ok) return;
     try {
       onJob(await api.updateContainer(container.id));
     } catch (e) {

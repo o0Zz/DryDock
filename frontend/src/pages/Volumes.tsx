@@ -2,11 +2,13 @@ import { Circle, HardDrive, RefreshCw, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api";
+import { useConfirm } from "../components/ConfirmDialog";
 import JobList from "../components/JobList";
 import { useJobs } from "../hooks/useJobs";
 import type { Volume } from "../types";
 
 export default function Volumes() {
+  const confirm = useConfirm();
   const [volumes, setVolumes] = useState<Volume[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -56,13 +58,25 @@ export default function Volumes() {
     }, `Volume "${name.trim()}" created.`);
   }
 
-  function onDelete(v: Volume) {
-    if (!window.confirm(`Delete volume "${v.name}"? Data in it will be lost.`)) return;
+  async function onDelete(v: Volume) {
+    const ok = await confirm({
+      title: `Delete volume ${v.name}?`,
+      message: "The data in it will be lost.",
+      confirmLabel: "Delete",
+      tone: "danger",
+    });
+    if (!ok) return;
     run(() => api.deleteVolume(v.name), `Volume "${v.name}" removed.`);
   }
 
-  function onPrune() {
-    if (!window.confirm("Remove all unused volumes? This cannot be undone.")) return;
+  async function onPrune() {
+    const ok = await confirm({
+      title: "Prune unused volumes?",
+      message: "Removes every volume no container uses. This cannot be undone.",
+      confirmLabel: "Prune",
+      tone: "danger",
+    });
+    if (!ok) return;
     run(async () => track(await api.pruneVolumes()));
   }
 

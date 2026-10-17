@@ -16,6 +16,7 @@ import { api } from "../api";
 import { useAuth } from "../auth";
 import JobList from "../components/JobList";
 import Meter, { formatBytes } from "../components/Meter";
+import { useConfirm } from "../components/ConfirmDialog";
 import ScanBadge from "../components/ScanBadge";
 import UpdateAction from "../components/UpdateAction";
 import { useContainerStats } from "../hooks/useContainerStats";
@@ -52,6 +53,7 @@ export default function Containers() {
   const stats = useContainerStats();
   const navigate = useNavigate();
   const [busy, setBusy] = useState<string | null>(null);
+  const confirm = useConfirm();
 
   const refresh = useCallback(() => {
     api
@@ -124,7 +126,13 @@ export default function Containers() {
 
   const remove = useCallback(
     async (c: Container) => {
-      if (!window.confirm(`Delete container "${c.name}"? Its named volumes are kept.`)) return;
+      const ok = await confirm({
+        title: `Delete container ${c.name}?`,
+        message: "Its named volumes are kept.",
+        confirmLabel: "Delete",
+        tone: "danger",
+      });
+      if (!ok) return;
       setBusy(`${c.id}:delete`);
       try {
         await api.deleteContainer(c.id);
@@ -135,7 +143,7 @@ export default function Containers() {
         setBusy(null);
       }
     },
-    [refresh],
+    [refresh, confirm],
   );
 
   // An image counts as "pending" while a job that names it is still in flight,

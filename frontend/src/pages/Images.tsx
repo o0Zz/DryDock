@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "../api";
+import { useConfirm } from "../components/ConfirmDialog";
 import JobList from "../components/JobList";
 import { formatBytes } from "../components/Meter";
 import ScanBadge from "../components/ScanBadge";
@@ -42,6 +43,7 @@ function rank(row: Row): [number, number, number, string] {
 }
 
 export default function Images() {
+  const confirm = useConfirm();
   const [scans, setScans] = useState<ScanSummary[]>([]);
   const [updates, setUpdates] = useState<UpdateSummary[]>([]);
   const [running, setRunning] = useState<Set<string>>(new Set());
@@ -168,31 +170,49 @@ export default function Images() {
   );
 
   const onDelete = useCallback(
-    (row: Row) => {
+    async (row: Row) => {
       const stopped = (row.local?.used_by ?? []).map((u) => u.name);
-      const message = stopped.length
-        ? `Delete image "${row.image}"? Stopped container(s) ${stopped.join(", ")} ` +
-          "still use it, so Docker will only untag it. Remove those containers to free the space."
-        : `Delete image "${row.image}"?`;
-      if (!window.confirm(message)) return;
+      const ok = await confirm({
+        title: `Delete image ${row.image}?`,
+        message: stopped.length
+          ? `Stopped container(s) ${stopped.join(", ")} still use it, so Docker will only ` +
+            "untag it. Remove those containers to free the space."
+          : "It will need to be pulled again to be used.",
+        confirmLabel: "Delete",
+        tone: "danger",
+      });
+      if (!ok) return;
       remove(async () => {
         await api.deleteImage(row.image, stopped.length > 0);
         return `Image "${row.image}" removed.`;
       });
     },
-    [remove],
+    [remove, confirm],
   );
 
   const onPrune = useCallback(
-    (all: boolean) => {
-      const message = all
-        ? "Remove every image not used by a container (running or stopped)? " +
-          "They will need to be pulled again."
-        : "Remove dangling (untagged) images?";
-      if (!window.confirm(message)) return;
+    async (all: boolean) => {
+      const ok = await confirm(
+        all
+          ? {
+              title: "Prune unused images?",
+              message:
+                "Removes every image no container uses, running or stopped. " +
+                "They will need to be pulled again.",
+              confirmLabel: "Prune unused",
+              tone: "danger",
+            }
+          : {
+              title: "Prune dangling images?",
+              message: "Removes untagged images left behind by pulls and builds.",
+              confirmLabel: "Prune dangling",
+              tone: "danger",
+            },
+      );
+      if (!ok) return;
       start(() => api.pruneImages(all));
     },
-    [start],
+    [start, confirm],
   );
 
   const openDetail = useCallback(async (scan: ScanSummary) => {
