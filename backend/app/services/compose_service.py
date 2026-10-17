@@ -29,7 +29,7 @@ def read_compose(compose_path: Path) -> str:
     return compose_path.read_text(encoding="utf-8")
 
 
-def validate_yaml(content: str) -> dict:
+def _validate_yaml(content: str) -> None:
     try:
         data = yaml.safe_load(content)
     except yaml.YAMLError as exc:
@@ -38,10 +38,9 @@ def validate_yaml(content: str) -> dict:
         raise ComposeError("Compose file must be a YAML mapping at the root")
     if "services" not in data or not isinstance(data["services"], dict):
         raise ComposeError("Compose file must contain a 'services' mapping")
-    return data
 
 
-def backup_compose(project_id: str, compose_path: Path) -> Path:
+def _backup_compose(project_id: str, compose_path: Path) -> Path:
     backup_dir = settings.backups_path / project_id
     backup_dir.mkdir(parents=True, exist_ok=True)
     ts = datetime.now(tz=UTC).strftime("%Y%m%dT%H%M%SZ")
@@ -52,8 +51,8 @@ def backup_compose(project_id: str, compose_path: Path) -> Path:
 
 
 def write_compose(project_id: str, compose_path: Path, content: str) -> Path:
-    validate_yaml(content)
-    backup = backup_compose(project_id, compose_path)
+    _validate_yaml(content)
+    backup = _backup_compose(project_id, compose_path)
     compose_path.write_text(content, encoding="utf-8")
     return backup
 
@@ -61,7 +60,7 @@ def write_compose(project_id: str, compose_path: Path, content: str) -> Path:
 def create_compose(name: str, content: str) -> Path:
     """Create `<repo>/<name>/docker-compose.yml`. `name` must already be a safe
     single path segment (the API schema enforces it)."""
-    validate_yaml(content)
+    _validate_yaml(content)
     project_dir = settings.repo_path / name
     if any((project_dir / f).exists() for f in COMPOSE_FILENAMES):
         raise ComposeExists(f"A compose file already exists in '{name}/'")

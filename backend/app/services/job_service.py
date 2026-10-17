@@ -73,7 +73,7 @@ def _prune(db: Session) -> None:
         db.commit()
 
 
-def find_active(kind: str, label: str) -> Job | None:
+def _find_active(kind: str, label: str) -> Job | None:
     with SessionLocal() as db:
         return db.scalar(
             select(Job).where(
@@ -84,7 +84,7 @@ def find_active(kind: str, label: str) -> Job | None:
 
 def submit(kind: str, label: str, runner: JobRunner, *, trigger: str = "manual") -> Job:
     """Queue a job. An identical job already in flight is returned as-is."""
-    existing = find_active(kind, label)
+    existing = _find_active(kind, label)
     if existing is not None:
         logger.info("Reusing in-flight job %s (%s)", existing.id, label)
         return existing
