@@ -7,6 +7,7 @@ import {
   Layers,
   ShieldAlert,
   ShieldQuestion,
+  Server,
 } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
@@ -116,7 +117,13 @@ function HostFacts({ host, usage }: { host: HostInfo | null; usage: HostUsage | 
 
 function Attention({ stats }: { stats: DashboardStats }) {
   const { unhealthy_containers, most_vulnerable, updates } = stats;
-  if (!unhealthy_containers.length && !most_vulnerable.length && !updates.length) {
+  const hostNeedsAttention = stats.host_security_updates > 0 || stats.host_reboot_required;
+  if (
+    !unhealthy_containers.length &&
+    !most_vulnerable.length &&
+    !updates.length &&
+    !hostNeedsAttention
+  ) {
     return <p className="muted">Nothing needs attention.</p>;
   }
   const moreUpdates = stats.updates_available - updates.length;
@@ -181,6 +188,27 @@ function Attention({ stats }: { stats: DashboardStats }) {
               and {moreUpdates} more
             </Link>
           )}
+        </div>
+      )}
+      {hostNeedsAttention && (
+        <div className="attention-card">
+          <h3>
+            <Server size={15} /> Host
+          </h3>
+          <ul className="attention-list">
+            {stats.host_security_updates > 0 && (
+              <li>
+                <Link to="/host">Security updates</Link>
+                <span className="badge sev-critical">{stats.host_security_updates}</span>
+              </li>
+            )}
+            {stats.host_reboot_required && (
+              <li>
+                <Link to="/host">Reboot required</Link>
+                <span className="muted">new kernel or libraries</span>
+              </li>
+            )}
+          </ul>
         </div>
       )}
     </div>
@@ -269,6 +297,26 @@ export default function Dashboard() {
           to="/images"
         />
         <Stat icon={<HardDrive size={22} />} value={stats.volumes} label="Volumes" to="/volumes" />
+        <Stat
+          icon={<Server size={22} />}
+          value={stats.host_updates ?? "—"}
+          label="Host OS updates"
+          detail={
+            stats.host_security_updates > 0 ? (
+              <span className="stat-detail-warn">{stats.host_security_updates} security</span>
+            ) : stats.host_updates === null ? (
+              "Not checked"
+            ) : undefined
+          }
+          tone={
+            stats.host_security_updates > 0
+              ? "danger"
+              : stats.host_updates
+                ? "warn"
+                : undefined
+          }
+          to="/host"
+        />
       </div>
 
       <section className="section">
@@ -291,6 +339,10 @@ export default function Dashboard() {
           <li>
             <span className="muted">Last update check</span>
             <strong>{formatDate(stats.last_update_check_at, "never")}</strong>
+          </li>
+          <li>
+            <span className="muted">Last host update check</span>
+            <strong>{formatDate(stats.last_host_update_check_at, "never")}</strong>
           </li>
         </ul>
         <div className="button-row">

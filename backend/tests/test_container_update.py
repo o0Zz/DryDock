@@ -146,6 +146,38 @@ def test_run_action_reports_failure_instead_of_raising(runs: SimpleNamespace) ->
     assert compose_service.run_action(COMPOSE, "pull")["exit_code"] == 1
 
 
+def test_reload_stops_then_ups(runs: SimpleNamespace) -> None:
+    runs.results += [(0, "", "Stopped\n"), (0, "", "Recreated\n")]
+
+    result = compose_service.run_action(COMPOSE, "reload", project_name="web")
+
+    base = ["docker", "compose", "-f", str(COMPOSE), "-p", "web"]
+    assert [command for command, _ in runs.calls] == [base + ["stop"], base + ["up", "-d"]]
+    assert result == {
+        "action": "reload",
+        "exit_code": 0,
+        "stdout": "",
+        "stderr": "Stopped\nRecreated\n",
+    }
+
+
+def test_reload_skips_up_when_stop_fails(runs: SimpleNamespace) -> None:
+    runs.results.append((1, "", "cannot stop"))
+
+    result = compose_service.run_action(COMPOSE, "reload")
+
+    assert len(runs.calls) == 1
+    assert result["exit_code"] == 1
+    assert result["stderr"] == "cannot stop"
+
+
+def test_restart_is_no_longer_a_project_action() -> None:
+    # `docker compose restart` ignores Compose file edits; `reload` replaces it.
+    assert "restart" not in compose_service.ALLOWED_ACTIONS
+    with pytest.raises(compose_service.ComposeError):
+        compose_service.run_action(COMPOSE, "restart")
+
+
 # --- job body -----------------------------------------------------------------
 
 

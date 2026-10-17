@@ -73,6 +73,12 @@ class DashboardStats(BaseModel):
     most_vulnerable: list[ImageRisk] = []
     updates: list[ImageUpdate] = []
     host: HostInfo | None = None
+    # Pending OS package updates on the host; None until the first check,
+    # or when the host has no apt.
+    host_updates: int | None = None
+    host_security_updates: int = 0
+    host_reboot_required: bool = False
+    last_host_update_check_at: UtcDatetime | None = None
     # Set when the Docker daemon could not be reached, so the UI can say so
     # instead of silently reporting zero containers.
     docker_error: str | None = None

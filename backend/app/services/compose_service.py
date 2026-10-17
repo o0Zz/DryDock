@@ -15,7 +15,7 @@ from app.services.repo_service import COMPOSE_FILENAMES
 
 logger = logging.getLogger(__name__)
 
-ALLOWED_ACTIONS = {"up", "down", "pull", "restart", "stop"}
+ALLOWED_ACTIONS = {"up", "down", "pull", "reload", "stop"}
 
 
 class ComposeError(Exception):
@@ -186,18 +186,34 @@ def run_action(compose_path: Path, action: str, *, project_name: str | None = No
     if action not in ALLOWED_ACTIONS:
         raise ComposeError(f"Unsupported action: {action}")
 
-    args = [action]
-    if action == "up":
-        args.append("-d")
-    # `up` pulls missing images too, so both can take as long as a pull.
-    timeout = PULL_TIMEOUT if action in ("up", "pull") else 300
-    result = _compose(compose_path, args, project_name=project_name, timeout=timeout)
+    # `reload` applies an edited Compose file. `docker compose restart` would not:
+    # it restarts the existing containers with the config they were created with.
+    # `up` after the stop recreates the services whose config changed.
+    if action == "reload":
+        steps = [["stop"], ["up", "-d"]]
+    elif action == "up":
+        steps = [["up", "-d"]]
+    else:
+        steps = [[action]]
+
+    stdout: list[str] = []
+    stderr: list[str] = []
+    exit_code = 0
+    for args in steps:
+        # `up` pulls missing images too, so both can take as long as a pull.
+        timeout = PULL_TIMEOUT if args[0] in ("up", "pull") else 300
+        result = _compose(compose_path, args, project_name=project_name, timeout=timeout)
+        stdout.append(result.stdout)
+        stderr.append(result.stderr)
+        exit_code = result.returncode
+        if exit_code != 0:
+            break
 
     return {
         "action": action,
-        "exit_code": result.returncode,
-        "stdout": result.stdout,
-        "stderr": result.stderr,
+        "exit_code": exit_code,
+        "stdout": "".join(stdout),
+        "stderr": "".join(stderr),
     }
 
 

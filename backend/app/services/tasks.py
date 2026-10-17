@@ -20,6 +20,7 @@ from app.schemas.project import Project
 from app.services import (
     compose_service,
     docker_service,
+    host_updates_service,
     notify_service,
     repo_service,
     settings_service,
@@ -212,6 +213,37 @@ def update_check_runner(resolve: ImageResolver, *, notify: bool = False) -> JobR
         ctx.note(message)
         if notify:
             _maybe_notify_updates(ctx.db, checks)
+
+    return run
+
+
+def host_update_check_runner(*, notify: bool = False) -> JobRunner:
+    """Build a job body that reads the host's pending OS package updates."""
+
+    def run(ctx: JobContext) -> None:
+        ctx.set_total(1, "Reading the host's package state")
+        row = host_updates_service.check(ctx.db)
+        if row.error:
+            raise docker_service.HostCommandFailed(row.error)
+        if not row.supported:
+            ctx.advance("The host has no apt: only Debian and Ubuntu are supported")
+            return
+        message = f"{row.upgradable} host package(s) to update, {row.security} security"
+        if row.reboot_required:
+            message += ", reboot required"
+        ctx.advance(message)
+        if notify and row.security:
+            config = settings_service.get_all(ctx.db)
+            if config["notify_on_update"]:
+                notify_service.send(
+                    config["notify_webhook_url"],
+                    "host.updates",
+                    {
+                        "upgradable": row.upgradable,
+                        "security": row.security,
+                        "reboot_required": row.reboot_required,
+                    },
+                )
 
     return run
 

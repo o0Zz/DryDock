@@ -37,6 +37,13 @@ def _run_scheduled_update_check() -> None:
         tasks.update_check_runner(tasks.all_known_images, notify=True),
         trigger="schedule",
     )
+    # Host packages follow the image update schedule, so one switch covers both.
+    job_service.submit(
+        JobKind.HOST_UPDATE_CHECK,
+        "Scheduled host update check",
+        tasks.host_update_check_runner(notify=True),
+        trigger="schedule",
+    )
 
 
 def start() -> None:

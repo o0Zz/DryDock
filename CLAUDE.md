@@ -29,7 +29,7 @@ backend/
     services/          logic: docker_service, compose_service, repo_service, trivy_service,
                        registry_service, update_service, job_service, tasks, scheduler_service,
                        settings_service, notify_service, history_service, host_service,
-                       volume_files_service
+                       volume_files_service, host_updates_service, fail2ban_service
   migrations/versions/ Alembic revisions
   tests/               pytest
 frontend/src/
@@ -70,9 +70,13 @@ Dockerfile             3-stage build (frontend, backend venv, runtime with docke
   - Listing runs `find <dir>/ -mindepth 1 -maxdepth 1 -exec stat -c '%f %s %Y %n' {} +`. It works with GNU and busybox tools. Folders over 2000 entries are cut and flagged `truncated`.
   - Download creates the helper without starting it and streams the file out with `get_archive` (`docker cp`). Only regular files download. The helper is removed when the stream ends.
   - The helper uses DryDock's own image, so nothing is pulled. Outside a container (dev) it falls back to `DRYDOCK_HELPER_IMAGE`, pulled on first use.
+- **Host helpers** (`docker_service.run_on_host`, `read_host_file`): same idea as volume files, for host paths. They mount with a `Mount`, not a `volumes` bind, so a missing source fails instead of creating an empty folder on the host.
+  - Host updates (`host_updates_service`): a helper mounts `/` read-only at `/host` and runs `chroot /host sh -c SCRIPT`. The host's own `apt list --upgradable` reads the host's package state. Packages from a `*-security` suite count as security updates. "Reboot required" is `/var/run/reboot-required`, or the running kernel's `/lib/modules` folder being gone. It runs with the image update check schedule and keeps the last 30 rows. No apt on the host gives `supported = false`.
+  - The list is only as fresh as the host's last `apt update`. The page flags lists older than 7 days.
+  - fail2ban (`fail2ban_service`, admin only): `read_host_file` copies `DRYDOCK_FAIL2BAN_DB` out, and `sqlite3` opens it in memory (`deserialize`). Active bans come from `bips` (0.11+), history from `bans`. The history only goes back fail2ban's `dbpurgeage` (1 day by default).
 - **Auth:** signed session cookie (Starlette `SessionMiddleware`), users table with an `is_admin` flag. A bootstrap admin is created on first start.
   - API tokens (`api_tokens` table, `/api/tokens`): `get_current_user` also accepts `Authorization: Bearer ddt_...`. Only a SHA-256 of the token is stored, and the token acts as its user. `last_used_at` is written at most once a minute.
-  - Admin only: settings writes, users, app logs, console, unmasked env values, `.env` files, volume files, registry credentials.
+  - Admin only: settings writes, users, app logs, console, unmasked env values, `.env` files, volume files, registry credentials, fail2ban.
   - The console WebSocket is outside the HTTP auth dependency. It checks the session and the `Origin` header itself. Keep that check: other apps on the same host are same-site, so the browser sends them the cookie too.
 - **Registry credentials** (`registry_auth_service`): stored in a standard Docker `config.json` at `<data>/docker/` (base64 `auths`, mode 600). `docker compose` and `trivy` get `DOCKER_CONFIG` pointing there (`subprocess_env()`), the digest check passes `auth_config` to the daemon, and the tag check logs in to the token endpoint. Saving a login first checks it with `docker login` on a throwaway client. Credential helpers (`credsStore`) are not supported.
 - **Trivy** runs with `--cache-dir <data>/trivy-cache`, so its DB survives the container being recreated.

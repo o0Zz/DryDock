@@ -7,6 +7,7 @@ import {
   LogOut,
   Network,
   Boxes,
+  Server,
   ScrollText,
   Settings as SettingsIcon,
   Users as UsersIcon,
@@ -17,6 +18,7 @@ import JobsIndicator from "./components/JobsIndicator";
 import ContainerDetail from "./pages/ContainerDetail";
 import Containers from "./pages/Containers";
 import Dashboard from "./pages/Dashboard";
+import Host from "./pages/Host";
 import Images from "./pages/Images";
 import Login from "./pages/Login";
 import Logs from "./pages/Logs";
@@ -78,6 +80,9 @@ export default function App() {
           <NavLink to="/images">
             <Layers size={18} /> Images
           </NavLink>
+          <NavLink to="/host">
+            <Server size={18} /> Host
+          </NavLink>
           <NavLink to="/settings">
             <SettingsIcon size={18} /> Settings
           </NavLink>
@@ -106,6 +111,7 @@ export default function App() {
           <Route path="/networks" element={<Networks />} />
           <Route path="/images" element={<Images />} />
           <Route path="/scans" element={<Navigate to="/images" replace />} />
+          <Route path="/host" element={<Host />} />
           <Route path="/settings" element={<Settings />} />
           {user.is_admin && <Route path="/logs" element={<Logs />} />}
           {user.is_admin && <Route path="/users" element={<Users />} />}

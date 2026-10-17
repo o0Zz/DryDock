@@ -29,6 +29,8 @@ class Settings(BaseSettings):
     # Image for the helper containers that read volume files. DryDock uses its
     # own image when it runs in a container; this is the fallback (dev).
     helper_image: str = "busybox:stable"
+    # fail2ban's database on the host, read through a helper container.
+    fail2ban_db: str = "/var/lib/fail2ban/fail2ban.sqlite3"
     cors_origins: list[str] = Field(default_factory=lambda: ["http://localhost:5173"])
     # Set when served under a sub-path by a reverse proxy, e.g. "/drydock".
     root_path: str = ""

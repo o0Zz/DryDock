@@ -20,7 +20,7 @@ from docker.models.containers import Container as DockerContainer
 from docker.models.images import Image as DockerImage
 from docker.models.networks import Network as DockerNetwork
 from docker.models.volumes import Volume as DockerVolume
-from docker.types import LogConfig
+from docker.types import LogConfig, Mount
 
 from app.schemas.common import PruneResult
 from app.schemas.container import (
@@ -858,6 +858,86 @@ def open_volume_file(name: str, path: str, *, image: str) -> VolumeFile:
     return VolumeFile(
         name=posixpath.basename(path), size=int(file_stat.get("size", 0)), chunks=chunks()
     )
+
+
+# --- Host helpers ------------------------------------------------------------
+
+# Where host helper containers mount the host path they read.
+HOST_ROOT = "/host"
+# A host file is read into memory; the fail2ban database is a few MB.
+_MAX_HOST_FILE = 64 * 1024 * 1024
+
+
+class HostCommandFailed(Exception):
+    """Raised when a command run on the host through a helper exits non-zero."""
+
+
+def _host_helper_options(source: str, image: str, purpose: str) -> dict[str, Any]:
+    return {
+        "image": image,
+        # A Mount, unlike a `volumes` bind, fails on a missing source instead of
+        # creating an empty folder on the host.
+        "mounts": [Mount(target=HOST_ROOT, source=source, type="bind", read_only=True)],
+        "network_mode": "none",
+        "labels": {"drydock.helper": purpose},
+    }
+
+
+def _missing_source(exc: APIError) -> bool:
+    return "bind source path does not exist" in str(exc)
+
+
+def run_on_host(script: str, *, image: str) -> str:
+    """Output of `sh -c script` chrooted into the host's root, mounted read-only.
+
+    The host's own binaries run (its apt, its shell), so the output is what the
+    host itself would print, whatever DryDock's image is.
+    """
+    try:
+        output = _client().containers.run(
+            entrypoint=["chroot"],
+            command=[HOST_ROOT, "sh", "-c", script],
+            remove=True,
+            log_config=LogConfig(type=LogConfig.types.JSON),
+            **_host_helper_options("/", image, "host-command"),
+        )
+    except ContainerError as exc:
+        raise HostCommandFailed(str(exc)) from exc
+    except DockerException as exc:
+        raise DockerUnavailable(str(exc)) from exc
+    return (output or b"").decode("utf-8", errors="replace")
+
+
+def read_host_file(path: str, *, image: str) -> bytes:
+    """Content of a regular file on the host, copied out of a helper container.
+
+    Like volume downloads, the helper is only created, never started.
+    """
+    folder, name = posixpath.split(path)
+    try:
+        container = _client().containers.create(**_host_helper_options(folder, image, "host-file"))
+    except APIError as exc:
+        if _missing_source(exc):
+            raise DockerNotFound(f"{folder} does not exist on the host") from exc
+        raise DockerUnavailable(str(exc)) from exc
+    except DockerException as exc:
+        raise DockerUnavailable(str(exc)) from exc
+    try:
+        raw, _ = container.get_archive(posixpath.join(HOST_ROOT, name), chunk_size=_CHUNK_SIZE)
+        with tarfile.open(fileobj=io.BufferedReader(_ChunkReader(raw)), mode="r|") as tar:
+            member = tar.next()
+            source = tar.extractfile(member) if member else None
+            if member is None or source is None:
+                raise NotAFile(f"{path} is not a regular file")
+            if member.size > _MAX_HOST_FILE:
+                raise NotAFile(f"{path} is larger than {_MAX_HOST_FILE // 1024**2} MB")
+            return source.read()
+    except NotFound as exc:
+        raise DockerNotFound(f"{path} does not exist on the host") from exc
+    except DockerException as exc:
+        raise DockerUnavailable(str(exc)) from exc
+    finally:
+        _remove_quietly(container)
 
 
 # --- Registries --------------------------------------------------------------

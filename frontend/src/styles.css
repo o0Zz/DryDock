@@ -745,6 +745,14 @@ input:focus {
 a.badge { text-decoration: none; }
 tr.selected td { background: rgba(9, 105, 218, 0.06); }
 details summary { cursor: pointer; }
+
+.match-lines {
+  margin: 0.4rem 0 0;
+  max-width: 60rem;
+  font-size: 0.75rem;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
 .raw-json {
   max-height: 60vh;
   overflow: auto;

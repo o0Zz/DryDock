@@ -25,6 +25,7 @@ class JobKind:
     NETWORK_PRUNE = "network_prune"
     # Delete, rename or duplicate a stack.
     STACK_CHANGE = "stack_change"
+    HOST_UPDATE_CHECK = "host_update_check"
 
 
 class Job(Base):

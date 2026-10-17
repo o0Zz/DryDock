@@ -13,6 +13,7 @@ from app.core.security import get_current_user
 from app.main import app
 from app.schemas.container import Container
 from app.schemas.dashboard import HostInfo
+from app.schemas.host import HostUpdates
 from app.services import docker_service
 
 NOW = datetime(2026, 1, 1, tzinfo=UTC)
@@ -64,6 +65,13 @@ def stubbed(monkeypatch: pytest.MonkeyPatch) -> None:
         _container("old", "exited"),
     ]
     monkeypatch.setattr(dashboard_api.repo_service, "discover_projects", lambda: [])
+    monkeypatch.setattr(
+        dashboard_api.host_updates_service,
+        "latest",
+        lambda db: HostUpdates(
+            checked_at=NOW, supported=True, upgradable=12, security=3, reboot_required=True
+        ),
+    )
     monkeypatch.setattr(docker_service, "list_containers", lambda all_states: containers)
     monkeypatch.setattr(docker_service, "list_volumes", lambda: [])
     monkeypatch.setattr(docker_service, "host_info", lambda: HostInfo(cpus=4))
@@ -111,3 +119,6 @@ def test_counts(client: TestClient) -> None:
     assert stats["updates_available"] == 1
     assert stats["updates"] == [{"image": "nginx:1.27", "newest_tag": "1.29", "rebuilt": False}]
     assert stats["host"]["cpus"] == 4
+    assert stats["host_updates"] == 12
+    assert stats["host_security_updates"] == 3
+    assert stats["host_reboot_required"] is True

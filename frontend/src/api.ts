@@ -14,6 +14,8 @@ import type {
   DockerNetwork,
   EnvContent,
   EnvSaveResult,
+  Fail2banReport,
+  HostUpdates,
   HostUsage,
   Job,
   LocalImage,
@@ -105,6 +107,11 @@ export const api = {
   // dashboard
   dashboard: () => request<DashboardStats>("/api/dashboard"),
   hostUsage: () => request<HostUsage>("/api/dashboard/host"),
+
+  // host OS updates and fail2ban (admin)
+  hostUpdates: () => request<HostUpdates | null>("/api/host/updates"),
+  checkHostUpdates: () => request<Job>("/api/host/updates/check", { method: "POST" }),
+  fail2ban: () => request<Fail2banReport>("/api/host/fail2ban"),
 
   // projects / containers
   listProjects: () => request<Project[]>("/api/projects"),

@@ -6,7 +6,7 @@ export interface User {
   created_at: string;
 }
 
-export type ProjectAction = "up" | "down" | "pull" | "restart" | "stop";
+export type ProjectAction = "up" | "down" | "pull" | "reload" | "stop";
 
 export type ContainerAction = "start" | "stop" | "restart" | "pause" | "unpause" | "kill";
 
@@ -350,7 +350,64 @@ export interface DashboardStats {
   most_vulnerable: ImageRisk[];
   updates: ImageUpdate[];
   host: HostInfo | null;
+  /** Pending OS package updates on the host; null until checked, or without apt. */
+  host_updates: number | null;
+  host_security_updates: number;
+  host_reboot_required: boolean;
+  last_host_update_check_at: string | null;
   docker_error: string | null;
+}
+
+export interface HostPackage {
+  name: string;
+  current: string;
+  candidate: string;
+  security: boolean;
+}
+
+/** The latest check of the host's pending OS package updates. */
+export interface HostUpdates {
+  checked_at: string;
+  /** False when the host has no apt (not Debian or Ubuntu). */
+  supported: boolean;
+  error: string | null;
+  upgradable: number;
+  security: number;
+  packages: HostPackage[];
+  /** When the host last ran `apt update`; the list is only as fresh as this. */
+  lists_updated_at: string | null;
+  reboot_required: boolean;
+  kernel: string | null;
+}
+
+export interface Fail2banJail {
+  name: string;
+  enabled: boolean;
+  active_bans: number;
+  /** Bans still in fail2ban's history, which only goes back `dbpurgeage`. */
+  bans: number;
+  last_ban_at: string | null;
+}
+
+export interface Fail2banBan {
+  ip: string;
+  jail: string;
+  banned_at: string;
+  /** Null for a permanent ban. */
+  expires_at: string | null;
+  ban_count: number;
+  /** The log lines that triggered the ban, newest last. */
+  matches: string[];
+}
+
+export interface Fail2banReport {
+  database: string;
+  history_since: string | null;
+  jails: Fail2banJail[];
+  active_bans: Fail2banBan[];
+  recent_bans: Fail2banBan[];
+  /** User names tried in failed SSH logins. */
+  top_users: { name: string; count: number }[];
 }
 
 /** FastAPI error body: a message, or a list of validation errors. */

@@ -15,6 +15,7 @@ from app.api import (
     console,
     containers,
     dashboard,
+    host,
     images,
     jobs,
     logs,
@@ -36,6 +37,7 @@ from app.models.user import User
 from app.services import (
     compose_service,
     docker_service,
+    fail2ban_service,
     host_path_service,
     job_service,
     scheduler_service,
@@ -118,6 +120,7 @@ _ERROR_STATUS: dict[type[Exception], tuple[int, str]] = {
     docker_service.ContainerConflict: (409, "{}"),
     compose_service.ComposeError: (400, "{}"),
     compose_service.ComposeExists: (409, "{}"),
+    fail2ban_service.Fail2banError: (400, "{}"),
 }
 
 
@@ -137,6 +140,7 @@ app.include_router(auth.router)
 # Everything below requires an authenticated session.
 _auth = [Depends(get_current_user)]
 app.include_router(dashboard.router, dependencies=_auth)
+app.include_router(host.router, dependencies=_auth)
 app.include_router(projects.router, dependencies=_auth)
 app.include_router(containers.router, dependencies=_auth)
 app.include_router(volumes.router, dependencies=_auth)

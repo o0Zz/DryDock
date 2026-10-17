@@ -43,7 +43,7 @@ Works on `amd64` and `arm64` (Raspberry Pi 3, 4 and 5 with 64-bit OS).
 
 ## Features
 
-- **Stacks:** every Compose file in your folder shows up as a project. Any `*.yml` file with a `services:` section counts. Start, stop, pull, restart or edit each one and its `.env`. Create, rename, duplicate or delete a stack; a delete backs the stack up first. A `*.override.yml` next to a Compose file is merged in, like `docker compose up` does.
+- **Stacks:** every Compose file in your folder shows up as a project. Any `*.yml` file with a `services:` section counts. Start, stop, pull, reload or edit each one and its `.env`. **Reload** stops the stack and runs `up`, so file changes apply. Create, rename, duplicate or delete a stack; a delete backs the stack up first. A `*.override.yml` next to a Compose file is merged in, like `docker compose up` does.
 - **Containers:** start, stop, restart, pause, kill or rename. State, health check, restart count, CPU and memory, ports, live logs, a detail page, and a shell in the browser.
 - **Images:** see which images are in use, and remove or prune the rest.
 - **CVE scans:** scan one image, all running images, or all images in your Compose files.
@@ -54,6 +54,8 @@ Works on `amd64` and `arm64` (Raspberry Pi 3, 4 and 5 with 64-bit OS).
 - **API tokens:** each user can create tokens on the Settings page for scripts and CI, e.g. `curl -H "Authorization: Bearer ddt_..." http://drydock:8080/api/containers`. A token has the rights of its user.
 - **Users and volumes:** several users with an admin flag, and named volume management. Admins can browse the files in a volume (read-only) and download them.
 - **Networks:** driver, subnet and attached containers of every network. Remove one, or prune the custom networks no container uses. Networks of stopped stacks are kept, unlike `docker network prune`.
+- **Host:** pending OS package updates on the host (Debian, Ubuntu, Raspberry Pi OS), with security updates and "reboot required" flagged on the dashboard. They are checked on the update check schedule, read-only: DryDock never installs anything.
+- **fail2ban:** admins see the host's jails, active bans, the log lines behind each ban, and the user names tried on SSH. Read-only: no unban.
 - **Logs page:** DryDock's own log, to see why a scan or a check failed.
 
 ## Configuration
@@ -71,6 +73,7 @@ Set these environment variables if you need to. Schedules and notifications are 
 | `DRYDOCK_SESSION_HTTPS_ONLY` | `false`      | Set `true` behind an HTTPS proxy               |
 | `DRYDOCK_SECRET_KEY`         | *(generated)* | Session signing key, saved in `/data` if not set |
 | `DRYDOCK_HELPER_IMAGE`       | `busybox:stable` | Image that reads volume files when DryDock is not in a container (dev) |
+| `DRYDOCK_FAIL2BAN_DB`        | `/var/lib/fail2ban/fail2ban.sqlite3` | fail2ban's database on the host |
 
 Behind a reverse proxy, allow WebSocket upgrades so the container shell works. For nginx:
 

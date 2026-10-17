@@ -12,7 +12,14 @@ from app.schemas.dashboard import (
     ImageRisk,
     ImageUpdate,
 )
-from app.services import docker_service, history_service, host_service, repo_service, tasks
+from app.services import (
+    docker_service,
+    history_service,
+    host_service,
+    host_updates_service,
+    repo_service,
+    tasks,
+)
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 
@@ -80,6 +87,14 @@ def dashboard(db: Session = Depends(get_db)) -> DashboardStats:
     ]
     if checks:
         stats.last_update_check_at = max(check.checked_at for check in checks)
+
+    host_updates = host_updates_service.latest(db)
+    if host_updates is not None:
+        stats.last_host_update_check_at = host_updates.checked_at
+        if host_updates.supported and not host_updates.error:
+            stats.host_updates = host_updates.upgradable
+            stats.host_security_updates = host_updates.security
+            stats.host_reboot_required = host_updates.reboot_required
 
     return stats
 
