@@ -4,6 +4,7 @@ import {
   ExternalLink,
   RefreshCw,
   ShieldCheck,
+  Trash2,
   X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -11,12 +12,14 @@ import { api } from "../api";
 import JobList from "../components/JobList";
 import ScanBadge from "../components/ScanBadge";
 import { useJobs } from "../hooks/useJobs";
-import type { Job, ScanDetail, ScanSummary, UpdateSummary } from "../types";
+import type { Job, LocalImage, ScanDetail, ScanSummary, UpdateSummary } from "../types";
 
 interface Row {
   image: string;
   scan?: ScanSummary;
   update?: UpdateSummary;
+  /** Present when the image exists in the local Docker image store. */
+  local?: LocalImage;
   inUse: boolean;
   inCompose: boolean;
 }
@@ -27,6 +30,19 @@ function severityClass(severity: string): string {
   if (severity === "CRITICAL") return "exited";
   if (severity === "HIGH") return "paused";
   return "";
+}
+
+function formatBytes(bytes: number): string {
+  if (!bytes) return "0 B";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  const i = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+  return `${(bytes / 1024 ** i).toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
+}
+
+/** "nginx" and "nginx:latest" name the same image; Docker always lists the latter. */
+function withDefaultTag(image: string): string {
+  if (image.includes("@")) return image;
+  return image.slice(image.lastIndexOf("/") + 1).includes(":") ? image : `${image}:latest`;
 }
 
 /** Sort worst first: criticals, then highs, then pending updates, then name. */
@@ -44,7 +60,10 @@ export default function Scans() {
   const [updates, setUpdates] = useState<UpdateSummary[]>([]);
   const [running, setRunning] = useState<Set<string>>(new Set());
   const [composeImages, setComposeImages] = useState<Set<string>>(new Set());
+  const [localImages, setLocalImages] = useState<LocalImage[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [removing, setRemoving] = useState(false);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState("");
   const [detail, setDetail] = useState<ScanDetail | null>(null);
@@ -65,10 +84,12 @@ export default function Scans() {
   const loadImages = useCallback(async () => {
     // Images worth listing even when never scanned: anything running, plus
     // anything a Compose file references. Docker being down is not fatal here.
-    const [containers, projects] = await Promise.all([
+    const [containers, projects, images] = await Promise.all([
       api.listContainers().catch(() => []),
       api.listProjects().catch(() => []),
+      api.listImages().catch(() => []),
     ]);
+    setLocalImages(images);
     setRunning(new Set(containers.filter((c) => c.state === "running").map((c) => c.image)));
     setComposeImages(
       new Set(
@@ -104,6 +125,17 @@ export default function Scans() {
     updates.forEach((u) => {
       ensure(u.image).update = u;
     });
+    // Attach local images to the rows that name them, and list the ones
+    // nothing else mentions — those are the usual cleanup candidates.
+    const byTag = new Map<string, Row>();
+    byImage.forEach((row) => byTag.set(withDefaultTag(row.image), row));
+    localImages.forEach((img) =>
+      img.tags.forEach((tag) => {
+        const row = byTag.get(withDefaultTag(tag)) ?? ensure(tag);
+        row.local = img;
+        if (img.used_by.some((u) => u.running)) row.inUse = true;
+      }),
+    );
 
     const needle = filter.trim().toLowerCase();
     return [...byImage.values()]
@@ -113,7 +145,7 @@ export default function Scans() {
         const [bc, bh, bu, bn] = rank(b);
         return ac - bc || ah - bh || au - bu || an.localeCompare(bn);
       });
-  }, [scans, updates, running, composeImages, filter]);
+  }, [scans, updates, running, composeImages, localImages, filter]);
 
   const start = useCallback(
     async (fn: () => Promise<Job>) => {
@@ -125,6 +157,54 @@ export default function Scans() {
       }
     },
     [track],
+  );
+
+  const remove = useCallback(
+    async (fn: () => Promise<string>) => {
+      setRemoving(true);
+      setError(null);
+      setNotice(null);
+      try {
+        setNotice(await fn());
+      } catch (e) {
+        setError((e as Error).message);
+      } finally {
+        setRemoving(false);
+        loadImages();
+      }
+    },
+    [loadImages],
+  );
+
+  const onDelete = useCallback(
+    (row: Row) => {
+      const stopped = (row.local?.used_by ?? []).map((u) => u.name);
+      const message = stopped.length
+        ? `Delete image "${row.image}"? Stopped container(s) ${stopped.join(", ")} ` +
+          "still use it, so Docker will only untag it. Remove those containers to free the space."
+        : `Delete image "${row.image}"?`;
+      if (!window.confirm(message)) return;
+      remove(async () => {
+        await api.deleteImage(row.image, stopped.length > 0);
+        return `Image "${row.image}" removed.`;
+      });
+    },
+    [remove],
+  );
+
+  const onPrune = useCallback(
+    (all: boolean) => {
+      const message = all
+        ? "Remove every image not used by a container (running or stopped)? " +
+          "They will need to be pulled again."
+        : "Remove dangling (untagged) images?";
+      if (!window.confirm(message)) return;
+      remove(async () => {
+        const res = await api.pruneImages(all);
+        return `Pruned ${res.deleted.length} image(s), reclaimed ${formatBytes(res.space_reclaimed)}.`;
+      });
+    },
+    [remove],
   );
 
   const openDetail = useCallback(async (scan: ScanSummary) => {
@@ -167,7 +247,32 @@ export default function Scans() {
           >
             <ArrowUpCircle size={15} /> Check updates
           </button>
-          <button type="button" className="secondary" onClick={load}>
+          <button
+            type="button"
+            className="secondary"
+            disabled={removing}
+            title="Remove untagged images left behind by pulls and builds"
+            onClick={() => onPrune(false)}
+          >
+            <Trash2 size={15} /> Prune dangling
+          </button>
+          <button
+            type="button"
+            className="secondary"
+            disabled={removing}
+            title="Remove every image no container uses"
+            onClick={() => onPrune(true)}
+          >
+            <Trash2 size={15} /> Prune unused
+          </button>
+          <button
+            type="button"
+            className="secondary"
+            onClick={() => {
+              load();
+              loadImages();
+            }}
+          >
             <RefreshCw size={15} /> Refresh
           </button>
         </div>
@@ -175,6 +280,7 @@ export default function Scans() {
 
       <JobList jobs={jobs} onDismiss={dismiss} />
       {error && <div className="error">{error}</div>}
+      {notice && <div className="output ok" style={{ padding: "0.75rem" }}>{notice}</div>}
 
       <div className="button-row">
         <input
@@ -212,7 +318,8 @@ export default function Scans() {
                   <div className="icon-link">{row.image}</div>
                   <div className="muted">
                     {row.inUse && <span className="badge running">running</span>}{" "}
-                    {row.inCompose && <span className="badge">compose</span>}
+                    {row.inCompose && <span className="badge">compose</span>}{" "}
+                    {row.local && <span>{formatBytes(row.local.size)}</span>}
                   </div>
                 </td>
                 <td>
@@ -248,6 +355,21 @@ export default function Scans() {
                     >
                       <ArrowUpCircle size={14} /> Check
                     </button>
+                    {row.local && (
+                      <button
+                        type="button"
+                        className="secondary small"
+                        disabled={removing || row.inUse}
+                        title={
+                          row.inUse
+                            ? "Image is used by a running container"
+                            : "Remove image from the local store"
+                        }
+                        onClick={() => onDelete(row)}
+                      >
+                        <Trash2 size={14} /> Delete
+                      </button>
+                    )}
                   </div>
                 </td>
               </tr>

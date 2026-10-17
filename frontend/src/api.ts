@@ -6,6 +6,7 @@ import type {
   ContainerStats,
   DashboardStats,
   Job,
+  LocalImage,
   Project,
   PruneResult,
   ScanDetail,
@@ -160,4 +161,13 @@ export const api = {
       method: "DELETE",
     }),
   pruneVolumes: () => request<PruneResult>("/api/volumes/prune", { method: "POST" }),
+
+  // local images
+  listImages: () => request<LocalImage[]>("/api/images"),
+  deleteImage: (image: string, force = false) =>
+    request<void>(`/api/images?image=${encodeURIComponent(image)}&force=${force}`, {
+      method: "DELETE",
+    }),
+  pruneImages: (all = false) =>
+    request<PruneResult>(`/api/images/prune?all=${all}`, { method: "POST" }),
 };

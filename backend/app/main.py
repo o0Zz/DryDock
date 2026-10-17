@@ -14,6 +14,7 @@ from app.api import (
     console,
     containers,
     dashboard,
+    images,
     jobs,
     logs,
     projects,
@@ -100,6 +101,7 @@ app.include_router(dashboard.router, dependencies=_auth)
 app.include_router(projects.router, dependencies=_auth)
 app.include_router(containers.router, dependencies=_auth)
 app.include_router(volumes.router, dependencies=_auth)
+app.include_router(images.router, dependencies=_auth)
 app.include_router(scans.router, dependencies=_auth)
 app.include_router(updates.router, dependencies=_auth)
 app.include_router(jobs.router, dependencies=_auth)

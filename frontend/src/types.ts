@@ -36,6 +36,19 @@ export interface Volume {
   used_by: string[];
 }
 
+export interface ImageUser {
+  name: string;
+  running: boolean;
+}
+
+export interface LocalImage {
+  id: string;
+  tags: string[];
+  size: number;
+  created_at: string | null;
+  used_by: ImageUser[];
+}
+
 export interface PruneResult {
   deleted: string[];
   space_reclaimed: number;

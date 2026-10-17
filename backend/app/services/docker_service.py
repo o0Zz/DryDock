@@ -11,9 +11,11 @@ import docker
 from docker.errors import APIError, DockerException, NotFound
 from docker.errors import ImageNotFound as DockerImageNotFound
 from docker.models.containers import Container as DockerContainer
+from docker.models.images import Image as DockerImage
 from docker.models.volumes import Volume as DockerVolume
 
 from app.schemas.container import Container, ContainerPort, ContainerStats
+from app.schemas.image import ContainerRef, Image
 from app.schemas.volume import PruneResult, Volume
 
 logger = logging.getLogger(__name__)
@@ -29,6 +31,10 @@ class VolumeInUse(Exception):
 
 class ImageNotFound(Exception):
     """Raised when an image reference is not present in the local image store."""
+
+
+class ImageInUse(Exception):
+    """Raised when trying to remove an image that a container still uses."""
 
 
 @lru_cache(maxsize=1)
@@ -431,6 +437,85 @@ def registry_digest(image: str) -> str:
         raise DockerUnavailable(f"registry lookup failed: {exc}") from exc
     except DockerException as exc:
         raise DockerUnavailable(str(exc)) from exc
+
+
+def _image_usage() -> dict[str, list[ContainerRef]]:
+    """Map each image ID to the containers (any state) created from it."""
+    usage: dict[str, list[ContainerRef]] = {}
+    for c in _client().containers.list(all=True):
+        image_id = (c.attrs or {}).get("Image")
+        if image_id:
+            usage.setdefault(image_id, []).append(
+                ContainerRef(name=c.name or "", running=c.status == "running")
+            )
+    return usage
+
+
+def _image_to_schema(img: DockerImage, usage: dict[str, list[ContainerRef]]) -> Image:
+    attrs = img.attrs or {}
+    created_raw = attrs.get("Created")
+    return Image(
+        id=img.id or "",
+        tags=img.tags,
+        size=attrs.get("Size") or 0,
+        created_at=_parse_created(created_raw) if created_raw else None,
+        used_by=usage.get(img.id or "", []),
+    )
+
+
+def list_images() -> list[Image]:
+    try:
+        images = _client().images.list()
+        usage = _image_usage()
+    except DockerException as exc:
+        raise DockerUnavailable(str(exc)) from exc
+    return sorted(
+        (_image_to_schema(i, usage) for i in images),
+        key=lambda i: (i.tags[0] if i.tags else "~").lower(),
+    )
+
+
+def remove_image(image: str, *, force: bool = False) -> None:
+    """Remove one image reference.
+
+    Removing a tag that shares its image with other tags only untags it. Even
+    with ``force``, an image used by a running container is refused.
+    """
+    try:
+        img = _client().images.get(image)
+        users = _image_usage().get(img.id or "", [])
+    except DockerImageNotFound as exc:
+        raise ImageNotFound(image) from exc
+    except DockerException as exc:
+        raise DockerUnavailable(str(exc)) from exc
+
+    running = [u.name for u in users if u.running]
+    if running:
+        raise ImageInUse(f"image {image} is used by running container(s): {', '.join(running)}")
+    try:
+        _client().images.remove(image, force=force)
+    except DockerImageNotFound as exc:
+        raise ImageNotFound(image) from exc
+    except APIError as exc:
+        # Docker returns 409 Conflict when a stopped container still references it.
+        if exc.response is not None and exc.response.status_code == 409:
+            raise ImageInUse(exc.explanation or f"image {image} is in use") from exc
+        raise DockerUnavailable(str(exc)) from exc
+    except DockerException as exc:
+        raise DockerUnavailable(str(exc)) from exc
+
+
+def prune_images(*, all_unused: bool = False) -> PruneResult:
+    """Prune dangling images, or with ``all_unused`` every image without a container."""
+    try:
+        result = _client().images.prune(filters={"dangling": not all_unused})
+    except DockerException as exc:
+        raise DockerUnavailable(str(exc)) from exc
+    entries = result.get("ImagesDeleted") or []
+    return PruneResult(
+        deleted=[e["Deleted"] for e in entries if e.get("Deleted")],
+        space_reclaimed=result.get("SpaceReclaimed") or 0,
+    )
 
 
 def running_images() -> list[str]:
