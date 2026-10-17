@@ -41,7 +41,7 @@ function rank(row: Row): [number, number, number, string] {
   ];
 }
 
-export default function Scans() {
+export default function Images() {
   const [scans, setScans] = useState<ScanSummary[]>([]);
   const [updates, setUpdates] = useState<UpdateSummary[]>([]);
   const [running, setRunning] = useState<Set<string>>(new Set());
@@ -204,7 +204,7 @@ export default function Scans() {
   return (
     <div>
       <div className="row-between">
-        <h1>Scans &amp; updates</h1>
+        <h1>Images</h1>
         <div className="button-row inline">
           <button
             type="button"

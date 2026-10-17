@@ -2,26 +2,26 @@ import {
   Anchor,
   Container as ContainerIcon,
   HardDrive,
+  Layers,
   LayoutDashboard,
   LogOut,
   Boxes,
   ScrollText,
   Settings as SettingsIcon,
-  ShieldAlert,
   Users as UsersIcon,
 } from "lucide-react";
-import { NavLink, Route, Routes } from "react-router-dom";
+import { Navigate, NavLink, Route, Routes } from "react-router-dom";
 import { useAuth } from "./auth";
 import JobsIndicator from "./components/JobsIndicator";
 import ContainerDetail from "./pages/ContainerDetail";
 import Containers from "./pages/Containers";
 import Dashboard from "./pages/Dashboard";
+import Images from "./pages/Images";
 import Login from "./pages/Login";
 import Logs from "./pages/Logs";
 import NewProject from "./pages/NewProject";
 import ProjectDetail from "./pages/ProjectDetail";
 import Projects from "./pages/Projects";
-import Scans from "./pages/Scans";
 import Settings from "./pages/Settings";
 import Users from "./pages/Users";
 import Volumes from "./pages/Volumes";
@@ -69,8 +69,8 @@ export default function App() {
           <NavLink to="/volumes">
             <HardDrive size={18} /> Volumes
           </NavLink>
-          <NavLink to="/scans">
-            <ShieldAlert size={18} /> Scans
+          <NavLink to="/images">
+            <Layers size={18} /> Images
           </NavLink>
           <NavLink to="/settings">
             <SettingsIcon size={18} /> Settings
@@ -96,7 +96,8 @@ export default function App() {
           <Route path="/containers" element={<Containers />} />
           <Route path="/containers/:id" element={<ContainerDetail />} />
           <Route path="/volumes" element={<Volumes />} />
-          <Route path="/scans" element={<Scans />} />
+          <Route path="/images" element={<Images />} />
+          <Route path="/scans" element={<Navigate to="/images" replace />} />
           <Route path="/settings" element={<Settings />} />
           {user.is_admin && <Route path="/logs" element={<Logs />} />}
           {user.is_admin && <Route path="/users" element={<Users />} />}

@@ -99,27 +99,27 @@ export default function Dashboard() {
           value={stats.images_critical}
           label="Images with critical CVEs"
           tone={stats.images_critical > 0 ? "danger" : undefined}
-          to="/scans"
+          to="/images"
         />
         <Stat
           icon={<ShieldAlert size={22} />}
           value={stats.images_high}
           label="Images with high CVEs"
           tone={stats.images_high > 0 ? "warn" : undefined}
-          to="/scans"
+          to="/images"
         />
         <Stat
           icon={<ArrowUpCircle size={22} />}
           value={stats.updates_available}
           label="Images with updates"
           tone={stats.updates_available > 0 ? "warn" : undefined}
-          to="/scans"
+          to="/images"
         />
         <Stat
           icon={<ShieldQuestion size={22} />}
           value={`${stats.images_scanned}/${stats.images_tracked}`}
           label="Images scanned"
-          to="/scans"
+          to="/images"
         />
         <Stat icon={<HardDrive size={22} />} value={stats.volumes} label="Volumes" to="/volumes" />
       </div>
@@ -143,9 +143,9 @@ export default function Dashboard() {
           </li>
         </ul>
         <div className="button-row">
-          <Link to="/scans">
+          <Link to="/images">
             <button type="button" className="secondary">
-              <ShieldAlert size={15} /> Scans &amp; updates
+              <Layers size={15} /> Images
             </button>
           </Link>
         </div>
