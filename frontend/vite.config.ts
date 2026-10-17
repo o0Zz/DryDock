@@ -3,15 +3,17 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import pkg from "./package.json";
 
-// Mirrors the CI rule: branch release/X.Y gives X.Y.<commit count>, any other
-// branch gives 0.0.<commit count>-<branch>. Returns null outside a git checkout.
+// Mirrors the CI rule: branch release/X.Y.Z gives X.Y.Z+<commit count>, any
+// other branch gives 0.0.0-<branch>+<commit count>. Returns null outside a git checkout.
 function gitVersion(): string | null {
   try {
     const git = (args: string) => execSync(`git ${args}`, { stdio: ["ignore", "pipe", "ignore"] }).toString().trim();
     const count = git("rev-list --count HEAD");
     const branch = git("rev-parse --abbrev-ref HEAD");
-    const release = /^release\/(\d+)\.(\d+)/.exec(branch);
-    return release ? `${release[1]}.${release[2]}.${count}` : `0.0.${count}-${branch.replace(/\//g, "-")}`;
+    const release = /^release\/(\d+)\.(\d+)(?:\.(\d+))?/.exec(branch);
+    return release
+      ? `${release[1]}.${release[2]}.${release[3] ?? 0}+${count}`
+      : `0.0.0-${branch.replace(/[^0-9A-Za-z-]/g, "-")}+${count}`;
   } catch {
     return null;
   }

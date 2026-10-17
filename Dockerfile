@@ -2,8 +2,8 @@
 
 # ---------- Stage 0: version ----------
 # CI passes APP_VERSION. A local `docker compose build` does not, so it is
-# computed here from .git with the same rule as CI: release/X.Y gives
-# X.Y.<commit count>, any other branch gives 0.0.<commit count>-<branch>.
+# computed here from .git with the same rule as CI: release/X.Y.Z gives
+# X.Y.Z+<commit count>, any other branch gives 0.0.0-<branch>+<commit count>.
 FROM --platform=$BUILDPLATFORM alpine:3.22 AS version
 ARG APP_VERSION
 RUN apk add --no-cache git
@@ -15,12 +15,14 @@ RUN set -eu; \
     version="${APP_VERSION:-}"; \
     if [ -z "$version" ] && count=$(git --git-dir=/src/git rev-list --count HEAD 2>/dev/null); then \
         branch=$(git --git-dir=/src/git rev-parse --abbrev-ref HEAD); \
-        release=$(printf '%s' "$branch" | sed -n 's#^release/\([0-9]*\.[0-9]*\).*#\1#p'); \
+        release=$(printf '%s' "$branch" | sed -nE 's#^release/([0-9]+\.[0-9]+(\.[0-9]+)?).*#\1#p'); \
         if [ -n "$release" ]; then \
-            version="$release.$count"; \
+            # release/X.Y counts as X.Y.0.
+            case "$release" in *.*.*) ;; *) release="$release.0" ;; esac; \
+            version="$release+$count"; \
         else \
             # Semver pre-release identifiers only allow [0-9A-Za-z-].
-            version="0.0.$count-$(printf '%s' "$branch" | tr -c '0-9A-Za-z-' '-')"; \
+            version="0.0.0-$(printf '%s' "$branch" | tr -c '0-9A-Za-z-' '-')+$count"; \
         fi; \
     fi; \
     echo "${version:-0.0.0-dev}" > /version; \
