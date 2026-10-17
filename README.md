@@ -46,7 +46,7 @@ Works on `amd64` and `arm64` (Raspberry Pi 3, 4 and 5 with 64-bit OS).
 - **Containers:** state, CPU and memory, ports, live logs, a detail page, and a shell in the browser.
 - **Images:** see which images are in use, and remove or prune the rest.
 - **CVE scans:** scan one image, all running images, or all images in your Compose files.
-- **Updates:** finds rebuilt tags (`latest`, `stable`) and newer versions (`2025.10.4` → `2026.10.2`). For `postgres:16.2` you see both the newest `16.x` and the newest overall.
+- **Updates:** finds rebuilt tags (`latest`, `stable`) and newer versions (`2025.10.4` → `2026.10.2`). For `postgres:16.2` you see both the newest `16.x` and the newest overall. For a floating tag like `stable`, the containers list shows the version the image declares (`org.opencontainers.image.version` label), when it has one.
 - **Background jobs:** scans, update checks, stack actions and prunes run in the background. The top bar shows progress from any page.
 - **Schedules and alerts:** run scans and update checks on an interval, and send results to a webhook.
 - **Users and volumes:** several users with an admin flag, and named volume management.
@@ -73,6 +73,10 @@ proxy_http_version 1.1;
 proxy_set_header Upgrade $http_upgrade;
 proxy_set_header Connection "upgrade";
 ```
+
+## Troubleshooting
+
+See [docs/troubleshooting.md](docs/troubleshooting.md) for common problems, such as memory showing `0B / 0B`.
 
 ## Development
 

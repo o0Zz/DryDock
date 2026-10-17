@@ -14,6 +14,9 @@ class Container(BaseModel):
     id: str
     name: str
     image: str
+    # From the image's org.opencontainers.image.version label; tells what a
+    # floating tag like `latest` actually runs.
+    image_version: str | None = None
     status: str
     state: str
     created_at: datetime

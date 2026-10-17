@@ -17,6 +17,7 @@ import { lazy, Suspense, useCallback, useEffect, useState, type ReactNode } from
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { api } from "../api";
 import { useAuth } from "../auth";
+import ImageName from "../components/ImageName";
 import JobList from "../components/JobList";
 import LogPanel from "../components/LogPanel";
 import Meter, { formatBytes } from "../components/Meter";
@@ -163,7 +164,9 @@ export default function ContainerDetail() {
         </div>
       </div>
       <div className="muted">
-        <code>{detail.image}</code>
+        <code>
+          <ImageName image={detail.image} version={detail.image_version} />
+        </code>
         {project && (
           <>
             {" · project "}

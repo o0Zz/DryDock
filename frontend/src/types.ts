@@ -69,6 +69,7 @@ export interface Container {
   id: string;
   name: string;
   image: string;
+  image_version: string | null;
   status: string;
   state: string;
   created_at: string;

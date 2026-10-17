@@ -87,6 +87,43 @@ def test_non_admin_gets_masked_env_and_no_raw():
     assert d.raw is None
 
 
+@pytest.mark.parametrize(
+    ("image", "labels", "expected"),
+    [
+        ("nginx:latest", {}, None),
+        ("linuxserver/sonarr:latest", {"org.opencontainers.image.version": "4.0.9"}, "4.0.9"),
+        # Inherited from the ubuntu base image, not this image's version.
+        (
+            "myapp:latest",
+            {
+                "org.opencontainers.image.version": "24.04",
+                "org.opencontainers.image.ref.name": "ubuntu",
+            },
+            None,
+        ),
+        (
+            "ubuntu:noble",
+            {
+                "org.opencontainers.image.version": "24.04",
+                "org.opencontainers.image.ref.name": "ubuntu",
+            },
+            "24.04",
+        ),
+        # Some images put the tag in ref.name.
+        (
+            "app:stable",
+            {
+                "org.opencontainers.image.version": "1.2.3",
+                "org.opencontainers.image.ref.name": "1.2.3",
+            },
+            "1.2.3",
+        ),
+    ],
+)
+def test_image_version_label(image, labels, expected):
+    assert docker_service._image_version(image, labels) == expected
+
+
 def test_missing_container():
     with pytest.raises(docker_service.DockerUnavailable):
         docker_service.get_container_detail("nope", privileged=True)

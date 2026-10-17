@@ -14,6 +14,7 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react
 import { Link, useNavigate } from "react-router-dom";
 import { api } from "../api";
 import { useAuth } from "../auth";
+import ImageName from "../components/ImageName";
 import JobList from "../components/JobList";
 import Meter, { formatBytes } from "../components/Meter";
 import { useConfirm } from "../components/ConfirmDialog";
@@ -226,7 +227,7 @@ export default function Containers() {
                   </Link>
                 </td>
                 <td>
-                  {c.image}
+                  <ImageName image={c.image} version={c.image_version} />
 {" "}
                   <UpdateAction
                     container={c}

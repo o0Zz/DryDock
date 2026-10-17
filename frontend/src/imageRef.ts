@@ -8,6 +8,17 @@ export function imageRepo(image: string): string {
 }
 
 /**
+ * Version label worth showing next to an image reference: hidden when the tag
+ * already says it (`1.2.3` or `v1.2.3` for version `1.2.3`).
+ */
+export function extraVersion(image: string, version: string | null): string | null {
+  if (!version) return null;
+  const ref = image.split("@")[0];
+  const tag = ref.length > imageRepo(ref).length ? ref.slice(imageRepo(ref).length + 1) : "latest";
+  return tag.replace(/^v/, "") === version.replace(/^v/, "") ? null : version;
+}
+
+/**
  * Point every `image: <image>` line of a Compose file at `tag`, keeping quotes
  * and trailing comments. Returns how many lines changed (0 = not found).
  */

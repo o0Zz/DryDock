@@ -109,6 +109,25 @@ def _parse_ports(attrs: dict) -> list[ContainerPort]:
     return result
 
 
+def _image_version(image: str, labels: dict[str, str]) -> str | None:
+    """Version the image declares in its OCI label, if it can be trusted.
+
+    Container labels already include the image's labels, so no extra inspect
+    is needed. Labels are inherited from the base image, though: an image built
+    FROM ubuntu reports ubuntu's version unless it sets its own. Ubuntu marks
+    its labels with a plain name in `ref.name`, so a name that is not this
+    image's repo means the version belongs to the base image.
+    """
+    version = (labels.get("org.opencontainers.image.version") or "").strip()
+    if not version:
+        return None
+    ref_name = labels.get("org.opencontainers.image.ref.name") or ""
+    repo = _repo_of(image).rsplit("/", 1)[-1]
+    if ref_name and not any(ch.isdigit() for ch in ref_name) and ref_name != repo:
+        return None
+    return version
+
+
 def _to_schema(c: DockerContainer) -> Container:
     attrs = c.attrs or {}
     labels = attrs.get("Config", {}).get("Labels") or {}
@@ -120,6 +139,7 @@ def _to_schema(c: DockerContainer) -> Container:
         id=c.id or "",
         name=c.name or "",
         image=image_tags,
+        image_version=_image_version(image_tags, labels),
         status=c.status,
         state=(attrs.get("State") or {}).get("Status") or c.status,
         created_at=_parse_created(attrs.get("Created", "")),
@@ -394,6 +414,20 @@ def open_exec(container_id: str, *, cols: int = 80, rows: int = 24) -> ExecSessi
     session = ExecSession(exec_id, sock)
     session.resize(cols, rows)
     return session
+
+
+def mount_source(container_id: str, destination: str) -> str | None:
+    """Host path (or volume path) mounted at `destination` in a container."""
+    try:
+        c = _client().containers.get(container_id)
+    except NotFound:
+        return None
+    except DockerException as exc:
+        raise DockerUnavailable(str(exc)) from exc
+    for mount in (c.attrs or {}).get("Mounts") or []:
+        if mount.get("Destination") == destination:
+            return mount.get("Source") or None
+    return None
 
 
 # --- Volumes -----------------------------------------------------------------

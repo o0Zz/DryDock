@@ -35,6 +35,7 @@ frontend/src/
   components/          shared UI (LogPanel, JobList, JobsIndicator, ContainerConsole, ...)
   hooks/               useJobs, useContainerStats
   api.ts, types.ts     typed API client and response types
+docs/                  user docs (troubleshooting.md)
 sample-repo/           Compose stacks for local dev
 Dockerfile             3-stage build (frontend, backend venv, runtime with docker/compose/trivy)
 .github/workflows/     multi-arch build and push to ghcr.io
@@ -50,6 +51,7 @@ Dockerfile             3-stage build (frontend, backend venv, runtime with docke
 - **Background jobs** (`job_service`, `tasks`): anything slow (scans, update checks, container update, project compose actions, image and volume prunes) returns a job with status 202. Command output goes in `Job.output`. The UI polls `/api/jobs`. `useJobs` re-attaches to active jobs when a page opens. `JobsIndicator` in the topbar shows them from any page.
 - **Update checks** (`update_service`): two independent signals.
   - Digest: the same tag was rebuilt (`latest`, `stable`).
+  - Running version: `Container.image_version` comes from the `org.opencontainers.image.version` label (container labels include image labels, so no extra inspect). It is dropped when `ref.name` names another image, such as a version inherited from an ubuntu base. Many official Docker Hub images do not set it.
   - Newer tag: `registry_service` lists the registry's tags over the v2 API with an anonymous bearer token. Only tags of the same shape count (same prefix, same number of parts, same suffix), so prereleases and other variants are ignored. It reports the newest tag and the newest within the current major, and skips outlier majors (a jump of more than 3).
 - **Live data:** logs use SSE (`/api/logs/...`). Container stats are polled every 5s. The console is a WebSocket (`/api/containers/{id}/exec`).
 - **Auth:** signed session cookie (Starlette `SessionMiddleware`), users table with an `is_admin` flag. A bootstrap admin is created on first start.

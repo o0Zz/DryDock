@@ -9,6 +9,7 @@ from pathlib import Path
 import yaml
 
 from app.core.config import settings
+from app.services import host_path_service
 from app.services.repo_service import COMPOSE_FILENAMES
 
 logger = logging.getLogger(__name__)
@@ -78,6 +79,8 @@ def _compose(
     project_name: str | None = None,
     timeout: int = 300,
 ) -> subprocess.CompletedProcess[str]:
+    # Through the host-path alias, so relative bind mounts resolve on the host.
+    compose_path = host_path_service.to_host(compose_path)
     cmd = ["docker", "compose", "-f", str(compose_path)]
     if project_name:
         cmd += ["-p", project_name]
@@ -151,6 +154,7 @@ def stream_logs(compose_path: Path, *, tail: int = 200) -> subprocess.Popen[byte
     Returns the running process; the caller owns it and must terminate it when
     the client goes away.
     """
+    compose_path = host_path_service.to_host(compose_path)
     cmd = [
         "docker",
         "compose",

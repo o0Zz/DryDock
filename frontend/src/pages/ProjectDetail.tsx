@@ -16,6 +16,7 @@ import { lazy, Suspense, useCallback, useEffect, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { api } from "../api";
 import { useConfirm, type ConfirmOptions } from "../components/ConfirmDialog";
+import ImageName from "../components/ImageName";
 import LogPanel from "../components/LogPanel";
 import { useJobs } from "../hooks/useJobs";
 import { imageRepo, retagImage } from "../imageRef";
@@ -255,7 +256,9 @@ export default function ProjectDetail() {
                 <tr key={c.id}>
                   <td>{c.name}</td>
                   <td>{c.compose_service ?? "—"}</td>
-                  <td>{c.image}</td>
+                  <td>
+                    <ImageName image={c.image} version={c.image_version} />
+                  </td>
                   <td>
                     <span className={`badge ${c.state}`}>
                       <Circle size={8} fill="currentColor" /> {c.state}

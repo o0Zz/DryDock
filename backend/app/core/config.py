@@ -11,6 +11,9 @@ class Settings(BaseSettings):
     # Injected at image build time from the git branch and commit count.
     version: str = "0.0.0-dev"
     repo_path: Path = Field(default=Path("/repo"))
+    # Where the repo lives on the Docker host. Detected from DryDock's own mount
+    # when unset; only needed if detection fails (e.g. a custom container hostname).
+    repo_host_path: Path | None = None
     data_path: Path = Field(default=Path("/data"))
     host: str = "0.0.0.0"
     port: int = 8080

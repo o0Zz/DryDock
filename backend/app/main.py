@@ -29,7 +29,7 @@ from app.core.config import settings
 from app.core.database import SessionLocal, init_db
 from app.core.security import get_current_user, hash_password
 from app.models.user import User
-from app.services import job_service, scheduler_service
+from app.services import host_path_service, job_service, scheduler_service
 
 logging.basicConfig(level=logging.INFO, format=log_buffer.LOG_FORMAT)
 log_buffer.install()
@@ -58,6 +58,7 @@ def _seed_admin() -> None:
 async def lifespan(app: FastAPI):
     init_db()
     _seed_admin()
+    host_path_service.setup()
     scheduler_service.start()
     try:
         yield
