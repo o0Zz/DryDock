@@ -1,16 +1,42 @@
 # syntax=docker/dockerfile:1.7
 
+# ---------- Stage 0: version ----------
+# CI passes APP_VERSION. A local `docker compose build` does not, so it is
+# computed here from .git with the same rule as CI: release/X.Y gives
+# X.Y.<commit count>, any other branch gives 0.0.<commit count>-<branch>.
+FROM --platform=$BUILDPLATFORM alpine:3.22 AS version
+ARG APP_VERSION
+RUN apk add --no-cache git
+# The wildcard keeps the build working without a .git (a source archive):
+# a COPY whose only source is missing fails. A wildcard copies the directory's
+# contents, hence --git-dir below.
+COPY backend/pyproject.toml .gi[t] /src/git/
+RUN set -eu; \
+    version="${APP_VERSION:-}"; \
+    if [ -z "$version" ] && count=$(git --git-dir=/src/git rev-list --count HEAD 2>/dev/null); then \
+        branch=$(git --git-dir=/src/git rev-parse --abbrev-ref HEAD); \
+        release=$(printf '%s' "$branch" | sed -n 's#^release/\([0-9]*\.[0-9]*\).*#\1#p'); \
+        if [ -n "$release" ]; then \
+            version="$release.$count"; \
+        else \
+            # Semver pre-release identifiers only allow [0-9A-Za-z-].
+            version="0.0.$count-$(printf '%s' "$branch" | tr -c '0-9A-Za-z-' '-')"; \
+        fi; \
+    fi; \
+    echo "${version:-0.0.0-dev}" > /version; \
+    echo "Version: $(cat /version)"
+
+
 # ---------- Stage 1: build the frontend ----------
 FROM node:20-alpine AS frontend
-# Computed by CI from the branch name and commit count (.git is not in the context).
-ARG APP_VERSION=0.0.0-dev
-ENV APP_VERSION=${APP_VERSION}
 WORKDIR /build
 COPY frontend/package.json frontend/package-lock.json* ./
 RUN --mount=type=cache,target=/root/.npm \
     if [ -f package-lock.json ]; then npm ci; else npm install; fi
 COPY frontend/ ./
-RUN npm run build
+# Copied last: a new commit only rebuilds the frontend when the version changes.
+COPY --from=version /version /version
+RUN APP_VERSION="$(cat /version)" npm run build
 
 
 # ---------- Stage 2: build the backend + install deps ----------
@@ -36,7 +62,6 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 FROM python:3.11-slim-trixie AS runtime
 
 ARG TARGETARCH
-ARG APP_VERSION=0.0.0-dev
 # These are Go binaries that embed their own Go stdlib, so stale versions are
 # the main source of CVEs in this image. Keep them current.
 ARG TRIVY_VERSION=0.76.0
@@ -87,10 +112,11 @@ COPY --from=backend /app/app /app/app
 # Alembic revisions, applied automatically at startup (app/core/migrations.py).
 COPY backend/migrations /app/migrations
 COPY backend/alembic.ini /app/alembic.ini
+# Read by app/core/config.py; DRYDOCK_VERSION still overrides it.
+COPY --from=version /version /app/VERSION
 ENV PATH="/app/.venv/bin:${PATH}" \
     PYTHONPATH=/app \
     PYTHONUNBUFFERED=1 \
-    DRYDOCK_VERSION=${APP_VERSION} \
     DRYDOCK_REPO_PATH=/repo \
     DRYDOCK_DATA_PATH=/data
 

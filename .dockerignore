@@ -1,4 +1,8 @@
 **/.git
+# The root .git is read by the Dockerfile's version stage (commit count). The
+# index changes on every `git add` and is not needed to count commits.
+!.git
+.git/index
 **/.gitignore
 **/.vscode
 **/.idea

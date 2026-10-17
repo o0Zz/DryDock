@@ -12,6 +12,7 @@ The repo folder is named `HarborGuard`, an earlier name. The product, the env pr
 - **External CLIs:** the backend calls the `docker compose` CLI as a subprocess for stack actions, and the `trivy` CLI for CVE scans.
 - **Frontend:** React 18, Vite 5, TypeScript, react-router 6, CodeMirror (YAML), xterm.js (console), lucide-react icons. Plain CSS in `frontend/src/styles.css`, no UI framework.
 - **Packaging:** one Docker image (amd64 + arm64). FastAPI serves the API and the built frontend on port 8080.
+- **Version:** `release/X.Y` gives `X.Y.<commit count>`, a `vX.Y.Z` tag gives `X.Y.Z`, any other branch gives `0.0.<commit count>-<branch>`. CI passes it as `APP_VERSION`. A local `docker compose build` computes it from `.git` in the Dockerfile's `version` stage. The image stores it in `/app/VERSION`. A backend run from a checkout reports `0.0.0-dev`, and the Vite frontend computes its own.
 
 ## Layout
 

@@ -4,12 +4,23 @@ from pathlib import Path
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+DEV_VERSION = "0.0.0-dev"
+
+
+def _built_version() -> str:
+    """The version the Docker build wrote next to the app, from the git branch and
+    commit count. Absent when running from a checkout."""
+    try:
+        version = (Path(__file__).resolve().parents[2] / "VERSION").read_text(encoding="utf-8")
+    except OSError:
+        return DEV_VERSION
+    return version.strip() or DEV_VERSION
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="DRYDOCK_", env_file=".env", extra="ignore")
 
-    # Injected at image build time from the git branch and commit count.
-    version: str = "0.0.0-dev"
+    version: str = Field(default_factory=_built_version)
     repo_path: Path = Field(default=Path("/repo"))
     # Where the repo lives on the Docker host. Detected from DryDock's own mount
     # when unset; only needed if detection fails (e.g. a custom container hostname).

@@ -13,7 +13,7 @@ import { Link } from "react-router-dom";
 import { api } from "../api";
 import { formatBytes, formatDate, formatDuration } from "../format";
 import { useHostUsage } from "../hooks/useHostUsage";
-import type { DashboardStats, HostUsage } from "../types";
+import type { DashboardStats, HostInfo, HostUsage } from "../types";
 
 type Tone = "danger" | "warn" | "ok";
 
@@ -56,93 +56,62 @@ function cveDetail(images: number, scanned: number): string {
   return `in ${images} of ${scanned} scanned image${scanned === 1 ? "" : "s"}`;
 }
 
-/** Amber from `warn`, red from `danger`. */
-function toneFor(value: number, warn: number, danger: number): Tone {
-  if (value >= danger) return "danger";
-  if (value >= warn) return "warn";
-  return "ok";
-}
+// The Raspberry Pi firmware starts throttling at 80 °C.
+const THROTTLE_TEMP_C = 80;
 
-function Meter({
-  label,
-  value,
-  percent,
-  tone,
-  detail,
-}: {
-  label: string;
-  value: string;
-  percent: number;
-  tone: Tone;
-  detail?: string;
-}) {
+function Fact({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div className={`meter meter-${tone}`}>
-      <div className="meter-head">
-        <span className="muted">{label}</span>
-        <strong>{value}</strong>
-      </div>
-      <div className="meter-bar">
-        <div className="meter-fill" style={{ width: `${Math.min(Math.max(percent, 0), 100)}%` }} />
-      </div>
-      {detail && <div className="stat-detail">{detail}</div>}
-    </div>
+    <li>
+      <span className="muted">{label}</span>
+      <strong>{children}</strong>
+    </li>
   );
 }
 
-// The Raspberry Pi firmware starts throttling at 80 °C.
-const TEMP_WARN_C = 70;
-const TEMP_DANGER_C = 80;
-
-function HostMeters({ usage, cpus }: { usage: HostUsage | null; cpus: number | null }) {
-  if (!usage) return <p className="muted">Loading host load…</p>;
-  const { cpu_percent, load_1m, memory_total, memory_used, temperature_c } = usage;
-  const meters: ReactNode[] = [];
-  if (cpu_percent !== null) {
-    meters.push(
-      <Meter
-        key="cpu"
-        label="CPU"
-        value={`${cpu_percent.toFixed(0)} %`}
-        percent={cpu_percent}
-        tone={toneFor(cpu_percent, 80, 95)}
-        detail={
-          load_1m !== null
-            ? `Load ${load_1m.toFixed(2)}${cpus ? ` on ${cpus} CPUs` : ""}`
-            : undefined
-        }
-      />,
-    );
-  }
-  if (memory_total && memory_used !== null) {
-    const percent = (100 * memory_used) / memory_total;
-    meters.push(
-      <Meter
-        key="memory"
-        label="Memory"
-        value={`${percent.toFixed(0)} %`}
-        percent={percent}
-        tone={toneFor(percent, 80, 95)}
-        detail={`${formatBytes(memory_used)} of ${formatBytes(memory_total)} used`}
-      />,
-    );
-  }
-  if (temperature_c !== null) {
-    meters.push(
-      <Meter
-        key="temperature"
-        label="CPU temperature"
-        value={`${temperature_c.toFixed(1)} °C`}
-        percent={temperature_c}
-        tone={toneFor(temperature_c, TEMP_WARN_C, TEMP_DANGER_C)}
-        detail={temperature_c >= TEMP_DANGER_C ? "Hot enough to throttle" : undefined}
-      />,
-    );
-  }
-  if (meters.length === 0) {
-    return <p className="muted">Live host load is not available on this host.</p>;
-  }
-  return <div className="meter-grid">{meters}</div>;
+/** Live load first (refreshed every few seconds), then the static `docker info` facts.
+ * Rows whose value the host does not expose are left out. */
+function HostFacts({ host, usage }: { host: HostInfo | null; usage: HostUsage | null }) {
+  const cpu = usage?.cpu_percent ?? null;
+  const load = usage?.load_1m ?? null;
+  const used = usage?.memory_used ?? null;
+  const total = usage?.memory_total ?? null;
+  const temperature = usage?.temperature_c ?? null;
+  const uptime = usage?.uptime_seconds ?? null;
+  return (
+    <ul className="fact-list">
+      {cpu !== null && (
+        <Fact label="CPU usage">
+          {cpu.toFixed(0)} %{load !== null && ` (load ${load.toFixed(2)})`}
+        </Fact>
+      )}
+      {used !== null && total && (
+        <Fact label="Memory used">
+          {formatBytes(used)} of {formatBytes(total)} ({((100 * used) / total).toFixed(0)} %)
+        </Fact>
+      )}
+      {temperature !== null && (
+        <Fact label="CPU temperature">
+          {temperature.toFixed(1)} °C
+          {temperature >= THROTTLE_TEMP_C && (
+            <span className="stat-detail-warn"> · throttling</span>
+          )}
+        </Fact>
+      )}
+      {uptime !== null && <Fact label="Uptime">{formatDuration(uptime)}</Fact>}
+      {host && (
+        <>
+          <Fact label="Operating system">{host.os ?? "—"}</Fact>
+          <Fact label="Kernel / architecture">
+            {host.kernel ?? "—"} / {host.architecture ?? "—"}
+          </Fact>
+          <Fact label="Docker">{host.docker_version ?? "—"}</Fact>
+          <Fact label="CPUs / memory">
+            {host.cpus ?? "—"} / {host.memory_total ? formatBytes(host.memory_total) : "—"}
+          </Fact>
+        </>
+      )}
+    </ul>
+  );
 }
 
 function Attention({ stats }: { stats: DashboardStats }) {
@@ -234,7 +203,6 @@ export default function Dashboard() {
   if (!stats) return <div>Loading…</div>;
 
   const unhealthy = stats.unhealthy_containers.length;
-  const host = stats.host;
 
   return (
     <div>
@@ -310,37 +278,7 @@ export default function Dashboard() {
 
       <section className="section">
         <h2>Host</h2>
-        <HostMeters usage={usage} cpus={host?.cpus ?? null} />
-        {host && (
-          <ul className="fact-list host-facts">
-            <li>
-              <span className="muted">Operating system</span>
-              <strong>{host.os ?? "—"}</strong>
-            </li>
-            <li>
-              <span className="muted">Kernel / architecture</span>
-              <strong>
-                {host.kernel ?? "—"} / {host.architecture ?? "—"}
-              </strong>
-            </li>
-            <li>
-              <span className="muted">Docker</span>
-              <strong>{host.docker_version ?? "—"}</strong>
-            </li>
-            <li>
-              <span className="muted">CPUs / memory</span>
-              <strong>
-                {host.cpus ?? "—"} / {host.memory_total ? formatBytes(host.memory_total) : "—"}
-              </strong>
-            </li>
-            {usage?.uptime_seconds != null && (
-              <li>
-                <span className="muted">Uptime</span>
-                <strong>{formatDuration(usage.uptime_seconds)}</strong>
-              </li>
-            )}
-          </ul>
-        )}
+        <HostFacts host={stats.host} usage={usage} />
       </section>
 
       <section className="section">
