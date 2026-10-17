@@ -1,482 +1,133 @@
 # DryDock
 
-DryDock is a lightweight, self-hosted Docker management UI designed for homelabs and Raspberry Pi setups.
+A small, self-hosted web UI for Docker Compose stacks on a homelab or Raspberry Pi. It is a focused alternative to Portainer. A mounted folder of Compose files is the source of truth. DryDock lists the stacks, edits them, runs them, scans their images for CVEs and checks for image updates.
 
-The goal is to build a simple all-in-one alternative to tools like Portainer, focused on managing Docker Compose files from a mounted repository, checking image updates, scanning for CVEs, and providing a clean web UI for day-to-day container operations.
+The repo folder is named `HarborGuard`, an earlier name. The product, the env prefix (`DRYDOCK_`), the package and the image are all **DryDock**.
 
-## Project Goal
+`README.md` is the short, user-facing page (features, quick start, config). Contributor detail lives here. Keep both in sync when behaviour changes.
 
-DryDock allows the user to mount a local folder containing Docker Compose YAML files and manage everything from a browser.
+## Stack
 
-Core features:
+- **Backend:** Python 3.11, FastAPI, SQLAlchemy 2 (sync) on SQLite, Alembic, docker-py, APScheduler, httpx. Managed with `uv`.
+- **External CLIs:** the backend calls the `docker compose` CLI as a subprocess for stack actions, and the `trivy` CLI for CVE scans.
+- **Frontend:** React 18, Vite 5, TypeScript, react-router 6, CodeMirror (YAML), xterm.js (console), lucide-react icons. Plain CSS in `frontend/src/styles.css`, no UI framework.
+- **Packaging:** one Docker image (amd64 + arm64). FastAPI serves the API and the built frontend on port 8080.
 
-* Browse a mounted repository of Docker Compose projects
-* View and edit `docker-compose.yml` files
-* Start, stop, restart, pull and redeploy Compose stacks
-* View live container logs
-* List running containers
-* Detect available image updates
-* Scan Docker images for CVEs
-* Store scan results, stack metadata and history in SQLite
-* Run as a single Docker image
-
-The project is intended to be simple, local-first, and easy to deploy on a Raspberry Pi.
-
-## Target Environment
-
-Primary target:
-
-* Raspberry Pi
-* Docker / Docker Compose
-* Local LAN usage
-* Homelab / self-hosted services
-
-DryDock should not require Kubernetes, cloud services, or a complex external database.
-
-## Tech Stack
-
-### Backend
-
-* Python
-* FastAPI
-* SQLite
-* Docker SDK for Python, also known as `docker-py`
-* Subprocess calls to `docker compose` for Compose stack operations
-* Trivy CLI for CVE scanning
-* Optional: APScheduler or a lightweight background worker for scheduled scans and update checks
-
-The backend exposes a REST API and real-time log streaming endpoints.
-
-### Frontend
-
-* React
-* Vite
-* TypeScript preferred
-* Simple dashboard-style UI
-* Monaco Editor or CodeMirror for YAML editing
-* WebSocket or Server-Sent Events for live logs
-
-### Database
-
-* SQLite
-* Stored inside a persistent `/data` volume
-
-SQLite is used for:
-
-* Registered Compose projects
-* Scan history
-* Update check history
-* User settings
-* Container metadata cache
-* Optional audit/history of actions
-
-### Packaging
-
-DryDock should run as a single Docker image.
-
-Expected container mounts:
-
-```yaml
-volumes:
-  - /var/run/docker.sock:/var/run/docker.sock
-  - /path/to/compose-repo:/repo
-  - drydock_data:/data
-```
-
-The mounted `/repo` folder contains the user’s Docker Compose projects.
-
-The mounted Docker socket allows DryDock to inspect containers, stream logs, and interact with Docker.
-
-## High-Level Architecture
-
-```text
-Browser UI
-   |
-   | REST / WebSocket / SSE
-   v
-FastAPI Backend
-   |
-   |-- Docker SDK for Python / docker-py
-   |     - list containers
-   |     - inspect containers
-   |     - stream logs
-   |
-   |-- docker compose CLI
-   |     - up
-   |     - down
-   |     - pull
-   |     - restart
-   |
-   |-- Trivy CLI
-   |     - scan Docker images for CVEs
-   |
-   |-- SQLite
-         - projects
-         - scans
-         - update checks
-         - settings
-```
-
-## Compose Repository Model
-
-DryDock expects a mounted folder such as `/repo`.
-
-Example structure:
-
-```text
-/repo
-  /homeassistant
-    docker-compose.yml
-  /nginx-proxy
-    docker-compose.yml
-  /uptime-kuma
-    compose.yml
-  /paperless
-    docker-compose.yml
-```
-
-The app should recursively discover Compose files named:
-
-* `docker-compose.yml`
-* `docker-compose.yaml`
-* `compose.yml`
-* `compose.yaml`
-
-Each discovered Compose file becomes a “Project” in the UI.
-
-## MVP Features
-
-### 1. Project Discovery
-
-The backend scans `/repo` and finds Compose files.
-
-For each project, store:
-
-* Project name
-* Compose file path
-* Last modified date
-* Services defined in the file
-* Related containers if running
-
-### 2. YAML Editor
-
-The UI allows editing the Compose file.
-
-Important behavior:
-
-* Always make a backup before saving
-* Validate YAML before saving
-* Ideally validate basic Compose structure
-* Show clear errors if YAML is invalid
-
-Backups can be stored in:
-
-```text
-/data/backups
-```
-
-### 3. Stack Actions
-
-For each Compose project, provide buttons:
-
-* Pull
-* Up / Deploy
-* Down
-* Restart
-* Stop
-* View logs
-
-Initial implementation can call the Docker Compose CLI using subprocess:
-
-```bash
-docker compose -f /repo/example/docker-compose.yml up -d
-docker compose -f /repo/example/docker-compose.yml down
-docker compose -f /repo/example/docker-compose.yml pull
-docker compose -f /repo/example/docker-compose.yml logs -f
-```
-
-This avoids reimplementing Docker Compose behavior in Python.
-
-### 4. Container List
-
-Use `docker-py` to list containers.
-
-Show:
-
-* Name
-* Image
-* Status
-* Ports
-* Created date
-* Compose project label if available
-* Restart policy
-* CPU/RAM usage later if possible
-
-### 5. Live Logs
-
-The UI should support live logs for:
-
-* A single container
-* A Compose project
-
-Implementation options:
-
-* WebSocket
-* Server-Sent Events
-
-Start simple with Server-Sent Events if easier.
-
-### 6. CVE Scanning
-
-Use Trivy CLI.
-
-Example:
-
-```bash
-trivy image --format json nginx:latest
-```
-
-The backend should parse the JSON result and store a summary in SQLite.
-
-For each image, show:
-
-* Image name
-* Last scanned date
-* Critical CVE count
-* High CVE count
-* Medium CVE count
-* Whether a fixed version exists
-* Link/reference to CVE where available
-
-Initial scan modes:
-
-* Scan one image manually
-* Scan all images used by running containers
-* Scan all images referenced in Compose files
-
-### 7. Update Checks
-
-The app should detect if a newer image is available.
-
-Initial simple approach:
-
-* Run `docker compose pull` in dry/safe mode where possible, or
-* Compare local and remote image digests using registry inspection tools later
-
-For MVP, it is acceptable to start with:
-
-* “Pull available” button
-* Store last pull/check timestamp
-* Later add real digest comparison
-
-### 8. Dashboard
-
-Dashboard should show:
-
-* Number of running containers
-* Number of stopped containers
-* Number of Compose projects
-* Images with critical CVEs
-* Images with high CVEs
-* Images with possible updates
-* Last scan time
-
-## Security Notes
-
-DryDock mounts the Docker socket:
-
-```text
-/var/run/docker.sock
-```
-
-This effectively gives the app root-equivalent control over the Docker host.
-
-Therefore:
-
-* Do not expose DryDock directly to the internet
-* Use it only on LAN, VPN, Tailscale, or WireGuard
-* Add authentication before any serious use
-* Consider read-only modes for some features later
-* Be careful with editing arbitrary files under `/repo`
-
-## Authentication
-
-Add an authentication mechanism: 
-* Single admin user
-* Password stored securely
-* Session cookie
-* Reverse proxy support
-
-## Suggested Backend Structure
+## Layout
 
 ```text
 backend/
   app/
-    main.py
-    api/
-      projects.py
-      containers.py
-      logs.py
-      scans.py
-      updates.py
-      settings.py
-    core/
-      config.py
-      database.py
-      security.py
-    services/
-      docker_service.py
-      compose_service.py
-      trivy_service.py
-      repo_service.py
-      update_service.py
-    models/
-      project.py
-      scan.py
-      settings.py
-    schemas/
-      project.py
-      scan.py
-      container.py
-  pyproject.yaml
+    main.py            app setup, router mounting, SPA fallback, logging
+    api/               one router per area (projects, containers, console, images,
+                       volumes, scans, updates, jobs, logs, settings, users, auth, dashboard)
+    core/              config (env), database, migrations (Alembic runner), security
+                       (sessions, bcrypt), log_buffer (in-memory app log)
+    models/            SQLAlchemy models
+    schemas/           Pydantic API models
+    services/          logic: docker_service, compose_service, repo_service, trivy_service,
+                       registry_service, update_service, job_service, tasks, scheduler_service,
+                       settings_service, notify_service
+  migrations/versions/ Alembic revisions
+  tests/               pytest
+frontend/src/
+  pages/               one file per route
+  components/          shared UI (LogPanel, JobList, JobsIndicator, ContainerConsole, ...)
+  hooks/               useJobs, useContainerStats
+  api.ts, types.ts     typed API client and response types
+sample-repo/           Compose stacks for local dev
+Dockerfile             3-stage build (frontend, backend venv, runtime with docker/compose/trivy)
+.github/workflows/     multi-arch build and push to ghcr.io
 ```
 
-## Suggested Frontend Structure
+## Key behaviour
 
-```text
-frontend/
-  src/
-    api/
-    components/
-    pages/
-      Dashboard.tsx
-      Projects.tsx
-      ProjectDetail.tsx
-      Containers.tsx
-      Scans.tsx
-      Settings.tsx
-    hooks/
-    types/
-    main.tsx
+- **Project discovery** (`repo_service`): walks `DRYDOCK_REPO_PATH` and skips dot folders.
+  - A project is any `docker-compose.y(a)ml` or `compose.y(a)ml`, plus any other `*.yml` or `*.yaml` with a top-level `services:` mapping. `*.override.*` files are skipped.
+  - The project ID is a hash of the file path.
+  - Containers are matched to a project by the `com.docker.compose.project.config_files` label: the exact path first, then a path ending in the same repo-relative path (host and container mount roots differ), then by project name.
+- **Editing:** validate the YAML first, then back up to `/data/backups/<project-id>/`, then write. New stacks are created as `<repo>/<name>/docker-compose.yml`. The name must match `^[a-z0-9][a-z0-9_-]*$`.
+- **Background jobs** (`job_service`, `tasks`): anything slow (scans, update checks, container update) returns a job with status 202. The UI polls `/api/jobs`. `useJobs` re-attaches to active jobs when a page opens. `JobsIndicator` in the topbar shows them from any page.
+- **Update checks** (`update_service`): two independent signals.
+  - Digest: the same tag was rebuilt (`latest`, `stable`).
+  - Newer tag: `registry_service` lists the registry's tags over the v2 API with an anonymous bearer token. Only tags of the same shape count (same prefix, same number of parts, same suffix), so prereleases and other variants are ignored. It reports the newest tag and the newest within the current major, and skips outlier majors (a jump of more than 3).
+- **Live data:** logs use SSE (`/api/logs/...`). Container stats are polled every 5s. The console is a WebSocket (`/api/containers/{id}/exec`).
+- **Auth:** signed session cookie (Starlette `SessionMiddleware`), users table with an `is_admin` flag. A bootstrap admin is created on first start.
+  - Admin only: settings writes, users, app logs, console, unmasked env values.
+  - The console WebSocket is outside the HTTP auth dependency. It checks the session and the `Origin` header itself. Keep that check: other apps on the same host are same-site, so the browser sends them the cookie too.
+- **Database:** Alembic owns the schema. Startup upgrades to head and snapshots the database to `<data>/backups/db/` first (keeps 5). Never use `create_all`. See "Database migrations" below.
+- **API:** REST under `/api`; every router except `auth` and `/api/health` requires a session. FastAPI docs at `/docs` list all routes.
+
+## Development
+
+Run from the repo root. VS Code: the compound launch config **"Full stack (backend + frontend)"** starts both with the debugger.
+
+```powershell
+# backend (port 8080)
+cd backend
+uv sync --extra dev
+$env:DRYDOCK_REPO_PATH = "$PWD\..\sample-repo"; $env:DRYDOCK_DATA_PATH = "$PWD\.data"
+.venv\Scripts\python.exe -m uvicorn app.main:app --reload --port 8080
+
+# frontend (port 5173, proxies /api including WebSockets)
+cd frontend; npm install; npm run dev
 ```
 
-## Initial API Ideas
+Login: `admin` / `admin` (dev default).
 
-```text
-GET    /api/projects
-GET    /api/projects/{id}
-GET    /api/projects/{id}/compose
-PUT    /api/projects/{id}/compose
-POST   /api/projects/{id}/up
-POST   /api/projects/{id}/down
-POST   /api/projects/{id}/pull
-POST   /api/projects/{id}/restart
+Checks before you finish a change:
 
-GET    /api/containers
-GET    /api/containers/{id}
-POST   /api/containers/{id}/start
-POST   /api/containers/{id}/stop
-POST   /api/containers/{id}/restart
-
-GET    /api/logs/container/{id}
-GET    /api/logs/project/{id}
-
-POST   /api/scans/image
-POST   /api/scans/running
-GET    /api/scans
-GET    /api/scans/{id}
-
-POST   /api/updates/check
-GET    /api/updates
+```powershell
+cd backend;  uv run ruff check app tests;  .venv\Scripts\python.exe -m pytest -q
+cd frontend; npx tsc --noEmit -p .;  npm run build
 ```
 
-## Development Priorities
+Windows gotchas:
+- `uv run uvicorn` or `uv run pytest` can fail with `Failed to canonicalize script path`, because the venv launchers are stale. Use `python -m ...`, or run `uv sync --reinstall`.
+- `uvicorn --reload` sometimes hangs after an edit: the old process keeps serving. Restart it.
+- Trivy is not installed locally (`winget install AquaSecurity.Trivy`), so scans fail in dev without it. The Docker image includes it.
 
-Build in this order:
+## Database migrations
 
-1. Backend project discovery from `/repo`
-2. Frontend project list
-3. Compose YAML viewer/editor
-4. Compose actions: up, down, pull, restart
-5. Container list using `docker-py`
-6. Live logs
-7. Trivy scan for one image
-8. Trivy scan for all running images
-9. Dashboard CVE summary
-10. Update checks
-11. Authentication
-12. Scheduled scans and notifications
+After changing a model in `backend/app/models/`, generate a revision and review it before committing:
 
-## Non-Goals for MVP
-
-Do not build these at first:
-
-* Kubernetes support
-* Multi-host Docker management
-* Full registry mirror support
-* Role-based access control
-* Complex auto-update engine
-* Public internet exposure
-* Plugin system
-* Full Portainer replacement
-
-DryDock should start as a focused, local Docker Compose manager.
-
-## Design Principles
-
-* Simple over complete
-* Local-first
-* Raspberry Pi friendly
-* One Docker image
-* Minimal dependencies
-* Safe defaults
-* Manual approval before destructive actions
-* Back up YAML files before editing
-* Never auto-update critical services by default
-
-## Example Deployment
-
-```yaml
-services:
-  drydock:
-    image: drydock/drydock:latest
-    container_name: drydock
-    restart: unless-stopped
-    ports:
-      - "8080:8080"
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-      - /home/pi/docker:/repo
-      - drydock_data:/data
-    environment:
-      - TZ=Europe/Paris
-      - DRYDOCK_REPO_PATH=/repo
-      - DRYDOCK_DATA_PATH=/data
-
-volumes:
-  drydock_data:
+```powershell
+cd backend
+$env:DRYDOCK_DATA_PATH = "$PWD\.data"
+uv run alembic upgrade head
+uv run alembic revision --autogenerate -m "add foo to scans"
+uv run alembic check       # fails if models and migrations differ
 ```
 
-## Project Name
+- Never edit a released revision. Add a new one.
+- SQLite cannot alter most things in place, so autogenerate emits `batch_alter_table` blocks that rebuild the table. Keep them.
+- Autogenerate misses renames and data changes. Write those by hand.
+- A new `NOT NULL` column on an existing table needs a `server_default` or a backfill.
+- `tests/test_migrations.py` checks a fresh upgrade matches the models and a downgrade to base works.
 
-Project name: DryDock
+## Conventions
 
-Meaning:
+- Match the surrounding style. Comments explain why, not what. Ruff with line length 100.
+- Every route that does Docker work maps `docker_service.DockerUnavailable` to an HTTP error. Never let docker-py exceptions escape.
+- Anything slower than about 1s goes through `job_service`, not a blocking request.
+- Shell out with argument lists only (`subprocess.run([...])`), never `shell=True`.
+- Frontend: all calls go through `api.ts`, and all types live in `types.ts`. Load heavy components lazily (`YamlEditor`, `ContainerConsole`).
+- Docs (`README.md`, this file) use plain, short sentences.
 
-A dry dock is where ships are pulled out of the water to be inspected, repaired and repainted before going back out. DryDock is the same idea for Docker Compose stacks: the place where they live, can be edited, monitored, updated and scanned.
+## Principles
 
-Alternative names considered:
+- Simple over complete. Local-first. Pi-friendly: few dependencies, cheap polling.
+- Safe defaults: back up before writing, confirm destructive actions, never auto-update.
+- Mounting the Docker socket gives root on the host. LAN, VPN or Tailscale only, behind auth.
 
-* HarborGuard
-* StackNest
-* DockPilot
-* ComposeHub
-* HarborLite
-* DockYard
-* PiDock
-* StackGuard
-* DockWatch
-* ComposeKeeper
-* DockPanel
+## Non-goals
 
-DryDock is preferred because it is short, friendly, self-hosted oriented, evokes inspection and maintenance, and is not limited only to Raspberry Pi.
+Kubernetes, Swarm, multi-host, RBAC beyond admin/user, plugins, an auto-update engine, registry mirroring, public internet exposure.
+
+## Known gaps
+
+- Root-level Compose files share the Compose project name of the repo folder (no `-p` is passed). This can clash with stacks started from the host.
+- The Trivy DB cache is not on `/data`, so it is downloaded again after the container is recreated.
+- No registry credentials: private registries fail both update checks.
+- YAML backups cannot be browsed or restored from the UI yet.
+- `todo.txt`: multilanguage UI.
