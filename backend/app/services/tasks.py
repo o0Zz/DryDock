@@ -71,6 +71,9 @@ def store_update_check(db: Session, image: str) -> UpdateCheck:
         remote_digest=result.remote_digest,
         update_available=result.update_available,
         error=result.error[:1000] if result.error else None,
+        newest_tag=result.newest_tag,
+        newest_same_major_tag=result.newest_same_major_tag,
+        tag_error=result.tag_error[:1000] if result.tag_error else None,
     )
     db.add(row)
     db.commit()
@@ -136,13 +139,16 @@ def _maybe_notify_updates(db: Session, checks: Sequence[UpdateCheck]) -> None:
     config = settings_service.get_all(db)
     if not config["notify_on_update"]:
         return
-    available = [c for c in checks if c.update_available]
+    available = [c for c in checks if c.has_update]
     if not available:
         return
     notify_service.send(
         config["notify_webhook_url"],
         "update.available",
-        {"images": [c.image for c in available]},
+        {
+            "images": [c.image for c in available],
+            "newer_tags": {c.image: c.newest_tag for c in available if c.newest_tag},
+        },
     )
 
 
@@ -181,7 +187,7 @@ def update_check_runner(resolve: ImageResolver, *, notify: bool = False):
             ctx.note(f"Checking {image}")
             checks.append(store_update_check(ctx.db, image))
             ctx.advance()
-        outdated = sum(1 for c in checks if c.update_available)
+        outdated = sum(1 for c in checks if c.has_update)
         failed = sum(1 for c in checks if c.error)
         message = f"{len(checks)} image(s) checked, {outdated} with updates"
         if failed:

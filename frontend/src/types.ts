@@ -118,6 +118,11 @@ export interface UpdateSummary {
   remote_digest: string | null;
   update_available: boolean;
   error: string | null;
+  /** Newer version tag of the same shape in the registry (e.g. 2026.10.2). */
+  newest_tag: string | null;
+  /** Newest tag within the current major, when it differs from newest_tag. */
+  newest_same_major_tag: string | null;
+  tag_error: string | null;
 }
 
 export type JobStatus = "pending" | "running" | "success" | "error";

@@ -17,3 +17,6 @@ class UpdateSummary(BaseModel):
     remote_digest: str | None = None
     update_available: bool = False
     error: str | None = None
+    newest_tag: str | None = None
+    newest_same_major_tag: str | None = None
+    tag_error: str | None = None

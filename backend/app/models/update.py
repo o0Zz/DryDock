@@ -25,3 +25,12 @@ class UpdateCheck(Base):
     remote_digest: Mapped[str | None] = mapped_column(String, nullable=True)
     update_available: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     error: Mapped[str | None] = mapped_column(String, nullable=True)
+    # Newer version tags of the same shape found in the registry's tag list.
+    newest_tag: Mapped[str | None] = mapped_column(String, nullable=True)
+    newest_same_major_tag: Mapped[str | None] = mapped_column(String, nullable=True)
+    tag_error: Mapped[str | None] = mapped_column(String, nullable=True)
+
+    @property
+    def has_update(self) -> bool:
+        """Either kind of update: same tag rebuilt, or a newer version tag."""
+        return self.update_available or bool(self.newest_tag)

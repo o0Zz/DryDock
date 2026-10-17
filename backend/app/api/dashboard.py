@@ -40,7 +40,7 @@ def dashboard(db: Session = Depends(get_db)) -> DashboardStats:
         stats.last_scan_at = max(s.scanned_at for s in scans)
 
     checks = latest_updates(db)
-    stats.updates_available = sum(1 for c in checks if c.update_available)
+    stats.updates_available = sum(1 for c in checks if c.has_update)
     if checks:
         stats.last_update_check_at = max(c.checked_at for c in checks)
 
