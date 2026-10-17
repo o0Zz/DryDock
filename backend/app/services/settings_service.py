@@ -15,11 +15,11 @@ logger = logging.getLogger(__name__)
 # rejected by set_many, so the API can accept a partial dict safely.
 DEFAULTS: dict[str, Any] = {
     # Scheduled CVE scans of all running images.
-    "scan_schedule_enabled": False,
+    "scan_schedule_enabled": True,
     "scan_interval_hours": 24,
     # Scheduled registry digest comparison for all known images.
-    "update_check_enabled": False,
-    "update_check_interval_hours": 6,
+    "update_check_enabled": True,
+    "update_check_interval_hours": 24,
     # Optional webhook fired after a scheduled run finds something notable.
     "notify_webhook_url": "",
     "notify_on_critical": True,
