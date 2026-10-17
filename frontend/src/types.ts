@@ -242,6 +242,7 @@ export interface DashboardStats {
   services: number;
   containers_running: number;
   containers_stopped: number;
+  containers_unhealthy: number;
   volumes: number;
   images_tracked: number;
   images_scanned: number;

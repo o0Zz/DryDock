@@ -25,6 +25,7 @@ from app.schemas.container import (
     MountInfo,
     NetworkInfo,
 )
+from app.schemas.dashboard import HostInfo
 from app.schemas.image import ContainerRef, Image
 from app.schemas.volume import Volume, VolumeUser
 
@@ -185,6 +186,21 @@ def list_containers(*, all_states: bool = True) -> list[Container]:
     except DockerException as exc:
         raise DockerUnavailable(str(exc)) from exc
     return [_to_schema(container) for container in containers]
+
+
+def host_info() -> HostInfo:
+    try:
+        info = _client().info()
+    except DockerException as exc:
+        raise DockerUnavailable(str(exc)) from exc
+    return HostInfo(
+        os=info.get("OperatingSystem"),
+        kernel=info.get("KernelVersion"),
+        architecture=info.get("Architecture"),
+        docker_version=info.get("ServerVersion"),
+        cpus=info.get("NCPU"),
+        memory_total=info.get("MemTotal"),
+    )
 
 
 def get_container(container_id: str) -> Container:

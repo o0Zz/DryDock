@@ -6,7 +6,6 @@ import {
   Layers,
   ShieldAlert,
   ShieldQuestion,
-  Square,
 } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
@@ -18,12 +17,14 @@ function Stat({
   icon,
   value,
   label,
+  detail,
   tone,
   to,
 }: {
   icon: ReactNode;
   value: number | string;
   label: string;
+  detail?: ReactNode;
   tone?: "danger" | "warn" | "ok";
   to?: string;
 }) {
@@ -33,6 +34,7 @@ function Stat({
       <div>
         <div className="stat-value">{value}</div>
         <div className="stat-label">{label}</div>
+        {detail && <div className="stat-detail">{detail}</div>}
       </div>
     </div>
   );
@@ -43,6 +45,11 @@ function Stat({
   ) : (
     body
   );
+}
+
+function cveDetail(images: number, scanned: number): string {
+  if (scanned === 0) return "No image scanned yet";
+  return `in ${images} of ${scanned} scanned image${scanned === 1 ? "" : "s"}`;
 }
 
 export default function Dashboard() {
@@ -70,20 +77,41 @@ export default function Dashboard() {
         </div>
       )}
 
-      <div className="stat-grid">
+      <div className="stat-grid stat-grid-hero">
         <Stat
-          icon={<ContainerIcon size={22} />}
+          icon={<ContainerIcon size={26} />}
           value={stats.containers_running}
           label="Containers running"
-          tone="ok"
+          detail={
+            <>
+              {stats.containers_stopped} stopped
+              {stats.containers_unhealthy > 0 && (
+                <span className="stat-detail-warn"> · {stats.containers_unhealthy} unhealthy</span>
+              )}
+            </>
+          }
+          tone={stats.containers_unhealthy > 0 ? "warn" : "ok"}
           to="/containers"
         />
         <Stat
-          icon={<Square size={22} />}
-          value={stats.containers_stopped}
-          label="Containers stopped"
-          to="/containers"
+          icon={<ShieldAlert size={26} />}
+          value={stats.critical_total}
+          label="Critical CVEs"
+          detail={cveDetail(stats.images_critical, stats.images_scanned)}
+          tone={stats.critical_total > 0 ? "danger" : "ok"}
+          to="/images"
         />
+        <Stat
+          icon={<ShieldAlert size={26} />}
+          value={stats.high_total}
+          label="High CVEs"
+          detail={cveDetail(stats.images_high, stats.images_scanned)}
+          tone={stats.high_total > 0 ? "warn" : "ok"}
+          to="/images"
+        />
+      </div>
+
+      <div className="stat-grid">
         <Stat
           icon={<Boxes size={22} />}
           value={stats.projects}
@@ -91,20 +119,6 @@ export default function Dashboard() {
           to="/projects"
         />
         <Stat icon={<Layers size={22} />} value={stats.services} label="Services defined" />
-        <Stat
-          icon={<ShieldAlert size={22} />}
-          value={stats.images_critical}
-          label="Images with critical CVEs"
-          tone={stats.images_critical > 0 ? "danger" : undefined}
-          to="/images"
-        />
-        <Stat
-          icon={<ShieldAlert size={22} />}
-          value={stats.images_high}
-          label="Images with high CVEs"
-          tone={stats.images_high > 0 ? "warn" : undefined}
-          to="/images"
-        />
         <Stat
           icon={<ArrowUpCircle size={22} />}
           value={stats.updates_available}
@@ -131,12 +145,6 @@ export default function Dashboard() {
           <li>
             <span className="muted">Last update check</span>
             <strong>{formatDate(stats.last_update_check_at, "never")}</strong>
-          </li>
-          <li>
-            <span className="muted">Open critical / high findings</span>
-            <strong>
-              {stats.critical_total} / {stats.high_total}
-            </strong>
           </li>
         </ul>
         <div className="button-row">

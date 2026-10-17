@@ -468,6 +468,25 @@ input:focus {
 .stat-warn .stat-icon { background: rgba(210, 153, 34, 0.15); color: #9a6700; }
 .stat-ok .stat-icon { background: rgba(63, 185, 80, 0.15); color: #1a7f37; }
 
+.stat-detail {
+  color: var(--muted);
+  font-size: 0.8rem;
+  margin-top: 0.15rem;
+}
+
+.stat-detail-warn { color: #9a6700; font-weight: 600; }
+
+.stat-grid-hero {
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  margin-bottom: 1rem;
+}
+
+.stat-grid-hero .stat { padding: 1.25rem; }
+.stat-grid-hero .stat-icon { width: 52px; height: 52px; }
+.stat-grid-hero .stat-value { font-size: 2.5rem; line-height: 1.1; }
+.stat-grid-hero .stat-label { font-size: 0.95rem; font-weight: 600; color: var(--text); }
+.stat-danger .stat-value { color: #cf222e; }
+
 .fact-list {
   list-style: none;
   margin: 0;
