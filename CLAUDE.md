@@ -37,6 +37,7 @@ frontend/src/
   components/          shared UI (LogPanel, JobList, JobsIndicator, ContainerConsole, ...)
   hooks/               useJobs, useContainerStats
   api.ts, types.ts     typed API client and response types
+  i18n.tsx, i18n/fr/   translations: English text is the key, one JSON file per UI area
 docs/                  user docs (troubleshooting.md)
 sample-repo/           Compose stacks for local dev
 Dockerfile             3-stage build (frontend, backend venv, runtime with docker/compose/trivy)
@@ -104,7 +105,7 @@ Checks before you finish a change:
 
 ```powershell
 cd backend;  uv run ruff check app tests;  .venv\Scripts\python.exe -m pytest -q
-cd frontend; npx tsc --noEmit -p .;  npm run build
+cd frontend; npx tsc --noEmit -p .;  npm run i18n:check;  npm run build
 ```
 
 Windows gotchas:
@@ -137,6 +138,8 @@ uv run alembic check       # fails if models and migrations differ
 - Anything slower than about 1s goes through `job_service`, not a blocking request.
 - Shell out with argument lists only (`subprocess.run([...])`), never `shell=True`.
 - Frontend: all calls go through `api.ts`, and all types live in `types.ts`. Load heavy components lazily (`YamlEditor`, `ContainerConsole`).
+- UI text goes through `t("English text", { vars })` from `useT()` (`i18n.tsx`). Text defined outside a component is marked `msg("...")` and passed to `t()` where shown; plain helpers use `translate()`. Add the French to `src/i18n/fr/<area>.json` (shared words in `common.json`). `npm run i18n:check` fails on a missing key or a placeholder mismatch. Keep whole sentences as one key; never translate API data or values used in logic.
+- Layout: one breakpoint at 768px in `styles.css`. Below it the sidebar is a drawer (menu button in the topbar), tables scroll sideways, and panels become bottom sheets. New wide content must not push the page wider than the screen.
 - Docs (`README.md`, this file) use plain, short sentences.
 
 ## Principles
@@ -153,4 +156,4 @@ Kubernetes, Swarm, multi-host, RBAC beyond admin/user, plugins, an auto-update e
 
 - Volume files are read-only: no upload, edit or delete.
 - YAML backups cannot be browsed or restored from the UI yet.
-- `todo.txt`: multilanguage UI.
+- Server messages (API errors, job labels and output) are English only.

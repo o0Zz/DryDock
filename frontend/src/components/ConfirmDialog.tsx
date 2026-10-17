@@ -8,6 +8,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { useT } from "../i18n";
 
 export interface ConfirmOptions {
   title: string;
@@ -39,6 +40,7 @@ interface Pending extends ConfirmOptions {
 }
 
 export function ConfirmProvider({ children }: { children: ReactNode }) {
+  const t = useT();
   const [pending, setPending] = useState<Pending | null>(null);
   const dialogRef = useRef<HTMLDialogElement>(null);
 
@@ -102,7 +104,7 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
                   autoFocus={tone === "danger"}
                   onClick={() => settle(false)}
                 >
-                  {pending.cancelLabel ?? "Cancel"}
+                  {pending.cancelLabel ?? t("Cancel")}
                 </button>
                 <button
                   type="button"
@@ -110,7 +112,7 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
                   autoFocus={tone !== "danger"}
                   onClick={() => settle(true)}
                 >
-                  {pending.confirmLabel ?? "Confirm"}
+                  {pending.confirmLabel ?? t("Confirm")}
                 </button>
               </div>
             </div>

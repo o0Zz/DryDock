@@ -1,8 +1,23 @@
 import { ExternalLink } from "lucide-react";
 import { useMemo, useState } from "react";
+import { msg, useT } from "../i18n";
 import type { ScanDetail } from "../types";
 
 const SEVERITY_ORDER = ["CRITICAL", "HIGH", "MEDIUM", "LOW", "UNKNOWN"];
+
+// Trivy's severities stay the filter values; only the button and badge text is translated.
+const SEVERITY_LABELS: Record<string, string> = {
+  ALL: msg("all"),
+  CRITICAL: msg("critical"),
+  HIGH: msg("high"),
+  MEDIUM: msg("medium"),
+  LOW: msg("low"),
+  UNKNOWN: msg("unknown"),
+};
+
+function severityLabel(severity: string): string {
+  return SEVERITY_LABELS[severity] ?? severity.toLowerCase();
+}
 
 function severityClass(severity: string): string {
   if (severity === "CRITICAL") return "exited";
@@ -13,6 +28,7 @@ function severityClass(severity: string): string {
 /** Severity filter + findings table for one Trivy scan. */
 export default function ScanFindings({ detail }: { detail: ScanDetail }) {
   const [severity, setSeverity] = useState<string>("ALL");
+  const t = useT();
 
   const findings = useMemo(
     () =>
@@ -34,26 +50,26 @@ export default function ScanFindings({ detail }: { detail: ScanDetail }) {
             className={severity === level ? "small" : "secondary small"}
             onClick={() => setSeverity(level)}
           >
-            {level.toLowerCase()}
+            {t(severityLabel(level))}
           </button>
         ))}
       </div>
       {detail.truncated && (
         <div className="muted">
-          Showing the most severe findings only — the full list was capped.
+          {t("Showing the most severe findings only — the full list was capped.")}
         </div>
       )}
       {findings.length === 0 ? (
-        <div className="empty">No vulnerabilities at this level.</div>
+        <div className="empty">{t("No vulnerabilities at this level.")}</div>
       ) : (
         <table className="projects-table">
           <thead>
             <tr>
-              <th>Severity</th>
+              <th>{t("Severity")}</th>
               <th>CVE</th>
-              <th>Package</th>
-              <th>Installed</th>
-              <th>Fixed in</th>
+              <th>{t("Package")}</th>
+              <th>{t("Installed")}</th>
+              <th>{t("Fixed in")}</th>
             </tr>
           </thead>
           <tbody>
@@ -61,7 +77,7 @@ export default function ScanFindings({ detail }: { detail: ScanDetail }) {
               <tr key={`${finding.vulnerability_id}-${finding.package_name}-${index}`}>
                 <td>
                   <span className={`badge ${severityClass(finding.severity)}`}>
-                    {finding.severity.toLowerCase()}
+                    {t(severityLabel(finding.severity))}
                   </span>
                 </td>
                 <td>
@@ -89,7 +105,7 @@ export default function ScanFindings({ detail }: { detail: ScanDetail }) {
                   {finding.fixed_version ? (
                     <span className="badge running">{finding.fixed_version}</span>
                   ) : (
-                    <span className="muted">no fix</span>
+                    <span className="muted">{t("no fix")}</span>
                   )}
                 </td>
               </tr>

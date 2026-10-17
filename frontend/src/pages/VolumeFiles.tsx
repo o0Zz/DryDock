@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { api } from "../api";
 import { formatBytes, formatDate } from "../format";
+import { useT } from "../i18n";
 import type { VolumeEntry, VolumeListing } from "../types";
 
 const ENTRY_ICONS = { dir: Folder, file: File, link: FileSymlink, other: File };
@@ -12,6 +13,7 @@ function joinPath(folder: string, name: string): string {
 }
 
 export default function VolumeFiles() {
+  const t = useT();
   const { name = "" } = useParams();
   // The folder lives in the URL, so back/forward and reloads keep it.
   const [searchParams, setSearchParams] = useSearchParams();
@@ -68,16 +70,16 @@ export default function VolumeFiles() {
     <div>
       <div className="crumb">
         <Link to="/volumes">
-          <ChevronLeft size={15} /> Volumes
+          <ChevronLeft size={15} /> {t("Volumes")}
         </Link>
       </div>
       <div className="row-between">
         <h1>
-          {name} <span className="badge">read-only</span>
+          {name} <span className="badge">{t("read-only")}</span>
         </h1>
         <div className="button-row inline">
           <button type="button" className="secondary" disabled={loading} onClick={load}>
-            <RefreshCw size={15} /> Refresh
+            <RefreshCw size={15} /> {t("Refresh")}
           </button>
         </div>
       </div>
@@ -103,21 +105,21 @@ export default function VolumeFiles() {
       {error && <div className="error">{error}</div>}
       {listing?.truncated && (
         <div className="muted">
-          Showing the first {listing.entries.length} entries only.
+          {t("Showing the first {count} entries only.", { count: listing.entries.length })}
         </div>
       )}
 
       {!listing ? (
-        !error && <div className="empty">Loading…</div>
+        !error && <div className="empty">{t("Loading…")}</div>
       ) : listing.entries.length === 0 ? (
-        <div className="empty">This folder is empty.</div>
+        <div className="empty">{t("This folder is empty.")}</div>
       ) : (
         <table className="projects-table">
           <thead>
             <tr>
-              <th>Name</th>
-              <th>Size</th>
-              <th>Modified</th>
+              <th>{t("Name")}</th>
+              <th>{t("Size")}</th>
+              <th>{t("Modified")}</th>
               <th></th>
             </tr>
           </thead>
@@ -134,7 +136,7 @@ export default function VolumeFiles() {
                       href={api.volumeFileUrl(name, joinPath(listing.path, entry.name))}
                       download={entry.name}
                     >
-                      <Download size={14} /> Download
+                      <Download size={14} /> {t("Download")}
                     </a>
                   )}
                 </td>

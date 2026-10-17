@@ -3,8 +3,16 @@ import { Terminal } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
 import { SquareTerminal, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { msg, translate, useT } from "../i18n";
 
 type Status = "connecting" | "open" | "closed" | "error";
+
+const STATUS_LABELS: Record<Status, string> = {
+  connecting: msg("connecting"),
+  open: msg("open"),
+  closed: msg("closed"),
+  error: msg("error"),
+};
 
 /** Interactive shell in a container, over the /api/containers/{id}/exec WebSocket. */
 export default function ContainerConsole({
@@ -19,6 +27,7 @@ export default function ContainerConsole({
   const hostRef = useRef<HTMLDivElement | null>(null);
   const [status, setStatus] = useState<Status>("connecting");
   const [reason, setReason] = useState<string | null>(null);
+  const t = useT();
 
   useEffect(() => {
     const hostElement = hostRef.current;
@@ -60,7 +69,7 @@ export default function ContainerConsole({
       // 1000 = shell exited normally; 4xxx = backend refused (auth, not running…)
       setStatus(event.code === 1000 ? "closed" : "error");
       if (event.reason) setReason(event.reason);
-      terminal.write(`\r\n\x1b[90m[${event.reason || "connection closed"}]\x1b[0m\r\n`);
+      terminal.write(`\r\n\x1b[90m[${event.reason || translate("connection closed")}]\x1b[0m\r\n`);
     };
 
     const inputListener = terminal.onData((data) => send({ type: "input", data }));
@@ -85,12 +94,12 @@ export default function ContainerConsole({
         <div>
           <SquareTerminal size={15} /> <strong>{title}</strong>{" "}
           <span className="muted">
-            — {status}
+            — {t(STATUS_LABELS[status])}
             {reason && status === "error" ? `: ${reason}` : ""}
           </span>
         </div>
         <button type="button" className="secondary small" onClick={onClose}>
-          <X size={15} /> Close
+          <X size={15} /> {t("Close")}
         </button>
       </div>
       <div className="console-body" ref={hostRef} />

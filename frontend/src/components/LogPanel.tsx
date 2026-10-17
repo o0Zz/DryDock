@@ -1,7 +1,15 @@
 import { ScrollText, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { msg, useT } from "../i18n";
 
 type Status = "connecting" | "open" | "closed" | "error";
+
+const STATUS_LABELS: Record<Status, string> = {
+  connecting: msg("connecting"),
+  open: msg("open"),
+  closed: msg("closed"),
+  error: msg("error"),
+};
 
 // Older lines are dropped so a long session does not keep growing memory.
 const MAX_LINES = 5000;
@@ -33,6 +41,7 @@ export default function LogPanel({
 }) {
   const [lines, setLines] = useState<string[]>([]);
   const [status, setStatus] = useState<Status>("connecting");
+  const t = useT();
   const bodyRef = useRef<HTMLPreElement | null>(null);
   // Follow new lines only while the user has not scrolled up to read back.
   const followRef = useRef(true);
@@ -76,11 +85,11 @@ export default function LogPanel({
       <div className="log-header">
         <div>
           <ScrollText size={15} /> <strong>{title}</strong>{" "}
-          <span className="muted">— {status}</span>
+          <span className="muted">— {t(STATUS_LABELS[status])}</span>
         </div>
         {onClose && (
           <button type="button" className="secondary small" onClick={onClose}>
-            <X size={15} /> Close
+            <X size={15} /> {t("Close")}
           </button>
         )}
       </div>

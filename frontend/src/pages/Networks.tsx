@@ -6,10 +6,12 @@ import { useConfirm } from "../components/ConfirmDialog";
 import JobList from "../components/JobList";
 import { formatDate } from "../format";
 import { isActive, useJobs } from "../hooks/useJobs";
+import { useT } from "../i18n";
 import type { DockerNetwork } from "../types";
 
 export default function Networks() {
   const confirm = useConfirm();
+  const t = useT();
   const [networks, setNetworks] = useState<DockerNetwork[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -43,7 +45,7 @@ export default function Networks() {
       if (successNotice) setNotice(successNotice);
       refresh();
     } catch (actionError) {
-      setError(actionError instanceof Error ? actionError.message : "Action failed");
+      setError(actionError instanceof Error ? actionError.message : t("Action failed"));
     } finally {
       setBusy(false);
     }
@@ -51,23 +53,29 @@ export default function Networks() {
 
   async function onDelete(network: DockerNetwork): Promise<void> {
     const confirmed = await confirm({
-      title: `Delete network ${network.name}?`,
+      title: t("Delete network {name}?", { name: network.name }),
       message: network.compose_project
-        ? `Compose creates it again on the next up of ${network.compose_project}.`
-        : "Containers can no longer join it.",
-      confirmLabel: "Delete",
+        ? t("Compose creates it again on the next up of {project}.", {
+            project: network.compose_project,
+          })
+        : t("Containers can no longer join it."),
+      confirmLabel: t("Delete"),
       tone: "danger",
     });
     if (!confirmed) return;
-    run(() => api.deleteNetwork(network.id), `Network "${network.name}" removed.`);
+    run(
+      () => api.deleteNetwork(network.id),
+      t("Network \"{name}\" removed.", { name: network.name }),
+    );
   }
 
   async function onPrune(): Promise<void> {
     const confirmed = await confirm({
-      title: "Prune unused networks?",
-      message:
+      title: t("Prune unused networks?"),
+      message: t(
         "Removes every custom network no container uses. Networks of stopped containers are kept.",
-      confirmLabel: "Prune",
+      ),
+      confirmLabel: t("Prune"),
       tone: "danger",
     });
     if (!confirmed) return;
@@ -77,13 +85,13 @@ export default function Networks() {
   return (
     <div>
       <div className="row-between">
-        <h1>Networks</h1>
+        <h1>{t("Networks")}</h1>
         <div className="button-row">
           <button type="button" className="secondary" disabled={busy || pruning} onClick={onPrune}>
-            <Trash2 size={15} /> Prune unused
+            <Trash2 size={15} /> {t("Prune unused")}
           </button>
           <button type="button" className="secondary" onClick={refresh}>
-            <RefreshCw size={15} /> Refresh
+            <RefreshCw size={15} /> {t("Refresh")}
           </button>
         </div>
       </div>
@@ -93,17 +101,17 @@ export default function Networks() {
       <JobList jobs={pruneJobs} onDismiss={dismiss} />
 
       {!networks ? (
-        <div className="empty">Loading…</div>
+        <div className="empty">{t("Loading…")}</div>
       ) : (
         <table className="projects-table">
           <thead>
             <tr>
-              <th>Name</th>
-              <th>Driver</th>
-              <th>Subnet</th>
-              <th>Containers</th>
-              <th>Compose</th>
-              <th>Created</th>
+              <th>{t("Name")}</th>
+              <th>{t("Driver")}</th>
+              <th>{t("Subnet")}</th>
+              <th>{t("Containers")}</th>
+              <th>{t("Compose")}</th>
+              <th>{t("Created")}</th>
               <th></th>
             </tr>
           </thead>
@@ -116,8 +124,8 @@ export default function Networks() {
                     <span className="icon-link">
                       <Network size={15} /> {network.name}
                     </span>{" "}
-                    {network.predefined && <span className="badge">built-in</span>}{" "}
-                    {network.internal && <span className="badge">internal</span>}
+                    {network.predefined && <span className="badge">{t("built-in")}</span>}{" "}
+                    {network.internal && <span className="badge">{t("internal")}</span>}
                   </td>
                   <td>
                     {network.driver}
@@ -132,7 +140,9 @@ export default function Networks() {
                           <div key={subnet}>
                             <code>{subnet}</code>
                             {network.gateways[index] && (
-                              <div className="muted">gateway {network.gateways[index]}</div>
+                              <div className="muted">
+                                {t("gateway {address}", { address: network.gateways[index] })}
+                              </div>
                             )}
                           </div>
                         ))}
@@ -144,7 +154,7 @@ export default function Networks() {
                           <Link
                             className="icon-link"
                             to={`/containers/${attachment.id}`}
-                            title={attachment.running ? "running" : "stopped"}
+                            title={attachment.running ? t("running") : t("stopped")}
                           >
                             <Circle
                               size={8}
@@ -159,7 +169,7 @@ export default function Networks() {
                         </div>
                       ))
                     ) : (
-                      <span className="badge">unused</span>
+                      <span className="badge">{t("unused")}</span>
                     )}
                   </td>
                   <td>{network.compose_project ?? "—"}</td>
@@ -170,10 +180,10 @@ export default function Networks() {
                         type="button"
                         className="secondary small"
                         disabled={busy || inUse}
-                        title={inUse ? "A container uses this network" : "Delete network"}
+                        title={inUse ? t("A container uses this network") : t("Delete network")}
                         onClick={() => onDelete(network)}
                       >
-                        <Trash2 size={14} /> Delete
+                        <Trash2 size={14} /> {t("Delete")}
                       </button>
                     )}
                   </td>

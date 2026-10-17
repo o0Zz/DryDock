@@ -1,8 +1,16 @@
+import { translate } from "./i18n";
 import type { ContainerPort } from "./types";
 
 export function formatBytes(bytes: number): string {
-  if (!bytes) return "0 B";
-  const units = ["B", "KB", "MB", "GB", "TB"];
+  // French writes octets: o, Ko, Mo.
+  const units = [
+    translate("B"),
+    translate("KB"),
+    translate("MB"),
+    translate("GB"),
+    translate("TB"),
+  ];
+  if (!bytes) return `0 ${units[0]}`;
   const unitIndex = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
   return `${(bytes / 1024 ** unitIndex).toFixed(unitIndex === 0 ? 0 : 1)} ${units[unitIndex]}`;
 }
@@ -27,7 +35,7 @@ export function formatDuration(seconds: number): string {
   const days = Math.floor(seconds / 86400);
   const hours = Math.floor((seconds % 86400) / 3600);
   const minutes = Math.floor((seconds % 3600) / 60);
-  if (days > 0) return `${days}d ${hours}h`;
-  if (hours > 0) return `${hours}h ${minutes}m`;
-  return `${minutes}m`;
+  if (days > 0) return translate("{days}d {hours}h", { days, hours });
+  if (hours > 0) return translate("{hours}h {minutes}m", { hours, minutes });
+  return translate("{minutes}m", { minutes });
 }

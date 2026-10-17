@@ -191,6 +191,11 @@ def run_action(compose_path: Path, action: str, *, project_name: str | None = No
     # `up` after the stop recreates the services whose config changed.
     if action == "reload":
         steps = [["stop"], ["up", "-d"]]
+    elif action == "pull":
+        # A plain pull fails on services with `build:` (it looks for the built image
+        # in a registry). Pull the rest, then rebuild those on fresh base images.
+        # `build` is a no-op for stacks without `build:` services.
+        steps = [["pull", "--ignore-buildable"], ["build", "--pull"]]
     elif action == "up":
         steps = [["up", "-d"]]
     else:
@@ -200,8 +205,8 @@ def run_action(compose_path: Path, action: str, *, project_name: str | None = No
     stderr: list[str] = []
     exit_code = 0
     for args in steps:
-        # `up` pulls missing images too, so both can take as long as a pull.
-        timeout = PULL_TIMEOUT if args[0] in ("up", "pull") else 300
+        # `up` pulls missing images and builds take long on a Pi: same budget as a pull.
+        timeout = PULL_TIMEOUT if args[0] in ("up", "pull", "build") else 300
         result = _compose(compose_path, args, project_name=project_name, timeout=timeout)
         stdout.append(result.stdout)
         stderr.append(result.stderr)

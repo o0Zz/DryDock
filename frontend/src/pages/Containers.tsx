@@ -11,9 +11,16 @@ import Meter from "../components/Meter";
 import ScanBadge from "../components/ScanBadge";
 import UpdateAction from "../components/UpdateAction";
 import { useContainerStats } from "../hooks/useContainerStats";
-import { CONTAINER_ACTION_ICONS, ContainerConsole, containerActionsFor } from "../containerActions";
+import {
+  CONTAINER_ACTION_ICONS,
+  CONTAINER_ACTION_LABELS,
+  ContainerConsole,
+  containerActionsFor,
+  containerStateLabel,
+} from "../containerActions";
 import { formatBytes, formatDate, formatPorts } from "../format";
 import { isActive, useJobs } from "../hooks/useJobs";
+import { useT } from "../i18n";
 import type {
   Container,
   ContainerAction,
@@ -36,6 +43,7 @@ export default function Containers() {
   const navigate = useNavigate();
   const [busy, setBusy] = useState<string | null>(null);
   const confirm = useConfirm();
+  const t = useT();
 
   const refresh = useCallback((): void => {
     api
@@ -102,9 +110,9 @@ export default function Containers() {
   const remove = useCallback(
     async (container: Container): Promise<void> => {
       const confirmed = await confirm({
-        title: `Delete container ${container.name}?`,
-        message: "Its named volumes are kept.",
-        confirmLabel: "Delete",
+        title: t("Delete container {name}?", { name: container.name }),
+        message: t("Its named volumes are kept."),
+        confirmLabel: t("Delete"),
         tone: "danger",
       });
       if (!confirmed) return;
@@ -118,7 +126,7 @@ export default function Containers() {
         setBusy(null);
       }
     },
-    [refresh, confirm],
+    [refresh, confirm, t],
   );
 
   // An image counts as "pending" while a job that names it is still in flight,
@@ -137,34 +145,34 @@ export default function Containers() {
     return images;
   }, [jobs]);
 
-  if (error && !containers) return <div className="error">Failed: {error}</div>;
-  if (!containers) return <div>Loading…</div>;
+  if (error && !containers) return <div className="error">{t("Failed: {error}", { error })}</div>;
+  if (!containers) return <div>{t("Loading…")}</div>;
 
   return (
     <div>
       <div className="row-between">
-        <h1>Containers</h1>
+        <h1>{t("Containers")}</h1>
         <div className="button-row inline">
           <button
             type="button"
             className="secondary"
             disabled={jobsRunning}
-            title="Run a Trivy CVE scan on every running image"
+            title={t("Run a Trivy CVE scan on every running image")}
             onClick={() => start(api.scanRunning)}
           >
-            <ShieldCheck size={15} /> Scan all for CVEs
+            <ShieldCheck size={15} /> {t("Scan all for CVEs")}
           </button>
           <button
             type="button"
             className="secondary"
             disabled={jobsRunning}
-            title="Compare every image digest against its registry"
+            title={t("Compare every image digest against its registry")}
             onClick={() => start(() => api.checkUpdates())}
           >
-            <ArrowUpCircle size={15} /> Check updates
+            <ArrowUpCircle size={15} /> {t("Check updates")}
           </button>
           <button type="button" className="secondary" onClick={refresh}>
-            <RefreshCw size={15} /> Refresh
+            <RefreshCw size={15} /> {t("Refresh")}
           </button>
         </div>
       </div>
@@ -173,19 +181,19 @@ export default function Containers() {
       {error && <div className="error">{error}</div>}
 
       {containers.length === 0 ? (
-        <div className="empty">No containers running.</div>
+        <div className="empty">{t("No containers running.")}</div>
       ) : (
         <table className="projects-table compact">
           <thead>
             <tr>
-              <th>Name</th>
-              <th>Image</th>
-              <th>CVEs</th>
-              <th>Status</th>
+              <th>{t("Name")}</th>
+              <th>{t("Image")}</th>
+              <th>{t("CVEs")}</th>
+              <th>{t("Status")}</th>
               <th>CPU</th>
-              <th>Memory</th>
-              <th>Ports</th>
-              <th>Compose</th>
+              <th>{t("Memory")}</th>
+              <th>{t("Ports")}</th>
+              <th>{t("Compose")}</th>
               <th></th>
             </tr>
           </thead>
@@ -195,7 +203,9 @@ export default function Containers() {
                 <td>
                   <Link
                     to={`/containers/${container.id}`}
-                    title={`Details, logs, CVEs and updates\nCreated ${formatDate(container.created_at)}`}
+                    title={t("Details, logs, CVEs and updates\nCreated {date}", {
+                      date: formatDate(container.created_at),
+                    })}
                   >
                     {container.name}
                   </Link>
@@ -224,14 +234,18 @@ export default function Containers() {
                 <td>
                   <span
                     className={`badge ${container.state}`}
-                    title={`Restart policy: ${container.restart_policy || "no"}`}
+                    title={t("Restart policy: {policy}", {
+                      policy: container.restart_policy || "no",
+                    })}
                   >
-                    <Circle size={8} fill="currentColor" /> {container.state}
+                    <Circle size={8} fill="currentColor" /> {t(containerStateLabel(container.state))}
                   </span>{" "}
                   <HealthBadge health={container.health} />
                   {container.restart_count > 0 && (
-                    <div className="muted" title="Restarts since the container was created">
-                      {container.restart_count} restart{container.restart_count === 1 ? "" : "s"}
+                    <div className="muted" title={t("Restarts since the container was created")}>
+                      {container.restart_count === 1
+                        ? t("1 restart")
+                        : t("{count} restarts", { count: container.restart_count })}
                     </div>
                   )}
                 </td>
@@ -253,8 +267,8 @@ export default function Containers() {
                           key={action}
                           type="button"
                           className="secondary small icon-only"
-                          title={action}
-                          aria-label={action}
+                          title={t(CONTAINER_ACTION_LABELS[action])}
+                          aria-label={t(CONTAINER_ACTION_LABELS[action])}
                           disabled={busy === `${container.id}:${action}`}
                           onClick={() => runAction(container.id, action)}
                         >
@@ -266,8 +280,8 @@ export default function Containers() {
                       <button
                         type="button"
                         className="secondary small icon-only"
-                        title="Open a shell in this container"
-                        aria-label="console"
+                        title={t("Open a shell in this container")}
+                        aria-label={t("console")}
                         onClick={() => setConsoleFor(container)}
                       >
                         <SquareTerminal size={14} />
@@ -277,8 +291,8 @@ export default function Containers() {
                       <button
                         type="button"
                         className="secondary small icon-only"
-                        title="Delete this container"
-                        aria-label="delete"
+                        title={t("Delete this container")}
+                        aria-label={t("delete")}
                         disabled={busy === `${container.id}:delete`}
                         onClick={() => remove(container)}
                       >
@@ -308,6 +322,7 @@ export default function Containers() {
 }
 
 function StatsCells({ stats }: { stats?: ContainerStats }) {
+  const t = useT();
   if (!stats) {
     return (
       <>
@@ -319,13 +334,20 @@ function StatsCells({ stats }: { stats?: ContainerStats }) {
   return (
     <>
       <td
-        title={`PIDs: ${stats.pids ?? "?"} · disk read ${formatBytes(stats.block_read)} / write ${formatBytes(stats.block_write)}`}
+        title={t("PIDs: {pids} · disk read {read} / write {write}", {
+          pids: stats.pids ?? "?",
+          read: formatBytes(stats.block_read),
+          write: formatBytes(stats.block_write),
+        })}
       >
         {stats.cpu_percent.toFixed(1)}%
         <Meter percent={stats.cpu_percent} />
       </td>
       <td
-        title={`Network rx ${formatBytes(stats.network_rx)} / tx ${formatBytes(stats.network_tx)}`}
+        title={t("Network rx {rx} / tx {tx}", {
+          rx: formatBytes(stats.network_rx),
+          tx: formatBytes(stats.network_tx),
+        })}
       >
         {formatBytes(stats.memory_usage)}
         <span className="muted"> / {formatBytes(stats.memory_limit)}</span>

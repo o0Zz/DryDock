@@ -43,7 +43,7 @@ Works on `amd64` and `arm64` (Raspberry Pi 3, 4 and 5 with 64-bit OS).
 
 ## Features
 
-- **Stacks:** every Compose file in your folder shows up as a project. Any `*.yml` file with a `services:` section counts. Start, stop, pull, reload or edit each one and its `.env`. **Reload** stops the stack and runs `up`, so file changes apply. Create, rename, duplicate or delete a stack; a delete backs the stack up first. A `*.override.yml` next to a Compose file is merged in, like `docker compose up` does.
+- **Stacks:** every Compose file in your folder shows up as a project. Any `*.yml` file with a `services:` section counts. Start, stop, pull & build, reload or edit each one and its `.env`. **Pull & build** downloads newer images and rebuilds services that have a `build:` section. **Reload** stops the stack and runs `up`, so file changes apply. Create, rename, duplicate or delete a stack; a delete backs the stack up first. A `*.override.yml` next to a Compose file is merged in, like `docker compose up` does.
 - **Containers:** start, stop, restart, pause, kill or rename. State, health check, restart count, CPU and memory, ports, live logs, a detail page, and a shell in the browser.
 - **Images:** see which images are in use, and remove or prune the rest.
 - **CVE scans:** scan one image, all running images, or all images in your Compose files.
@@ -56,6 +56,7 @@ Works on `amd64` and `arm64` (Raspberry Pi 3, 4 and 5 with 64-bit OS).
 - **Networks:** driver, subnet and attached containers of every network. Remove one, or prune the custom networks no container uses. Networks of stopped stacks are kept, unlike `docker network prune`.
 - **Host:** pending OS package updates on the host (Debian, Ubuntu, Raspberry Pi OS), with security updates and "reboot required" flagged on the dashboard. They are checked on the update check schedule, read-only: DryDock never installs anything.
 - **fail2ban:** admins see the host's jails, active bans, the log lines behind each ban, and the user names tried on SSH. Read-only: no unban.
+- **English and French:** pick the language in the top bar; it defaults to your browser's. Works on a phone too: the menu folds into a drawer.
 - **Logs page:** DryDock's own log, to see why a scan or a check failed.
 
 ## Configuration
@@ -116,4 +117,4 @@ More detail for contributors (tests, database migrations, conventions) is in `CL
 ## Not done yet
 
 - Browsing and restoring Compose file backups from the UI.
-- A multilanguage UI.
+- Translated server messages: API errors and job output stay in English.

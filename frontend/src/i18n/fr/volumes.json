@@ -1,0 +1,14 @@
+{
+  "Volume \"{name}\" created.": "Volume « {name} » créé.",
+  "Delete volume {name}?": "Supprimer le volume {name} ?",
+  "The data in it will be lost.": "Ses données seront perdues.",
+  "Volume \"{name}\" removed.": "Volume « {name} » supprimé.",
+  "Prune unused volumes?": "Nettoyer les volumes inutilisés ?",
+  "Removes every volume no container uses. This cannot be undone.": "Supprime tous les volumes qu'aucun conteneur n'utilise. C'est irréversible.",
+  "Create volume": "Créer un volume",
+  "volume name": "nom du volume",
+  "No volumes found.": "Aucun volume.",
+  "Browse files": "Parcourir les fichiers",
+  "Volume is attached to a container": "Le volume est attaché à un conteneur",
+  "Delete volume": "Supprimer le volume"
+}

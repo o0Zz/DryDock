@@ -5,6 +5,7 @@ import {
   Layers,
   LayoutDashboard,
   LogOut,
+  Menu,
   Network,
   Boxes,
   Server,
@@ -12,9 +13,12 @@ import {
   Settings as SettingsIcon,
   Users as UsersIcon,
 } from "lucide-react";
-import { Navigate, NavLink, Route, Routes } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { Navigate, NavLink, Route, Routes, useLocation } from "react-router-dom";
 import { useAuth } from "./auth";
 import JobsIndicator from "./components/JobsIndicator";
+import LanguagePicker from "./components/LanguagePicker";
+import { useT } from "./i18n";
 import ContainerDetail from "./pages/ContainerDetail";
 import Containers from "./pages/Containers";
 import Dashboard from "./pages/Dashboard";
@@ -33,9 +37,14 @@ import Volumes from "./pages/Volumes";
 
 export default function App() {
   const { user, loading, logout } = useAuth();
+  const t = useT();
+  // Phone layout: the sidebar is a drawer, closed again after each navigation.
+  const [menuOpen, setMenuOpen] = useState(false);
+  const location = useLocation();
+  useEffect(() => setMenuOpen(false), [location.pathname]);
 
   if (loading) {
-    return <div className="login-screen muted">Loading…</div>;
+    return <div className="login-screen muted">{t("Loading…")}</div>;
   }
 
   if (!user) {
@@ -46,54 +55,65 @@ export default function App() {
     <div className="app">
       <header className="topbar">
         <div className="brand">
+          <button
+            type="button"
+            className="secondary small icon-only menu-toggle"
+            aria-label={t("Menu")}
+            aria-expanded={menuOpen}
+            onClick={() => setMenuOpen((open) => !open)}
+          >
+            <Menu size={18} />
+          </button>
           <Anchor size={22} />
           DryDock <span className="version">v{__APP_VERSION__}</span>
         </div>
         <div className="topbar-user">
           <JobsIndicator />
+          <LanguagePicker />
           <span className="topbar-user-name">
             {user.username}
             {user.is_admin && <span className="badge admin-badge">admin</span>}
           </span>
           <button className="secondary small" onClick={() => logout()}>
-            <LogOut size={15} /> Sign out
+            <LogOut size={15} /> <span className="hide-narrow">{t("Sign out")}</span>
           </button>
         </div>
       </header>
-      <aside className="sidebar">
+      {menuOpen && <div className="sidebar-backdrop" onClick={() => setMenuOpen(false)} />}
+      <aside className={menuOpen ? "sidebar open" : "sidebar"}>
         <nav>
           <NavLink to="/" end>
-            <LayoutDashboard size={18} /> Dashboard
+            <LayoutDashboard size={18} /> {t("Dashboard")}
           </NavLink>
           <NavLink to="/projects">
-            <Boxes size={18} /> Projects
+            <Boxes size={18} /> {t("Projects")}
           </NavLink>
           <NavLink to="/containers">
-            <ContainerIcon size={18} /> Containers
+            <ContainerIcon size={18} /> {t("Containers")}
           </NavLink>
           <NavLink to="/volumes">
-            <HardDrive size={18} /> Volumes
+            <HardDrive size={18} /> {t("Volumes")}
           </NavLink>
           <NavLink to="/networks">
-            <Network size={18} /> Networks
+            <Network size={18} /> {t("Networks")}
           </NavLink>
           <NavLink to="/images">
-            <Layers size={18} /> Images
+            <Layers size={18} /> {t("Images")}
           </NavLink>
           <NavLink to="/host">
-            <Server size={18} /> Host
+            <Server size={18} /> {t("Host")}
           </NavLink>
           <NavLink to="/settings">
-            <SettingsIcon size={18} /> Settings
+            <SettingsIcon size={18} /> {t("Settings")}
           </NavLink>
           {user.is_admin && (
             <NavLink to="/logs">
-              <ScrollText size={18} /> Logs
+              <ScrollText size={18} /> {t("Logs")}
             </NavLink>
           )}
           {user.is_admin && (
             <NavLink to="/users">
-              <UsersIcon size={18} /> Users
+              <UsersIcon size={18} /> {t("Users")}
             </NavLink>
           )}
         </nav>

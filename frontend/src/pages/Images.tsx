@@ -14,6 +14,7 @@ import ScanFindings from "../components/ScanFindings";
 import UpdateBadge, { hasUpdate } from "../components/UpdateBadge";
 import { formatBytes, formatDate } from "../format";
 import { useJobs } from "../hooks/useJobs";
+import { useT } from "../i18n";
 import type { LocalImage, ScanDetail, ScanSummary, UpdateSummary } from "../types";
 
 interface ImageRow {
@@ -44,6 +45,7 @@ function rank(row: ImageRow): [number, number, number, string] {
 
 export default function Images() {
   const confirm = useConfirm();
+  const t = useT();
   const [scans, setScans] = useState<ScanSummary[]>([]);
   const [updates, setUpdates] = useState<UpdateSummary[]>([]);
   const [running, setRunning] = useState<Set<string>>(new Set());
@@ -172,21 +174,23 @@ export default function Images() {
     async (row: ImageRow): Promise<void> => {
       const stoppedContainers = (row.local?.used_by ?? []).map((imageUser) => imageUser.name);
       const confirmed = await confirm({
-        title: `Delete image ${row.image}?`,
+        title: t("Delete image {name}?", { name: row.image }),
         message: stoppedContainers.length
-          ? `Stopped container(s) ${stoppedContainers.join(", ")} still use it, so Docker will only ` +
-            "untag it. Remove those containers to free the space."
-          : "It will need to be pulled again to be used.",
-        confirmLabel: "Delete",
+          ? t(
+              "Stopped container(s) {names} still use it, so Docker will only untag it. Remove those containers to free the space.",
+              { names: stoppedContainers.join(", ") },
+            )
+          : t("It will need to be pulled again to be used."),
+        confirmLabel: t("Delete"),
         tone: "danger",
       });
       if (!confirmed) return;
       remove(async () => {
         await api.deleteImage(row.image, stoppedContainers.length > 0);
-        return `Image "${row.image}" removed.`;
+        return t("Image \"{name}\" removed.", { name: row.image });
       });
     },
-    [remove, confirm],
+    [remove, confirm, t],
   );
 
   const onPrune = useCallback(
@@ -194,24 +198,24 @@ export default function Images() {
       const confirmed = await confirm(
         all
           ? {
-              title: "Prune unused images?",
-              message:
-                "Removes every image no container uses, running or stopped. " +
-                "They will need to be pulled again.",
-              confirmLabel: "Prune unused",
+              title: t("Prune unused images?"),
+              message: t(
+                "Removes every image no container uses, running or stopped. They will need to be pulled again.",
+              ),
+              confirmLabel: t("Prune unused"),
               tone: "danger",
             }
           : {
-              title: "Prune dangling images?",
-              message: "Removes untagged images left behind by pulls and builds.",
-              confirmLabel: "Prune dangling",
+              title: t("Prune dangling images?"),
+              message: t("Removes untagged images left behind by pulls and builds."),
+              confirmLabel: t("Prune dangling"),
               tone: "danger",
             },
       );
       if (!confirmed) return;
       start(() => api.pruneImages(all));
     },
-    [start, confirm],
+    [start, confirm, t],
   );
 
   const openDetail = useCallback(async (scan: ScanSummary): Promise<void> => {
@@ -225,52 +229,52 @@ export default function Images() {
   return (
     <div>
       <div className="row-between">
-        <h1>Images</h1>
+        <h1>{t("Images")}</h1>
         <div className="button-row inline">
           <button
             type="button"
             className="secondary"
             disabled={busy}
-            title="Trivy scan of every image used by a running container"
+            title={t("Trivy scan of every image used by a running container")}
             onClick={() => start(api.scanRunning)}
           >
-            <ShieldCheck size={15} /> Scan running
+            <ShieldCheck size={15} /> {t("Scan running")}
           </button>
           <button
             type="button"
             className="secondary"
             disabled={busy}
-            title="Trivy scan of every image referenced by a Compose file"
+            title={t("Trivy scan of every image referenced by a Compose file")}
             onClick={() => start(api.scanCompose)}
           >
-            <ShieldCheck size={15} /> Scan Compose
+            <ShieldCheck size={15} /> {t("Scan Compose")}
           </button>
           <button
             type="button"
             className="secondary"
             disabled={busy}
-            title="Compare local image digests against their registries"
+            title={t("Compare local image digests against their registries")}
             onClick={() => start(() => api.checkUpdates())}
           >
-            <ArrowUpCircle size={15} /> Check updates
+            <ArrowUpCircle size={15} /> {t("Check updates")}
           </button>
           <button
             type="button"
             className="secondary"
             disabled={removing || busy}
-            title="Remove untagged images left behind by pulls and builds"
+            title={t("Remove untagged images left behind by pulls and builds")}
             onClick={() => onPrune(false)}
           >
-            <Trash2 size={15} /> Prune dangling
+            <Trash2 size={15} /> {t("Prune dangling")}
           </button>
           <button
             type="button"
             className="secondary"
             disabled={removing || busy}
-            title="Remove every image no container uses"
+            title={t("Remove every image no container uses")}
             onClick={() => onPrune(true)}
           >
-            <Trash2 size={15} /> Prune unused
+            <Trash2 size={15} /> {t("Prune unused")}
           </button>
           <button
             type="button"
@@ -280,7 +284,7 @@ export default function Images() {
               loadImages();
             }}
           >
-            <RefreshCw size={15} /> Refresh
+            <RefreshCw size={15} /> {t("Refresh")}
           </button>
         </div>
       </div>
@@ -291,30 +295,32 @@ export default function Images() {
 
       <div className="button-row">
         <input
-          placeholder="Filter images…"
+          placeholder={t("Filter images…")}
           value={filter}
           onChange={(event) => setFilter(event.target.value)}
         />
         <span className="muted">
-          {rows.length} image{rows.length === 1 ? "" : "s"}
+          {rows.length === 1
+            ? t("{count} image", { count: rows.length })
+            : t("{count} images", { count: rows.length })}
         </span>
       </div>
 
       {loading ? (
-        <div className="empty">Loading…</div>
+        <div className="empty">{t("Loading…")}</div>
       ) : rows.length === 0 ? (
         <div className="empty">
-          No images known yet. Start a stack or add a Compose file to the repo.
+          {t("No images known yet. Start a stack or add a Compose file to the repo.")}
         </div>
       ) : (
         <table className="projects-table">
           <thead>
             <tr>
-              <th>Image</th>
-              <th>CVEs</th>
-              <th>Fixable</th>
-              <th>Update</th>
-              <th>Last scanned</th>
+              <th>{t("Image")}</th>
+              <th>{t("CVEs")}</th>
+              <th>{t("Fixable")}</th>
+              <th>{t("Update")}</th>
+              <th>{t("Last scanned")}</th>
               <th></th>
             </tr>
           </thead>
@@ -324,7 +330,7 @@ export default function Images() {
                 <td>
                   <div className="icon-link">{row.image}</div>
                   <div className="muted">
-                    {row.inUse && <span className="badge running">running</span>}{" "}
+                    {row.inUse && <span className="badge running">{t("running")}</span>}{" "}
                     {row.inCompose && <span className="badge">compose</span>}{" "}
                     {row.local && <span>{formatBytes(row.local.size)}</span>}
                   </div>
@@ -342,7 +348,7 @@ export default function Images() {
                   <UpdateBadge update={row.update} />
                 </td>
                 <td className="muted">
-                  {formatDate(row.scan?.scanned_at, "never")}
+                  {formatDate(row.scan?.scanned_at, t("never"))}
                 </td>
                 <td>
                   <div className="button-row inline">
@@ -352,7 +358,7 @@ export default function Images() {
                       disabled={busy}
                       onClick={() => start(() => api.scanImage(row.image))}
                     >
-                      <ShieldCheck size={14} /> Scan
+                      <ShieldCheck size={14} /> {t("Scan")}
                     </button>
                     <button
                       type="button"
@@ -360,7 +366,7 @@ export default function Images() {
                       disabled={busy}
                       onClick={() => start(() => api.checkUpdates([row.image]))}
                     >
-                      <ArrowUpCircle size={14} /> Check
+                      <ArrowUpCircle size={14} /> {t("Check")}
                     </button>
                     {row.local && (
                       <button
@@ -369,12 +375,12 @@ export default function Images() {
                         disabled={removing || row.inUse}
                         title={
                           row.inUse
-                            ? "Image is used by a running container"
-                            : "Remove image from the local store"
+                            ? t("Image is used by a running container")
+                            : t("Remove image from the local store")
                         }
                         onClick={() => onDelete(row)}
                       >
-                        <Trash2 size={14} /> Delete
+                        <Trash2 size={14} /> {t("Delete")}
                       </button>
                     )}
                   </div>
@@ -391,17 +397,18 @@ export default function Images() {
 }
 
 function FindingsPanel({ detail, onClose }: { detail: ScanDetail; onClose: () => void }) {
+  const t = useT();
   return (
     <div className="drawer">
       <div className="log-header">
         <div>
           <strong>{detail.image}</strong>{" "}
           <span className="muted">
-            — scanned {formatDate(detail.scanned_at)}
+            — {t("scanned {date}", { date: formatDate(detail.scanned_at) })}
           </span>
         </div>
         <button type="button" className="secondary small" onClick={onClose}>
-          <X size={15} /> Close
+          <X size={15} /> {t("Close")}
         </button>
       </div>
 

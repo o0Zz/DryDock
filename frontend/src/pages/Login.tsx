@@ -1,9 +1,11 @@
 import { Anchor, LogIn } from "lucide-react";
 import { useState, type FormEvent } from "react";
 import { useAuth } from "../auth";
+import { useT } from "../i18n";
 
 export default function Login() {
   const { login } = useAuth();
+  const t = useT();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -16,7 +18,7 @@ export default function Login() {
     try {
       await login(username, password);
     } catch (loginError) {
-      setError(loginError instanceof Error ? loginError.message : "Login failed");
+      setError(loginError instanceof Error ? loginError.message : t("Login failed"));
     } finally {
       setBusy(false);
     }
@@ -29,9 +31,9 @@ export default function Login() {
           <Anchor size={24} />
           DryDock
         </div>
-        <p className="muted">Sign in to manage your stacks</p>
+        <p className="muted">{t("Sign in to manage your stacks")}</p>
         <label>
-          Username
+          {t("Username")}
           <input
             autoFocus
             value={username}
@@ -40,7 +42,7 @@ export default function Login() {
           />
         </label>
         <label>
-          Password
+          {t("Password")}
           <input
             type="password"
             value={password}
@@ -50,7 +52,7 @@ export default function Login() {
         </label>
         {error && <div className="error">{error}</div>}
         <button type="submit" disabled={busy || !username || !password}>
-          <LogIn size={16} /> {busy ? "Signing in…" : "Sign in"}
+          <LogIn size={16} /> {busy ? t("Signing in…") : t("Sign in")}
         </button>
       </form>
     </div>

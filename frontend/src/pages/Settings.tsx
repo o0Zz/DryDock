@@ -5,9 +5,11 @@ import { useAuth } from "../auth";
 import ApiTokens from "../components/ApiTokens";
 import RegistryCredentials from "../components/RegistryCredentials";
 import { formatDate } from "../format";
+import { useT } from "../i18n";
 import type { AppSettings, Job, SettingsPatch } from "../types";
 
 export default function Settings() {
+  const t = useT();
   const { user } = useAuth();
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [draft, setDraft] = useState<SettingsPatch>({});
@@ -35,8 +37,8 @@ export default function Settings() {
     load();
   }, [load]);
 
-  if (error && !settings) return <div className="error">Failed to load settings: {error}</div>;
-  if (!settings) return <div>Loading…</div>;
+  if (error && !settings) return <div className="error">{t("Failed to load settings: {error}", { error })}</div>;
+  if (!settings) return <div>{t("Loading…")}</div>;
 
   // The draft holds only fields the user touched, so a save is always a patch.
   const formValues = { ...settings, ...draft };
@@ -55,7 +57,7 @@ export default function Settings() {
       const updated = await api.updateSettings(draft);
       setSettings(updated);
       setDraft({});
-      setNotice("Settings saved.");
+      setNotice(t("Settings saved."));
     } catch (saveError) {
       setError((saveError as Error).message);
     } finally {
@@ -63,12 +65,20 @@ export default function Settings() {
     }
   }
 
+  // Split around the placeholder so the inline element stays in place in every language.
+  const [notifyBefore, notifyAfter] = t(
+    "After a {scheduled} run, DryDock POSTs a JSON summary to this URL. Manual runs never notify.",
+  ).split("{scheduled}");
+  const [envBefore, envAfter] = t(
+    "Set with {variables} environment variables; restart to change.",
+  ).split("{variables}");
+
   return (
     <div>
       <div className="row-between">
-        <h1>Settings</h1>
+        <h1>{t("Settings")}</h1>
         <button type="button" className="secondary" onClick={load}>
-          <RefreshCw size={15} /> Reload
+          <RefreshCw size={15} /> {t("Reload")}
         </button>
       </div>
 
@@ -80,15 +90,15 @@ export default function Settings() {
       )}
       {!user?.is_admin && (
         <div className="muted">
-          You are signed in as a standard user — these settings are read-only.
+          {t("You are signed in as a standard user — these settings are read-only.")}
         </div>
       )}
 
       <form onSubmit={save}>
         <section className="section">
-          <h2>Scheduled CVE scans</h2>
+          <h2>{t("Scheduled CVE scans")}</h2>
           <p className="muted">
-            Runs a Trivy scan across every image used by a running container.
+            {t("Runs a Trivy scan across every image used by a running container.")}
           </p>
           <label className="checkbox-label">
             <input
@@ -97,11 +107,11 @@ export default function Settings() {
               checked={formValues.scan_schedule_enabled}
               onChange={(event) => edit({ scan_schedule_enabled: event.target.checked })}
             />
-            Scan automatically
+            {t("Scan automatically")}
           </label>
           <div className="field-row">
             <label>
-              Every (hours)
+              {t("Every (hours)")}
               <input
                 type="number"
                 min={1}
@@ -111,14 +121,18 @@ export default function Settings() {
                 onChange={(event) => edit({ scan_interval_hours: Number(event.target.value) })}
               />
             </label>
-            <div className="muted">Next run: {formatDate(settings.next_scan_run, "not scheduled")}</div>
+            <div className="muted">
+              {t("Next run: {date}", {
+                date: formatDate(settings.next_scan_run, t("not scheduled")),
+              })}
+            </div>
           </div>
         </section>
 
         <section className="section">
-          <h2>Scheduled update checks</h2>
+          <h2>{t("Scheduled update checks")}</h2>
           <p className="muted">
-            Compares each image digest against its registry. No layers are downloaded.
+            {t("Compares each image digest against its registry. No layers are downloaded.")}
           </p>
           <label className="checkbox-label">
             <input
@@ -127,11 +141,11 @@ export default function Settings() {
               checked={formValues.update_check_enabled}
               onChange={(event) => edit({ update_check_enabled: event.target.checked })}
             />
-            Check automatically
+            {t("Check automatically")}
           </label>
           <div className="field-row">
             <label>
-              Every (hours)
+              {t("Every (hours)")}
               <input
                 type="number"
                 min={1}
@@ -141,18 +155,23 @@ export default function Settings() {
                 onChange={(event) => edit({ update_check_interval_hours: Number(event.target.value) })}
               />
             </label>
-            <div className="muted">Next run: {formatDate(settings.next_update_run, "not scheduled")}</div>
+            <div className="muted">
+              {t("Next run: {date}", {
+                date: formatDate(settings.next_update_run, t("not scheduled")),
+              })}
+            </div>
           </div>
         </section>
 
         <section className="section">
-          <h2>Notifications</h2>
+          <h2>{t("Notifications")}</h2>
           <p className="muted">
-            After a <em>scheduled</em> run, DryDock POSTs a JSON summary to this URL. Manual
-            runs never notify.
+            {notifyBefore}
+            <em>{t("scheduled")}</em>
+            {notifyAfter}
           </p>
           <label className="field">
-            Webhook URL
+            {t("Webhook URL")}
             <input
               type="text"
               placeholder="https://example.com/hooks/drydock"
@@ -168,7 +187,7 @@ export default function Settings() {
               checked={formValues.notify_on_critical}
               onChange={(event) => edit({ notify_on_critical: event.target.checked })}
             />
-            Notify when a scan finds critical CVEs
+            {t("Notify when a scan finds critical CVEs")}
           </label>
           <label className="checkbox-label">
             <input
@@ -177,18 +196,18 @@ export default function Settings() {
               checked={formValues.notify_on_update}
               onChange={(event) => edit({ notify_on_update: event.target.checked })}
             />
-            Notify when image updates are available
+            {t("Notify when image updates are available")}
           </label>
         </section>
 
         {user?.is_admin && (
           <div className="button-row">
             <button type="submit" disabled={!dirty || saving}>
-              <Save size={15} /> {saving ? "Saving…" : "Save settings"}
+              <Save size={15} /> {saving ? t("Saving…") : t("Save settings")}
             </button>
             {dirty && (
               <button type="button" className="secondary" onClick={() => setDraft({})}>
-                Discard changes
+                {t("Discard changes")}
               </button>
             )}
           </div>
@@ -200,35 +219,37 @@ export default function Settings() {
       {user?.is_admin && <RegistryCredentials />}
 
       <section className="section">
-        <h2>Environment</h2>
+        <h2>{t("Environment")}</h2>
         <p className="muted">
-          Set with <code>DRYDOCK_*</code> environment variables; restart to change.
+          {envBefore}
+          <code>DRYDOCK_*</code>
+          {envAfter}
         </p>
         <ul className="fact-list">
           <li>
-            <span className="muted">Compose repo</span>
+            <span className="muted">{t("Compose repo")}</span>
             <code>{settings.repo_path}</code>
           </li>
           <li>
-            <span className="muted">Data directory</span>
+            <span className="muted">{t("Data directory")}</span>
             <code>{settings.data_path}</code>
           </li>
         </ul>
       </section>
 
       <section className="section">
-        <h2>Recent background jobs</h2>
+        <h2>{t("Recent background jobs")}</h2>
         {jobs.length === 0 ? (
-          <div className="empty">Nothing has run yet.</div>
+          <div className="empty">{t("Nothing has run yet.")}</div>
         ) : (
           <table className="projects-table">
             <thead>
               <tr>
-                <th>Job</th>
-                <th>Status</th>
-                <th>Trigger</th>
-                <th>Result</th>
-                <th>Started</th>
+                <th>{t("Job")}</th>
+                <th>{t("Status")}</th>
+                <th>{t("Trigger")}</th>
+                <th>{t("Result")}</th>
+                <th>{t("Started")}</th>
               </tr>
             </thead>
             <tbody>
@@ -264,6 +285,7 @@ export default function Settings() {
 }
 
 function ChangePassword() {
+  const t = useT();
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -276,7 +298,7 @@ function ChangePassword() {
     setError(null);
     setNotice(null);
     if (newPassword !== confirmPassword) {
-      setError("The new passwords do not match.");
+      setError(t("The new passwords do not match."));
       return;
     }
     setBusy(true);
@@ -285,7 +307,7 @@ function ChangePassword() {
       setCurrentPassword("");
       setNewPassword("");
       setConfirmPassword("");
-      setNotice("Password changed.");
+      setNotice(t("Password changed."));
     } catch (changeError) {
       setError((changeError as Error).message);
     } finally {
@@ -295,7 +317,7 @@ function ChangePassword() {
 
   return (
     <section className="section">
-      <h2>Your password</h2>
+      <h2>{t("Your password")}</h2>
       {error && <div className="error">{error}</div>}
       {notice && (
         <div className="output ok" style={{ padding: "0.75rem" }}>
@@ -304,7 +326,7 @@ function ChangePassword() {
       )}
       <form onSubmit={submit}>
         <label className="field">
-          Current password
+          {t("Current password")}
           <input
             type="password"
             value={currentPassword}
@@ -313,7 +335,7 @@ function ChangePassword() {
           />
         </label>
         <label className="field">
-          New password
+          {t("New password")}
           <input
             type="password"
             value={newPassword}
@@ -322,7 +344,7 @@ function ChangePassword() {
           />
         </label>
         <label className="field">
-          Confirm new password
+          {t("Confirm new password")}
           <input
             type="password"
             value={confirmPassword}
@@ -332,7 +354,7 @@ function ChangePassword() {
         </label>
         <div className="button-row">
           <button type="submit" disabled={busy || !currentPassword || newPassword.length < 6}>
-            <KeyRound size={15} /> {busy ? "Saving…" : "Change password"}
+            <KeyRound size={15} /> {busy ? t("Saving…") : t("Change password")}
           </button>
         </div>
       </form>

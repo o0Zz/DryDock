@@ -1,6 +1,7 @@
 import { ArrowUpCircle, Download, HardDrive, RotateCw } from "lucide-react";
 import { Link } from "react-router-dom";
 import { api } from "../api";
+import { useT } from "../i18n";
 import { useConfirm } from "./ConfirmDialog";
 import type { Container, Job, Project, UpdateSummary } from "../types";
 
@@ -30,13 +31,14 @@ export default function UpdateAction({
   onError: (message: string) => void;
 }) {
   const confirm = useConfirm();
+  const t = useT();
   if (!update) return null;
   const detailsUrl = `/containers/${container.id}?tab=updates`;
 
   if (update.newest_tag) {
     if (!project) {
       return (
-        <Link to={detailsUrl} className="badge paused" title="Newer version tag available — view details">
+        <Link to={detailsUrl} className="badge paused" title={t("Newer version tag available — view details")}>
           <ArrowUpCircle size={12} /> {update.newest_tag}
         </Link>
       );
@@ -45,7 +47,10 @@ export default function UpdateAction({
       <Link
         to={`/projects/${project.id}?retag=${encodeURIComponent(container.image)}`}
         className="badge paused"
-        title={`Newer version tag ${update.newest_tag} — open ${project.name}'s compose file to change the tag`}
+        title={t("Newer version tag {tag} — open {project}'s compose file to change the tag", {
+          tag: update.newest_tag,
+          project: project.name,
+        })}
       >
         <ArrowUpCircle size={12} /> {update.newest_tag}
       </Link>
@@ -59,32 +64,38 @@ export default function UpdateAction({
       <Link
         to={detailsUrl}
         className="badge paused"
-        title="Newer image available, but this container is not managed by Compose — view details"
+        title={t(
+          "Newer image available, but this container is not managed by Compose — view details",
+        )}
       >
-        <ArrowUpCircle size={12} /> update
+        <ArrowUpCircle size={12} /> {t("update")}
       </Link>
     );
   }
 
   async function run(): Promise<void> {
+    // The image name is set in <code> wherever the translation puts it.
+    const [beforeImage, afterImage = ""] = t("A newer {image} was published.").split("{image}");
     const confirmed = await confirm({
-      title: `Update ${container.name}?`,
+      title: t("Update {name}?", { name: container.name }),
       icon: ArrowUpCircle,
-      confirmLabel: "Pull & recreate",
+      confirmLabel: t("Pull & recreate"),
       message: (
         <>
           <p>
-            A newer <code>{container.image}</code> was published.
+            {beforeImage}
+            <code>{container.image}</code>
+            {afterImage}
           </p>
           <ol className="confirm-steps">
             <li>
-              <Download size={15} /> Pull the new image
+              <Download size={15} /> {t("Pull the new image")}
             </li>
             <li>
-              <RotateCw size={15} /> Recreate the container (brief downtime)
+              <RotateCw size={15} /> {t("Recreate the container (brief downtime)")}
             </li>
             <li>
-              <HardDrive size={15} /> Volumes and their data are kept
+              <HardDrive size={15} /> {t("Volumes and their data are kept")}
             </li>
           </ol>
         </>
@@ -103,10 +114,13 @@ export default function UpdateAction({
       type="button"
       className="badge paused badge-button"
       disabled={pending}
-      title={`A newer ${container.image} was published — pull it and recreate ${container.name}`}
+      title={t("A newer {image} was published — pull it and recreate {name}", {
+        image: container.image,
+        name: container.name,
+      })}
       onClick={run}
     >
-      <ArrowUpCircle size={12} /> {pending ? "updating…" : "update"}
+      <ArrowUpCircle size={12} /> {pending ? t("updating…") : t("update")}
     </button>
   );
 }

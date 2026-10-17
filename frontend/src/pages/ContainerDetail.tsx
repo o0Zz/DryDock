@@ -10,7 +10,15 @@ import {
   ShieldCheck,
   SquareTerminal,
 } from "lucide-react";
-import { Suspense, useCallback, useEffect, useState, type FormEvent, type ReactNode } from "react";
+import {
+  Fragment,
+  Suspense,
+  useCallback,
+  useEffect,
+  useState,
+  type FormEvent,
+  type ReactNode,
+} from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { api } from "../api";
 import { useAuth } from "../auth";
@@ -22,10 +30,17 @@ import Meter from "../components/Meter";
 import ScanFindings from "../components/ScanFindings";
 import UpdateAction from "../components/UpdateAction";
 import UpdateBadge, { hasUpdate } from "../components/UpdateBadge";
-import { CONTAINER_ACTION_ICONS, ContainerConsole, containerActionsFor } from "../containerActions";
+import {
+  CONTAINER_ACTION_ICONS,
+  CONTAINER_ACTION_LABELS,
+  ContainerConsole,
+  containerActionsFor,
+  containerStateLabel,
+} from "../containerActions";
 import { formatBytes, formatDate } from "../format";
 import { useContainerStats } from "../hooks/useContainerStats";
 import { useJobs } from "../hooks/useJobs";
+import { msg, useT } from "../i18n";
 import type {
   ContainerAction,
   ContainerDetail as ContainerDetailData,
@@ -36,12 +51,21 @@ import type {
 } from "../types";
 
 const TABS = [
-  { key: "overview", label: "Overview", icon: Info },
-  { key: "logs", label: "Logs", icon: ScrollText },
-  { key: "cves", label: "CVEs", icon: ShieldAlert },
-  { key: "updates", label: "Updates", icon: ArrowUpCircle },
+  { key: "overview", label: msg("Overview"), icon: Info },
+  { key: "logs", label: msg("Logs"), icon: ScrollText },
+  { key: "cves", label: msg("CVEs"), icon: ShieldAlert },
+  { key: "updates", label: msg("Updates"), icon: ArrowUpCircle },
 ] as const;
 type Tab = (typeof TABS)[number]["key"];
+
+/** Puts elements (<strong>, <code>) into the {placeholders} a translated sentence still has. */
+function fillElements(text: string, elements: Record<string, ReactNode>): ReactNode {
+  return text
+    .split(/\{(\w+)\}/)
+    .map((part, index) =>
+      index % 2 === 1 ? <Fragment key={index}>{elements[part] ?? part}</Fragment> : part,
+    );
+}
 
 export default function ContainerDetail() {
   const { id = "" } = useParams();
@@ -50,6 +74,7 @@ export default function ContainerDetail() {
     ? (searchParams.get("tab") as Tab)
     : "overview";
   const { user } = useAuth();
+  const t = useT();
   const liveStats = useContainerStats()[id];
   const navigate = useNavigate();
 
@@ -118,14 +143,14 @@ export default function ContainerDetail() {
     }
   };
 
-  if (loadError && !detail) return <div className="error">Failed to load: {loadError}</div>;
-  if (!detail) return <div>Loading…</div>;
+  if (loadError && !detail) return <div className="error">{t("Failed to load: {error}", { error: loadError })}</div>;
+  if (!detail) return <div>{t("Loading…")}</div>;
 
   return (
     <div>
       <div className="crumb">
         <Link to="/containers">
-          <ChevronLeft size={15} /> Containers
+          <ChevronLeft size={15} /> {t("Containers")}
         </Link>
       </div>
       <div className="row-between">
@@ -136,8 +161,8 @@ export default function ContainerDetail() {
               <button
                 type="button"
                 className="secondary small icon-only"
-                title="Rename"
-                aria-label="rename"
+                title={t("Rename")}
+                aria-label={t("rename")}
                 onClick={() => setNewName(detail.name)}
               >
                 <Pencil size={14} />
@@ -148,30 +173,31 @@ export default function ContainerDetail() {
               <input
                 value={newName}
                 autoFocus
-                aria-label="New container name"
+                aria-label={t("New container name")}
                 onChange={(event) => setNewName(event.target.value)}
               />
               <button type="submit" className="small" disabled={!newName.trim()}>
-                Rename
+                {t("Rename")}
               </button>
               <button type="button" className="secondary small" onClick={() => setNewName(null)}>
-                Cancel
+                {t("Cancel")}
               </button>
               {detail.compose_service && (
                 <span className="muted" style={{ fontSize: "0.8rem", fontWeight: "normal" }}>
-                  Compose restores its own name when it recreates the container.
+                  {t("Compose restores its own name when it recreates the container.")}
                 </span>
               )}
             </form>
           )}{" "}
           <span className={`badge ${detail.state}`}>
-            <Circle size={8} fill="currentColor" /> {detail.state}
+            <Circle size={8} fill="currentColor" /> {t(containerStateLabel(detail.state))}
           </span>
           <HealthBadge health={detail.health} />
         </h1>
         <div className="button-row inline">
           {containerActionsFor(detail.state).map((action) => {
             const Icon = CONTAINER_ACTION_ICONS[action];
+            const label = t(CONTAINER_ACTION_LABELS[action]);
             return (
               <button
                 key={action}
@@ -180,7 +206,7 @@ export default function ContainerDetail() {
                 disabled={busy !== null}
                 onClick={() => runAction(action)}
               >
-                <Icon size={15} /> {busy === action ? `${action}…` : action}
+                <Icon size={15} /> {busy === action ? t("{action}…", { action: label }) : label}
               </button>
             );
           })}
@@ -188,14 +214,14 @@ export default function ContainerDetail() {
             <button
               type="button"
               className="secondary"
-              title="Open a shell in this container"
+              title={t("Open a shell in this container")}
               onClick={() => setShowConsole(true)}
             >
-              <SquareTerminal size={15} /> console
+              <SquareTerminal size={15} /> {t("console")}
             </button>
           )}
           <button type="button" className="secondary" onClick={load}>
-            <RefreshCw size={15} /> Refresh
+            <RefreshCw size={15} /> {t("Refresh")}
           </button>
         </div>
       </div>
@@ -205,7 +231,8 @@ export default function ContainerDetail() {
         </code>
         {project && (
           <>
-            {" · project "}
+            {" · "}
+            {t("project")}{" "}
             <Link to={`/projects/${project.id}`}>{project.name}</Link>
             {detail.compose_service && ` / ${detail.compose_service}`}
           </>
@@ -230,7 +257,7 @@ export default function ContainerDetail() {
               setSearchParams(key === "overview" ? {} : { tab: key }, { replace: true })
             }
           >
-            <Icon size={15} /> {label}
+            <Icon size={15} /> {t(label)}
           </button>
         ))}
       </div>
@@ -242,7 +269,7 @@ export default function ContainerDetail() {
 
       {liveStats && tab === "overview" && (
         <section className="section">
-          <h2>Resources</h2>
+          <h2>{t("Resources")}</h2>
           <ul className="fact-list">
             <li>
               <span>CPU</span>
@@ -251,20 +278,20 @@ export default function ContainerDetail() {
               </span>
             </li>
             <li>
-              <span>Memory</span>
+              <span>{t("Memory")}</span>
               <span>
                 {formatBytes(liveStats.memory_usage)} / {formatBytes(liveStats.memory_limit)}
                 <Meter percent={liveStats.memory_percent} />
               </span>
             </li>
             <li>
-              <span>Network rx / tx</span>
+              <span>{t("Network rx / tx")}</span>
               <span>
                 {formatBytes(liveStats.network_rx)} / {formatBytes(liveStats.network_tx)}
               </span>
             </li>
             <li>
-              <span>Disk read / write</span>
+              <span>{t("Disk read / write")}</span>
               <span>
                 {formatBytes(liveStats.block_read)} / {formatBytes(liveStats.block_write)}
               </span>
@@ -304,6 +331,7 @@ function Facts({ rows }: { rows: [string, ReactNode][] }) {
 }
 
 function OverviewTab({ detail, isAdmin }: { detail: ContainerDetailData; isAdmin: boolean }) {
+  const t = useT();
   const ports = detail.ports.filter((port) => port.public_port);
   const labels = Object.entries(detail.labels).sort(([leftKey], [rightKey]) =>
     leftKey.localeCompare(rightKey),
@@ -313,22 +341,22 @@ function OverviewTab({ detail, isAdmin }: { detail: ContainerDetailData; isAdmin
     <>
       <Facts
         rows={[
-          ["Status", detail.status],
-          ["Created", formatDate(detail.created_at)],
-          ["Started", formatDate(detail.started_at)],
-          ["Finished", formatDate(detail.finished_at)],
-          ["Exit code", detail.exit_code ?? "—"],
-          ["Restart policy", detail.restart_policy || "no"],
-          ["Restart count", detail.restart_count],
-          ["Command", detail.command ? <code>{detail.command.join(" ")}</code> : "—"],
-          ["Entrypoint", detail.entrypoint ? <code>{detail.entrypoint.join(" ")}</code> : "—"],
-          ["Working dir", detail.working_dir ?? "—"],
-          ["User", detail.user ?? "—"],
-          ["Hostname", detail.hostname ?? "—"],
-          ["Image ID", detail.image_id ? <code>{detail.image_id.slice(0, 19)}</code> : "—"],
-          ["Container ID", <code>{detail.id.slice(0, 12)}</code>],
+          [t("Status"), detail.status],
+          [t("Created"), formatDate(detail.created_at)],
+          [t("Started"), formatDate(detail.started_at)],
+          [t("Finished"), formatDate(detail.finished_at)],
+          [t("Exit code"), detail.exit_code ?? "—"],
+          [t("Restart policy"), detail.restart_policy || "no"],
+          [t("Restart count"), detail.restart_count],
+          [t("Command"), detail.command ? <code>{detail.command.join(" ")}</code> : "—"],
+          [t("Entrypoint"), detail.entrypoint ? <code>{detail.entrypoint.join(" ")}</code> : "—"],
+          [t("Working dir"), detail.working_dir ?? "—"],
+          [t("User"), detail.user ?? "—"],
+          [t("Hostname"), detail.hostname ?? "—"],
+          [t("Image ID"), detail.image_id ? <code>{detail.image_id.slice(0, 19)}</code> : "—"],
+          [t("Container ID"), <code>{detail.id.slice(0, 12)}</code>],
           [
-            "Ports",
+            t("Ports"),
             ports.length
               ? ports
                   .map(
@@ -342,16 +370,16 @@ function OverviewTab({ detail, isAdmin }: { detail: ContainerDetailData; isAdmin
       />
 
       <section className="section">
-        <h2>Networks</h2>
+        <h2>{t("Networks")}</h2>
         {detail.networks.length === 0 ? (
-          <div className="empty">No networks.</div>
+          <div className="empty">{t("No networks.")}</div>
         ) : (
           <table className="projects-table">
             <thead>
               <tr>
-                <th>Network</th>
-                <th>IP address</th>
-                <th>Gateway</th>
+                <th>{t("Network")}</th>
+                <th>{t("IP address")}</th>
+                <th>{t("Gateway")}</th>
                 <th>MAC</th>
               </tr>
             </thead>
@@ -370,17 +398,17 @@ function OverviewTab({ detail, isAdmin }: { detail: ContainerDetailData; isAdmin
       </section>
 
       <section className="section">
-        <h2>Mounts</h2>
+        <h2>{t("Mounts")}</h2>
         {detail.mounts.length === 0 ? (
-          <div className="empty">No mounts.</div>
+          <div className="empty">{t("No mounts.")}</div>
         ) : (
           <table className="projects-table">
             <thead>
               <tr>
-                <th>Type</th>
-                <th>Source</th>
-                <th>Destination</th>
-                <th>Access</th>
+                <th>{t("Type")}</th>
+                <th>{t("Source")}</th>
+                <th>{t("Destination")}</th>
+                <th>{t("Access")}</th>
               </tr>
             </thead>
             <tbody>
@@ -395,7 +423,7 @@ function OverviewTab({ detail, isAdmin }: { detail: ContainerDetailData; isAdmin
                   <td>
                     <code>{mount.destination}</code>
                   </td>
-                  <td className="muted">{mount.rw ? "read-write" : "read-only"}</td>
+                  <td className="muted">{mount.rw ? t("read-write") : t("read-only")}</td>
                 </tr>
               ))}
             </tbody>
@@ -405,11 +433,13 @@ function OverviewTab({ detail, isAdmin }: { detail: ContainerDetailData; isAdmin
 
       <section className="section">
         <h2>
-          Environment{" "}
-          {!detail.env_revealed && <span className="muted">values hidden (admin only)</span>}
+          {t("Environment")}{" "}
+          {!detail.env_revealed && (
+            <span className="muted">{t("values hidden (admin only)")}</span>
+          )}
         </h2>
         {detail.env.length === 0 ? (
-          <div className="empty">No environment variables.</div>
+          <div className="empty">{t("No environment variables.")}</div>
         ) : (
           <table className="projects-table">
             <tbody>
@@ -431,7 +461,7 @@ function OverviewTab({ detail, isAdmin }: { detail: ContainerDetailData; isAdmin
       <section className="section">
         <details>
           <summary>
-            <strong>Labels</strong> <span className="muted">({labels.length})</span>
+            <strong>{t("Labels")}</strong> <span className="muted">({labels.length})</span>
           </summary>
           <table className="projects-table">
             <tbody>
@@ -452,7 +482,7 @@ function OverviewTab({ detail, isAdmin }: { detail: ContainerDetailData; isAdmin
         <section className="section">
           <details>
             <summary>
-              <strong>Raw inspect JSON</strong>
+              <strong>{t("Raw inspect JSON")}</strong>
             </summary>
             <pre className="raw-json">{JSON.stringify(detail.raw, null, 2)}</pre>
           </details>
@@ -464,11 +494,12 @@ function OverviewTab({ detail, isAdmin }: { detail: ContainerDetailData; isAdmin
 
 function LogsTab({ id, name }: { id: string; name: string }) {
   const [filter, setFilter] = useState("");
+  const t = useT();
   return (
     <>
       <div className="button-row">
         <input
-          placeholder="Filter lines…"
+          placeholder={t("Filter lines…")}
           value={filter}
           onChange={(event) => setFilter(event.target.value)}
         />
@@ -487,6 +518,7 @@ function CvesTab({ image }: { image: string }) {
   const [history, setHistory] = useState<ScanSummary[] | null>(null);
   const [scan, setScan] = useState<ScanDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const t = useT();
 
   const openScan = useCallback((summary: ScanSummary): void => {
     api
@@ -515,30 +547,36 @@ function CvesTab({ image }: { image: string }) {
         <div className="muted">
           {scan && !scan.error ? (
             <>
-              Scanned {formatDate(scan.scanned_at)} — <strong>{scan.critical}</strong> critical,{" "}
-              <strong>{scan.high}</strong> high, {scan.medium} medium, {scan.low} low
-              {scan.fixable > 0 && ` · ${scan.fixable} fixable`}
+              {fillElements(
+                t("Scanned {date} — {critical} critical, {high} high, {medium} medium, {low} low", {
+                  date: formatDate(scan.scanned_at),
+                  medium: scan.medium,
+                  low: scan.low,
+                }),
+                { critical: <strong>{scan.critical}</strong>, high: <strong>{scan.high}</strong> },
+              )}
+              {scan.fixable > 0 && ` · ${t("{count} fixable", { count: scan.fixable })}`}
             </>
           ) : history?.length === 0 ? (
-            "Image not scanned yet."
+            t("Image not scanned yet.")
           ) : null}
         </div>
         <button type="button" className="secondary" disabled={busy} onClick={() => start(() => api.scanImage(image))}>
-          <ShieldCheck size={15} /> {history?.length ? "Rescan" : "Scan now"}
+          <ShieldCheck size={15} /> {history?.length ? t("Rescan") : t("Scan now")}
         </button>
       </div>
       <JobList jobs={jobs} onDismiss={dismiss} />
       {error && <div className="error">{error}</div>}
 
       {history === null ? (
-        <div className="empty">Loading…</div>
+        <div className="empty">{t("Loading…")}</div>
       ) : (
         scan && <ScanFindings key={scan.id} detail={scan} />
       )}
 
       {history && history.length > 1 && (
         <section className="section">
-          <h2>Scan history</h2>
+          <h2>{t("Scan history")}</h2>
           <table className="projects-table">
             <tbody>
               {history.map((pastScan) => (
@@ -550,7 +588,7 @@ function CvesTab({ image }: { image: string }) {
                   </td>
                   <td>
                     {pastScan.error ? (
-                      <span className="muted">failed</span>
+                      <span className="muted">{t("failed")}</span>
                     ) : (
                       `${pastScan.critical}C · ${pastScan.high}H · ${pastScan.medium}M · ${pastScan.low}L`
                     )}
@@ -576,6 +614,7 @@ function UpdatesTab({
   const [update, setUpdate] = useState<UpdateSummary | null | undefined>(undefined);
   const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
+  const t = useT();
 
   const load = useCallback((): void => {
     api
@@ -626,26 +665,26 @@ function UpdatesTab({
           disabled={busy}
           onClick={() => start(() => api.checkUpdates([image]))}
         >
-          <ArrowUpCircle size={15} /> Check now
+          <ArrowUpCircle size={15} /> {t("Check now")}
         </button>
       </div>
       <JobList jobs={jobs} onDismiss={dismiss} />
       {error && <div className="error">{error}</div>}
 
       {update === undefined ? (
-        <div className="empty">Loading…</div>
+        <div className="empty">{t("Loading…")}</div>
       ) : update === null ? (
-        <div className="empty">No update check recorded for this image yet.</div>
+        <div className="empty">{t("No update check recorded for this image yet.")}</div>
       ) : (
         <Facts
           rows={[
-            ["Checked", formatDate(update.checked_at)],
-            ["Local digest", update.local_digest ? <code>{update.local_digest}</code> : "—"],
-            ["Remote digest", update.remote_digest ? <code>{update.remote_digest}</code> : "—"],
-            ["Same tag rebuilt", update.update_available ? "yes — pull to update" : "no"],
-            ["Newest tag", update.newest_tag ?? "—"],
-            ["Newest in current major", update.newest_same_major_tag ?? "—"],
-            ["Error", update.error ?? update.tag_error ?? "—"],
+            [t("Checked"), formatDate(update.checked_at)],
+            [t("Local digest"), update.local_digest ? <code>{update.local_digest}</code> : "—"],
+            [t("Remote digest"), update.remote_digest ? <code>{update.remote_digest}</code> : "—"],
+            [t("Same tag rebuilt"), update.update_available ? t("yes — pull to update") : t("no")],
+            [t("Newest tag"), update.newest_tag ?? "—"],
+            [t("Newest in current major"), update.newest_same_major_tag ?? "—"],
+            [t("Error"), update.error ?? update.tag_error ?? "—"],
           ]}
         />
       )}
@@ -655,12 +694,14 @@ function UpdatesTab({
           {project ? (
             <>
               {update?.newest_tag
-                ? "Change the image tag in the compose file, then redeploy. "
-                : "Run pull, then up, on the stack to update. "}
-              <Link to={`/projects/${project.id}`}>Open project {project.name}</Link>
+                ? t("Change the image tag in the compose file, then redeploy.")
+                : t("Run pull, then up, on the stack to update.")}{" "}
+              <Link to={`/projects/${project.id}`}>
+                {t("Open project {name}", { name: project.name })}
+              </Link>
             </>
           ) : (
-            "Container not managed by a known Compose project; recreate it with the new image."
+            t("Container not managed by a known Compose project; recreate it with the new image.")
           )}
         </div>
       )}

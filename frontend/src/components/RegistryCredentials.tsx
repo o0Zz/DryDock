@@ -1,6 +1,7 @@
 import { KeyRound, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { api } from "../api";
+import { useT } from "../i18n";
 import type { RegistryCredential } from "../types";
 import { useConfirm } from "./ConfirmDialog";
 
@@ -12,6 +13,7 @@ function label(registry: string): string {
 
 /** Registry logins for update checks, pulls and scans of private images (admin only). */
 export default function RegistryCredentials() {
+  const t = useT();
   const confirm = useConfirm();
   const [registries, setRegistries] = useState<RegistryCredential[]>([]);
   const [registry, setRegistry] = useState("docker.io");
@@ -40,7 +42,12 @@ export default function RegistryCredentials() {
     try {
       const saved = await api.addRegistry(registry.trim(), username.trim(), password);
       setPassword("");
-      setNotice(`Logged in to ${label(saved.registry)} as ${saved.username}.`);
+      setNotice(
+        t("Logged in to {registry} as {username}.", {
+          registry: label(saved.registry),
+          username: saved.username,
+        }),
+      );
       load();
     } catch (addError) {
       setError((addError as Error).message);
@@ -51,9 +58,9 @@ export default function RegistryCredentials() {
 
   async function remove(credential: RegistryCredential): Promise<void> {
     const confirmed = await confirm({
-      title: `Remove the login for ${label(credential.registry)}?`,
-      message: "Update checks, pulls and scans of its private images will fail.",
-      confirmLabel: "Remove",
+      title: t("Remove the login for {registry}?", { registry: label(credential.registry) }),
+      message: t("Update checks, pulls and scans of its private images will fail."),
+      confirmLabel: t("Remove"),
       tone: "danger",
     });
     if (!confirmed) return;
@@ -67,11 +74,11 @@ export default function RegistryCredentials() {
 
   return (
     <section className="section">
-      <h2>Registry credentials</h2>
+      <h2>{t("Registry credentials")}</h2>
       <p className="muted">
-        Used for update checks, pulls and scans of private images. DryDock checks a login with
-        the registry before it saves it. Use an access token instead of a password where the
-        registry offers one.
+        {t(
+          "Used for update checks, pulls and scans of private images. DryDock checks a login with the registry before it saves it. Use an access token instead of a password where the registry offers one.",
+        )}
       </p>
       {error && <div className="error">{error}</div>}
       {notice && (
@@ -83,8 +90,8 @@ export default function RegistryCredentials() {
         <table className="projects-table">
           <thead>
             <tr>
-              <th>Registry</th>
-              <th>Username</th>
+              <th>{t("Registry")}</th>
+              <th>{t("Username")}</th>
               <th></th>
             </tr>
           </thead>
@@ -99,7 +106,7 @@ export default function RegistryCredentials() {
                     className="secondary small"
                     onClick={() => remove(credential)}
                   >
-                    <Trash2 size={14} /> Remove
+                    <Trash2 size={14} /> {t("Remove")}
                   </button>
                 </td>
               </tr>
@@ -109,7 +116,7 @@ export default function RegistryCredentials() {
       )}
       <form onSubmit={add}>
         <label className="field">
-          Registry
+          {t("Registry")}
           <input
             value={registry}
             placeholder="docker.io, ghcr.io, registry.lan:5000"
@@ -117,7 +124,7 @@ export default function RegistryCredentials() {
           />
         </label>
         <label className="field">
-          Username
+          {t("Username")}
           <input
             value={username}
             autoComplete="off"
@@ -125,7 +132,7 @@ export default function RegistryCredentials() {
           />
         </label>
         <label className="field">
-          Password or access token
+          {t("Password or access token")}
           <input
             type="password"
             value={password}
@@ -138,7 +145,7 @@ export default function RegistryCredentials() {
             type="submit"
             disabled={busy || !registry.trim() || !username.trim() || !password}
           >
-            <KeyRound size={15} /> {busy ? "Checking…" : "Save login"}
+            <KeyRound size={15} /> {busy ? t("Checking…") : t("Save login")}
           </button>
         </div>
       </form>

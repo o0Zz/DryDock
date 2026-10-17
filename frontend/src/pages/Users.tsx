@@ -12,9 +12,11 @@ import { useEffect, useState, type FormEvent } from "react";
 import { api } from "../api";
 import { useAuth } from "../auth";
 import { useConfirm } from "../components/ConfirmDialog";
+import { useT } from "../i18n";
 import type { User } from "../types";
 
 export default function Users() {
+  const t = useT();
   const confirm = useConfirm();
   const { user: currentUser } = useAuth();
   const [users, setUsers] = useState<User[]>([]);
@@ -32,7 +34,7 @@ export default function Users() {
       setUsers(await api.listUsers());
       setError(null);
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : "Failed to load users");
+      setError(loadError instanceof Error ? loadError.message : t("Failed to load users"));
     } finally {
       setLoading(false);
     }
@@ -47,7 +49,7 @@ export default function Users() {
       await action();
       await load();
     } catch (actionError) {
-      setError(actionError instanceof Error ? actionError.message : "Action failed");
+      setError(actionError instanceof Error ? actionError.message : t("Action failed"));
     }
   }
 
@@ -64,10 +66,12 @@ export default function Users() {
   }
 
   function resetPassword(user: User): void {
-    const newPassword = window.prompt(`New password for "${user.username}" (min 6 chars):`);
+    const newPassword = window.prompt(
+      t("New password for \"{name}\" (min 6 chars):", { name: user.username }),
+    );
     if (newPassword == null) return;
     if (newPassword.length < 6) {
-      setError("Password must be at least 6 characters");
+      setError(t("Password must be at least 6 characters"));
       return;
     }
     run(() => api.updateUser(user.id, { password: newPassword }));
@@ -75,9 +79,9 @@ export default function Users() {
 
   async function remove(user: User): Promise<void> {
     const confirmed = await confirm({
-      title: `Delete user ${user.username}?`,
-      message: "This cannot be undone.",
-      confirmLabel: "Delete",
+      title: t("Delete user {name}?", { name: user.username }),
+      message: t("This cannot be undone."),
+      confirmLabel: t("Delete"),
       tone: "danger",
     });
     if (!confirmed) return;
@@ -86,20 +90,20 @@ export default function Users() {
 
   return (
     <div>
-      <h1>Users</h1>
+      <h1>{t("Users")}</h1>
       {error && <div className="error">{error}</div>}
 
       <div className="section">
-        <h2>Add user</h2>
+        <h2>{t("Add user")}</h2>
         <form className="button-row" onSubmit={onCreate}>
           <input
-            placeholder="username"
+            placeholder={t("username")}
             value={username}
             onChange={(event) => setUsername(event.target.value)}
           />
           <input
             type="password"
-            placeholder="password"
+            placeholder={t("password")}
             value={password}
             onChange={(event) => setPassword(event.target.value)}
           />
@@ -109,25 +113,25 @@ export default function Users() {
               checked={isAdmin}
               onChange={(event) => setIsAdmin(event.target.checked)}
             />
-            Admin
+            {t("Admin")}
           </label>
           <button type="submit" disabled={creating || !username || password.length < 6}>
-            <UserPlus size={15} /> {creating ? "Adding…" : "Add user"}
+            <UserPlus size={15} /> {creating ? t("Adding…") : t("Add user")}
           </button>
         </form>
       </div>
 
       {loading ? (
-        <div className="empty">Loading…</div>
+        <div className="empty">{t("Loading…")}</div>
       ) : (
         <table className="projects-table">
           <thead>
             <tr>
-              <th>Username</th>
-              <th>Role</th>
-              <th>Status</th>
-              <th>Created</th>
-              <th>Actions</th>
+              <th>{t("Username")}</th>
+              <th>{t("Role")}</th>
+              <th>{t("Status")}</th>
+              <th>{t("Created")}</th>
+              <th>{t("Actions")}</th>
             </tr>
           </thead>
           <tbody>
@@ -137,18 +141,18 @@ export default function Users() {
                 <tr key={user.id}>
                   <td>
                     {user.username}
-                    {isSelf && <span className="muted"> (you)</span>}
+                    {isSelf && <span className="muted"> {t("(you)")}</span>}
                   </td>
                   <td>
                     <span className={`badge ${user.is_admin ? "admin-badge" : ""}`}>
                       {user.is_admin ? <ShieldCheck size={12} /> : <UserIcon size={12} />}
-                      {user.is_admin ? "admin" : "user"}
+                      {user.is_admin ? t("admin") : t("user")}
                     </span>
                   </td>
                   <td>
                     <span className={`badge ${user.is_active ? "running" : "exited"}`}>
                       <Circle size={8} fill="currentColor" />
-                      {user.is_active ? "active" : "disabled"}
+                      {user.is_active ? t("active") : t("disabled")}
                     </span>
                   </td>
                   <td className="muted">{new Date(user.created_at).toLocaleDateString()}</td>
@@ -158,7 +162,7 @@ export default function Users() {
                         className="secondary small"
                         onClick={() => resetPassword(user)}
                       >
-                        <KeyRound size={14} /> Reset password
+                        <KeyRound size={14} /> {t("Reset password")}
                       </button>
                       <button
                         className="secondary small"
@@ -168,7 +172,7 @@ export default function Users() {
                         }
                       >
                         {user.is_admin ? <ShieldOff size={14} /> : <ShieldCheck size={14} />}
-                        {user.is_admin ? "Revoke admin" : "Make admin"}
+                        {user.is_admin ? t("Revoke admin") : t("Make admin")}
                       </button>
                       <button
                         className="secondary small"
@@ -177,14 +181,14 @@ export default function Users() {
                           run(() => api.updateUser(user.id, { is_active: !user.is_active }))
                         }
                       >
-                        <Power size={14} /> {user.is_active ? "Disable" : "Enable"}
+                        <Power size={14} /> {user.is_active ? t("Disable") : t("Enable")}
                       </button>
                       <button
                         className="secondary small"
                         disabled={isSelf}
                         onClick={() => remove(user)}
                       >
-                        <Trash2 size={14} /> Delete
+                        <Trash2 size={14} /> {t("Delete")}
                       </button>
                     </div>
                   </td>

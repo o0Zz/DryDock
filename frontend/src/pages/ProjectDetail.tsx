@@ -21,9 +21,11 @@ import { api } from "../api";
 import { useAuth } from "../auth";
 import { useConfirm, type ConfirmOptions } from "../components/ConfirmDialog";
 import ImageName from "../components/ImageName";
+import { JOB_STATUS_TEXT } from "../components/JobList";
 import LogPanel from "../components/LogPanel";
 import { formatPorts } from "../format";
 import { isActive, useJobs } from "../hooks/useJobs";
+import { msg, useT } from "../i18n";
 import { imageRepo, retagImage } from "../imageRef";
 import { askDelete, askName, waitForJob } from "../stackActions";
 import type { Project, ProjectAction, UpdateSummary } from "../types";
@@ -41,22 +43,25 @@ const ACTION_ICONS: Record<ProjectAction, LucideIcon> = {
   stop: Square,
 };
 
-// Button text when it differs from the action name.
+// Button text when it differs from the action name. Action names are Compose
+// commands and stay untranslated in every language.
 const ACTION_TEXT: Partial<Record<ProjectAction, string>> = { pull: "pull & build" };
 
 const ACTION_HINTS: Record<ProjectAction, string> = {
-  up: "Start the stack; recreates services whose config changed",
-  down: "Stop and remove the stack's containers and networks",
-  pull: "Download newer images and rebuild services with a build: section (applied on up or reload)",
-  reload: "Stop the stack, then up: applies your Compose file changes",
-  stop: "Stop the containers without removing them",
+  up: msg("Start the stack; recreates services whose config changed"),
+  down: msg("Stop and remove the stack's containers and networks"),
+  pull: msg(
+    "Download newer images and rebuild services with a build: section (applied on up or reload)",
+  ),
+  reload: msg("Stop the stack, then up: applies your Compose file changes"),
+  stop: msg("Stop the containers without removing them"),
 };
 
 // `down` removes containers and networks, so it gets a confirmation step.
 const ACTION_CONFIRMATIONS: Partial<Record<ProjectAction, ConfirmOptions>> = {
   down: {
-    title: "Bring this stack down?",
-    message: "Its containers and networks will be removed. Named volumes are kept.",
+    title: msg("Bring this stack down?"),
+    message: msg("Its containers and networks will be removed. Named volumes are kept."),
     confirmLabel: "Down",
     tone: "danger",
   },
@@ -69,6 +74,7 @@ function actionLabel(action: ProjectAction, projectName: string): string {
 
 export default function ProjectDetail() {
   const confirm = useConfirm();
+  const t = useT();
   const { id = "" } = useParams();
   const [project, setProject] = useState<Project | null>(null);
   const [compose, setCompose] = useState<string>("");
@@ -130,7 +136,7 @@ export default function ProjectDetail() {
     try {
       const saved = await api.putCompose(id, compose);
       setOriginalCompose(compose);
-      setSavedAt(`Saved. Backup: ${saved.backup_path}`);
+      setSavedAt(t("Saved. Backup: {path}", { path: saved.backup_path }));
       return true;
     } catch (error) {
       setSaveError((error as Error).message);
@@ -138,7 +144,7 @@ export default function ProjectDetail() {
     } finally {
       setSaving(false);
     }
-  }, [id, compose]);
+  }, [id, compose, t]);
 
   // Compose actions run as background jobs. Container state almost always
   // changes, so the project reloads when one ends.
@@ -147,17 +153,28 @@ export default function ProjectDetail() {
   const runAction = useCallback(
     async (action: ProjectAction): Promise<void> => {
       const question = ACTION_CONFIRMATIONS[action];
-      if (question && !(await confirm(question))) return;
+      if (question) {
+        const accepted = await confirm({
+          ...question,
+          title: t(question.title),
+          message: typeof question.message === "string" ? t(question.message) : question.message,
+        });
+        if (!accepted) return;
+      }
       await start(() => api.runAction(id, action));
     },
-    [id, start],
+    [id, start, confirm, t],
   );
 
   const applyTag = (tag: string): void => {
     if (!retag) return;
     const result = retagImage(compose, retag, tag);
     if (result.count === 0) {
-      setRetagNote(`Could not find "image: ${retag}" in this file. Change the tag by hand below.`);
+      setRetagNote(
+        t("Could not find \"image: {image}\" in this file. Change the tag by hand below.", {
+          image: retag,
+        }),
+      );
       return;
     }
     setRetagNote(null);
@@ -196,7 +213,7 @@ export default function ProjectDetail() {
     if (!project) return;
     const choice = await askDelete(confirm, project);
     if (!choice) return;
-    await changeStack("Deleting…", async () => {
+    await changeStack(t("Deleting…"), async () => {
       await waitForJob(await api.deleteProject(id, choice.removeVolumes));
       navigate("/projects");
     });
@@ -205,15 +222,15 @@ export default function ProjectDetail() {
   const renameStack = async (): Promise<void> => {
     if (!project) return;
     const name = await askName(confirm, {
-      title: `Rename stack ${project.name}?`,
-      message:
-        "It is brought down first and stays down. Named volumes keep the old project name: " +
-        "after up, the stack gets new, empty ones, unless the file names them (name: or external).",
-      confirmLabel: "Rename",
+      title: t("Rename stack {name}?", { name: project.name }),
+      message: t(
+        "It is brought down first and stays down. Named volumes keep the old project name: after up, the stack gets new, empty ones, unless the file names them (name: or external).",
+      ),
+      confirmLabel: t("Rename"),
       initial: project.name,
     });
     if (!name || name === project.name) return;
-    await changeStack("Renaming…", async () => {
+    await changeStack(t("Renaming…"), async () => {
       const accepted = await api.renameProject(id, name);
       await waitForJob(accepted.job);
       navigate(`/projects/${accepted.project_id}`, { replace: true });
@@ -223,27 +240,29 @@ export default function ProjectDetail() {
   const duplicateStack = async (): Promise<void> => {
     if (!project) return;
     const name = await askName(confirm, {
-      title: `Duplicate stack ${project.name}?`,
-      message:
-        "Copies its folder (or its Compose files in a shared folder). Nothing starts. Change " +
-        "fixed container names and host ports before you bring the copy up.",
-      confirmLabel: "Duplicate",
+      title: t("Duplicate stack {name}?", { name: project.name }),
+      message: t(
+        "Copies its folder (or its Compose files in a shared folder). Nothing starts. Change fixed container names and host ports before you bring the copy up.",
+      ),
+      confirmLabel: t("Duplicate"),
       initial: `${project.name}-copy`,
     });
     if (!name) return;
-    await changeStack("Duplicating…", async () => {
+    await changeStack(t("Duplicating…"), async () => {
       const accepted = await api.duplicateProject(id, name);
       await waitForJob(accepted.job);
       setStackNotice(
         <>
-          Copied as <Link to={`/projects/${accepted.project_id}`}>{name}</Link>.
+          {t("Copied as")} <Link to={`/projects/${accepted.project_id}`}>{name}</Link>.
         </>,
       );
     });
   };
 
-  if (loadError) return <div className="error">Failed to load: {loadError}</div>;
-  if (!project) return <div>Loading…</div>;
+  if (loadError) {
+    return <div className="error">{t("Failed to load: {error}", { error: loadError })}</div>;
+  }
+  if (!project) return <div>{t("Loading…")}</div>;
 
   const dirty = compose !== originalCompose;
   const running = project.containers.filter((container) => container.state === "running").length;
@@ -262,7 +281,7 @@ export default function ProjectDetail() {
     <div>
       <div className="crumb">
         <Link to="/projects">
-          <ChevronLeft size={15} /> Projects
+          <ChevronLeft size={15} /> {t("Projects")}
         </Link>
       </div>
       <div className="row-between">
@@ -270,7 +289,7 @@ export default function ProjectDetail() {
         <div className="button-row inline">
           {stackBusy && <span className="muted">{stackBusy}</span>}
           <button type="button" className="secondary" onClick={() => setShowLogs(true)}>
-            <ScrollText size={15} /> Stack logs
+            <ScrollText size={15} /> {t("Stack logs")}
           </button>
           <button
             type="button"
@@ -278,7 +297,7 @@ export default function ProjectDetail() {
             disabled={stackBusy !== null || busyAction !== undefined}
             onClick={renameStack}
           >
-            <PenLine size={15} /> Rename
+            <PenLine size={15} /> {t("Rename")}
           </button>
           <button
             type="button"
@@ -286,7 +305,7 @@ export default function ProjectDetail() {
             disabled={stackBusy !== null}
             onClick={duplicateStack}
           >
-            <Copy size={15} /> Duplicate
+            <Copy size={15} /> {t("Duplicate")}
           </button>
           <button
             type="button"
@@ -294,7 +313,7 @@ export default function ProjectDetail() {
             disabled={stackBusy !== null || busyAction !== undefined}
             onClick={deleteStack}
           >
-            <Trash2 size={15} /> Delete
+            <Trash2 size={15} /> {t("Delete")}
           </button>
         </div>
       </div>
@@ -308,7 +327,7 @@ export default function ProjectDetail() {
         </div>
       )}
       <section className="section">
-        <h2>Actions</h2>
+        <h2>{t("Actions")}</h2>
         <div className="button-row">
           {ACTIONS.map((action) => {
             const Icon = ACTION_ICONS[action];
@@ -317,7 +336,7 @@ export default function ProjectDetail() {
                 key={action}
                 type="button"
                 disabled={busyAction !== undefined}
-                title={ACTION_HINTS[action]}
+                title={t(ACTION_HINTS[action])}
                 onClick={() => runAction(action)}
               >
                 <Icon size={15} />{" "}
@@ -337,7 +356,11 @@ export default function ProjectDetail() {
           >
             <div className="output-header">
               <strong>{lastJob.label}</strong>
-              <span>{isActive(lastJob) ? `${lastJob.status}…` : lastJob.status}</span>
+              <span>
+                {isActive(lastJob)
+                  ? `${t(JOB_STATUS_TEXT[lastJob.status])}…`
+                  : t(JOB_STATUS_TEXT[lastJob.status])}
+              </span>
             </div>
             {lastJob.output && <pre>{lastJob.output}</pre>}
             {lastJob.error && !lastJob.output && <pre className="stderr">{lastJob.error}</pre>}
@@ -347,24 +370,24 @@ export default function ProjectDetail() {
 
       <section className="section">
         <h2>
-          Containers{" "}
+          {t("Containers")}{" "}
           <span className="muted">
-            {running} of {project.containers.length} running
+            {t("{running} of {total} running", { running, total: project.containers.length })}
           </span>
         </h2>
         {project.containers.length === 0 ? (
           <div className="empty">
-            No containers for this stack. Deploy it with <strong>up</strong>.
+            {t("No containers for this stack. Deploy it with")} <strong>up</strong>.
           </div>
         ) : (
           <table className="projects-table">
             <thead>
               <tr>
-                <th>Name</th>
-                <th>Service</th>
-                <th>Image</th>
-                <th>Status</th>
-                <th>Ports</th>
+                <th>{t("Name")}</th>
+                <th>{t("Service")}</th>
+                <th>{t("Image")}</th>
+                <th>{t("Status")}</th>
+                <th>{t("Ports")}</th>
               </tr>
             </thead>
             <tbody>
@@ -398,12 +421,12 @@ export default function ProjectDetail() {
               className={`tab ${fileTab === "compose" ? "active" : ""}`}
               onClick={() => setFileTab("compose")}
             >
-              Compose file
+              {t("Compose file")}
             </button>
             <button
               type="button"
               className={`tab ${fileTab === "env" ? "active" : ""}`}
-              title="Variables Compose substitutes into the file"
+              title={t("Variables Compose substitutes into the file")}
               onClick={() => {
                 setFileTab("env");
                 setEnvOpened(true);
@@ -413,7 +436,7 @@ export default function ProjectDetail() {
             </button>
           </div>
         ) : (
-          <h2>Compose file</h2>
+          <h2>{t("Compose file")}</h2>
         )}
         {envOpened && (
           <div hidden={fileTab !== "env"}>
@@ -433,12 +456,12 @@ export default function ProjectDetail() {
               onDismiss={dismissRetag}
             />
           )}
-          <Suspense fallback={<div className="empty">Loading editor…</div>}>
+          <Suspense fallback={<div className="empty">{t("Loading editor…")}</div>}>
             <YamlEditor value={compose} onChange={setCompose} />
           </Suspense>
           <div className="button-row">
             <button type="button" onClick={save} disabled={!dirty || saving}>
-              <Save size={15} /> {saving ? "Saving…" : "Save"}
+              <Save size={15} /> {saving ? t("Saving…") : t("Save")}
             </button>
             <button
               type="button"
@@ -446,7 +469,7 @@ export default function ProjectDetail() {
               onClick={() => setCompose(originalCompose)}
               disabled={!dirty || saving}
             >
-              <Undo2 size={15} /> Revert
+              <Undo2 size={15} /> {t("Revert")}
             </button>
             {savedAt && !dirty && <span className="muted">{savedAt}</span>}
           </div>
@@ -467,6 +490,7 @@ export default function ProjectDetail() {
 
 /** Editor for the `.env` next to the Compose file. Same validate, back up, write flow. */
 function EnvFile({ projectId }: { projectId: string }) {
+  const t = useT();
   const [content, setContent] = useState<string | null>(null);
   const [original, setOriginal] = useState("");
   const [exists, setExists] = useState(true);
@@ -493,7 +517,9 @@ function EnvFile({ projectId }: { projectId: string }) {
       const saved = await api.putEnv(projectId, content);
       setOriginal(content);
       setExists(true);
-      setSavedAt(saved.backup_path ? `Saved. Backup: ${saved.backup_path}` : "Saved.");
+      setSavedAt(
+        saved.backup_path ? t("Saved. Backup: {path}", { path: saved.backup_path }) : t("Saved."),
+      );
     } catch (saveError) {
       setError((saveError as Error).message);
     } finally {
@@ -502,7 +528,11 @@ function EnvFile({ projectId }: { projectId: string }) {
   };
 
   if (content === null) {
-    return error ? <div className="error">{error}</div> : <div className="empty">Loading…</div>;
+    return error ? (
+      <div className="error">{error}</div>
+    ) : (
+      <div className="empty">{t("Loading…")}</div>
+    );
   }
   const dirty = content !== original;
 
@@ -510,15 +540,15 @@ function EnvFile({ projectId }: { projectId: string }) {
     <>
       <div className="muted" style={{ marginBottom: "0.5rem" }}>
         {exists
-          ? "Stacks in the same folder share this file. Changes apply on the next up."
-          : "No .env in this folder yet. Saving creates it."}
+          ? t("Stacks in the same folder share this file. Changes apply on the next up.")
+          : t("No .env in this folder yet. Saving creates it.")}
       </div>
-      <Suspense fallback={<div className="empty">Loading editor…</div>}>
+      <Suspense fallback={<div className="empty">{t("Loading editor…")}</div>}>
         <YamlEditor value={content} onChange={setContent} height="320px" plain />
       </Suspense>
       <div className="button-row">
         <button type="button" onClick={save} disabled={!dirty || saving}>
-          <Save size={15} /> {saving ? "Saving…" : "Save"}
+          <Save size={15} /> {saving ? t("Saving…") : t("Save")}
         </button>
         <button
           type="button"
@@ -526,7 +556,7 @@ function EnvFile({ projectId }: { projectId: string }) {
           onClick={() => setContent(original)}
           disabled={!dirty || saving}
         >
-          <Undo2 size={15} /> Revert
+          <Undo2 size={15} /> {t("Revert")}
         </button>
         {savedAt && !dirty && <span className="muted">{savedAt}</span>}
       </div>
@@ -554,11 +584,14 @@ function RetagPanel({
   onDeploy: () => void;
   onDismiss: () => void;
 }) {
+  const t = useT();
+  // One sentence, split around the image so it stays in place in every language.
+  const [updateBefore, updateAfter] = t("Update {image}:").split("{image}");
   // Same-major first: it is the safer upgrade; a new major may need config changes.
   const choices: [string, string][] = [];
-  if (update?.newest_same_major_tag) choices.push([update.newest_same_major_tag, "same major"]);
+  if (update?.newest_same_major_tag) choices.push([update.newest_same_major_tag, msg("same major")]);
   if (update?.newest_tag && update.newest_tag !== update.newest_same_major_tag) {
-    choices.push([update.newest_tag, "newest"]);
+    choices.push([update.newest_tag, msg("newest")]);
   }
 
   return (
@@ -566,32 +599,36 @@ function RetagPanel({
       {applied ? (
         <div className="button-row">
           <span>
-            Image changed to <code>{imageRepo(image)}:{applied}</code> (not saved yet). Review it
-            below, then:
+            {t("Image changed to")} <code>{imageRepo(image)}:{applied}</code>{" "}
+            {t("(not saved yet). Review it below, then:")}
           </span>
           <button type="button" disabled={busy} onClick={onDeploy}>
-            <Play size={15} /> Save &amp; deploy
+            <Play size={15} /> {t("Save & deploy")}
           </button>
           <button type="button" className="secondary" disabled={busy} onClick={onDismiss}>
-            Close
+            {t("Close")}
           </button>
         </div>
       ) : (
         <div className="button-row">
           <span>
-            <ArrowUpCircle size={14} /> Update <code>{image}</code>:
+            <ArrowUpCircle size={14} /> {updateBefore}
+            <code>{image}</code>
+            {updateAfter}
           </span>
           {choices.length === 0 ? (
-            <span className="muted">no newer tag recorded. Run an update check first.</span>
+            <span className="muted">
+              {t("no newer tag recorded. Run an update check first.")}
+            </span>
           ) : (
             choices.map(([tag, label]) => (
               <button key={tag} type="button" className="small" onClick={() => onApply(tag)}>
-                Use {tag} <span className="muted">({label})</span>
+                {t("Use {tag}", { tag })} <span className="muted">({t(label)})</span>
               </button>
             ))
           )}
           <button type="button" className="secondary small" onClick={onDismiss}>
-            Cancel
+            {t("Cancel")}
           </button>
         </div>
       )}

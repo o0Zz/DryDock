@@ -1,6 +1,7 @@
 import { api } from "./api";
 import type { ConfirmOptions } from "./components/ConfirmDialog";
 import { isActive, JOBS_CHANGED_EVENT } from "./hooks/useJobs";
+import { translate } from "./i18n";
 import type { Job, Project } from "./types";
 
 type Confirm = (options: ConfirmOptions) => Promise<boolean>;
@@ -15,13 +16,15 @@ export async function askDelete(
   // The dialog renders its message once, so the checkbox writes here.
   const choice = { removeVolumes: false };
   const accepted = await confirm({
-    title: `Delete stack ${project.name}?`,
+    title: translate("Delete stack {name}?", { name: project.name }),
     message: (
       <>
         <p>
-          DryDock runs <code>down</code>, backs the stack up to <code>/data/backups</code>, then
-          deletes it. A folder that holds only this stack goes as a whole, data folders
-          included. In a shared folder only its Compose files go.
+          {translate("DryDock runs")} <code>down</code>
+          {translate(", backs the stack up to")} <code>/data/backups</code>
+          {translate(
+            ", then deletes it. A folder that holds only this stack goes as a whole, data folders included. In a shared folder only its Compose files go.",
+          )}
         </p>
         <label className="checkbox-label">
           <input
@@ -32,12 +35,13 @@ export async function askDelete(
           />
           {/* One span: the label is a flex row, and loose text nodes would wrap apart. */}
           <span>
-            Also remove its named volumes (<code>-v</code>). Their data is lost.
+            {translate("Also remove its named volumes")} (<code>-v</code>).{" "}
+            {translate("Their data is lost.")}
           </span>
         </label>
       </>
     ),
-    confirmLabel: "Delete",
+    confirmLabel: translate("Delete"),
     tone: "danger",
   });
   return accepted ? choice : null;
@@ -55,7 +59,7 @@ export async function askName(
       <>
         <p>{options.message}</p>
         <label className="field">
-          New name (lowercase letters, digits, - and _)
+          {translate("New name (lowercase letters, digits, - and _)")}
           <input
             defaultValue={options.initial}
             autoFocus
@@ -80,6 +84,8 @@ export async function waitForJob(job: Job): Promise<Job> {
     await new Promise((resolve) => window.setTimeout(resolve, POLL_MS));
     current = await api.getJob(current.id);
   }
-  if (current.status !== "success") throw new Error(current.error ?? `${job.label} failed`);
+  if (current.status !== "success") {
+    throw new Error(current.error ?? translate("{label} failed", { label: job.label }));
+  }
   return current;
 }

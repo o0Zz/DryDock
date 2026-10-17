@@ -2,6 +2,7 @@ import { ListChecks, Loader2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { api } from "../api";
 import { isActive, JOBS_CHANGED_EVENT } from "../hooks/useJobs";
+import { useT } from "../i18n";
 import type { Job } from "../types";
 import JobList from "./JobList";
 
@@ -12,6 +13,7 @@ const IDLE_POLL_MS = 10_000;
 /** Topbar pill showing background jobs (scans, update checks, scheduled runs)
  * from any page; click for the recent list with progress. */
 export default function JobsIndicator() {
+  const t = useT();
   const [jobs, setJobs] = useState<Job[]>([]);
   const [open, setOpen] = useState(false);
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
@@ -73,27 +75,29 @@ export default function JobsIndicator() {
         className={
           activeJobs.length ? "secondary small jobs-pill active" : "secondary small jobs-pill"
         }
-        title="Background jobs"
+        title={t("Background jobs")}
         onClick={() => setOpen((previous) => !previous)}
       >
         {activeJobs.length ? (
           <>
             <Loader2 size={14} className="spin" />
             <span className="jobs-pill-label">
-              {activeJobs.length > 1 ? `${activeJobs.length} jobs running` : firstActive.label}
+              {activeJobs.length > 1
+                ? t("{count} jobs running", { count: activeJobs.length })
+                : firstActive.label}
               {firstActive.total > 0 && ` · ${firstActive.done}/${firstActive.total}`}
             </span>
           </>
         ) : (
           <>
-            <ListChecks size={14} /> Jobs
+            <ListChecks size={14} /> {t("Jobs")}
           </>
         )}
       </button>
       {open && (
         <div className="jobs-dropdown">
           {visibleJobs.length === 0 ? (
-            <div className="muted">No recent jobs.</div>
+            <div className="muted">{t("No recent jobs.")}</div>
           ) : (
             <JobList
               jobs={visibleJobs}

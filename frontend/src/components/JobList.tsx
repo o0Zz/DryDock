@@ -1,6 +1,15 @@
 import { AlertCircle, AlertTriangle, CheckCircle2, Loader2, X } from "lucide-react";
 import { isActive } from "../hooks/useJobs";
-import type { Job } from "../types";
+import { msg, useT } from "../i18n";
+import type { Job, JobStatus } from "../types";
+
+/** Display text of a job status; translate it with `t()`. */
+export const JOB_STATUS_TEXT: Record<JobStatus, string> = {
+  pending: msg("pending"),
+  running: msg("running"),
+  success: msg("success"),
+  error: msg("error"),
+};
 
 /** Jobs end "success" even when some images failed (the summary says
  * "…, 2 failed"); surface that instead of a green check. */
@@ -18,6 +27,7 @@ export default function JobList({
   jobs: Job[];
   onDismiss: (id: string) => void;
 }) {
+  const t = useT();
   if (jobs.length === 0) return null;
 
   return (
@@ -50,8 +60,8 @@ export default function JobList({
                 )}
               </div>
               <div className="muted">
-                {job.error ?? job.message ?? job.status}
-                {failedImages > 0 && " — see Logs for details"}
+                {job.error ?? job.message ?? t(JOB_STATUS_TEXT[job.status])}
+                {failedImages > 0 && ` — ${t("see Logs for details")}`}
               </div>
               {running && job.total > 0 && (
                 <div className="job-bar">
@@ -63,7 +73,7 @@ export default function JobList({
               <button
                 type="button"
                 className="secondary small"
-                title="Dismiss"
+                title={t("Dismiss")}
                 onClick={() => onDismiss(job.id)}
               >
                 <X size={14} />

@@ -7,10 +7,12 @@ import { useConfirm } from "../components/ConfirmDialog";
 import JobList from "../components/JobList";
 import { formatDate } from "../format";
 import { isActive, useJobs } from "../hooks/useJobs";
+import { useT } from "../i18n";
 import type { Volume } from "../types";
 
 export default function Volumes() {
   const confirm = useConfirm();
+  const t = useT();
   const { user } = useAuth();
   const [volumes, setVolumes] = useState<Volume[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -47,7 +49,7 @@ export default function Volumes() {
       if (successNotice) setNotice(successNotice);
       refresh();
     } catch (actionError) {
-      setError(actionError instanceof Error ? actionError.message : "Action failed");
+      setError(actionError instanceof Error ? actionError.message : t("Action failed"));
     } finally {
       setBusy(false);
     }
@@ -58,25 +60,25 @@ export default function Volumes() {
     run(async () => {
       await api.createVolume(name.trim());
       setName("");
-    }, `Volume "${name.trim()}" created.`);
+    }, t("Volume \"{name}\" created.", { name: name.trim() }));
   }
 
   async function onDelete(volume: Volume): Promise<void> {
     const confirmed = await confirm({
-      title: `Delete volume ${volume.name}?`,
-      message: "The data in it will be lost.",
-      confirmLabel: "Delete",
+      title: t("Delete volume {name}?", { name: volume.name }),
+      message: t("The data in it will be lost."),
+      confirmLabel: t("Delete"),
       tone: "danger",
     });
     if (!confirmed) return;
-    run(() => api.deleteVolume(volume.name), `Volume "${volume.name}" removed.`);
+    run(() => api.deleteVolume(volume.name), t("Volume \"{name}\" removed.", { name: volume.name }));
   }
 
   async function onPrune(): Promise<void> {
     const confirmed = await confirm({
-      title: "Prune unused volumes?",
-      message: "Removes every volume no container uses. This cannot be undone.",
-      confirmLabel: "Prune",
+      title: t("Prune unused volumes?"),
+      message: t("Removes every volume no container uses. This cannot be undone."),
+      confirmLabel: t("Prune"),
       tone: "danger",
     });
     if (!confirmed) return;
@@ -86,13 +88,13 @@ export default function Volumes() {
   return (
     <div>
       <div className="row-between">
-        <h1>Volumes</h1>
+        <h1>{t("Volumes")}</h1>
         <div className="button-row">
           <button type="button" className="secondary" disabled={busy || pruning} onClick={onPrune}>
-            <Trash2 size={15} /> Prune unused
+            <Trash2 size={15} /> {t("Prune unused")}
           </button>
           <button type="button" className="secondary" onClick={refresh}>
-            <RefreshCw size={15} /> Refresh
+            <RefreshCw size={15} /> {t("Refresh")}
           </button>
         </div>
       </div>
@@ -102,32 +104,32 @@ export default function Volumes() {
       <JobList jobs={pruneJobs} onDismiss={dismiss} />
 
       <div className="section">
-        <h2>Create volume</h2>
+        <h2>{t("Create volume")}</h2>
         <form className="button-row" onSubmit={onCreate}>
           <input
-            placeholder="volume name"
+            placeholder={t("volume name")}
             value={name}
             onChange={(event) => setName(event.target.value)}
           />
           <button type="submit" disabled={busy || !name.trim()}>
-            <HardDrive size={15} /> Create
+            <HardDrive size={15} /> {t("Create")}
           </button>
         </form>
       </div>
 
       {!volumes ? (
-        <div className="empty">Loading…</div>
+        <div className="empty">{t("Loading…")}</div>
       ) : volumes.length === 0 ? (
-        <div className="empty">No volumes found.</div>
+        <div className="empty">{t("No volumes found.")}</div>
       ) : (
         <table className="projects-table">
           <thead>
             <tr>
-              <th>Name</th>
-              <th>Driver</th>
-              <th>Used by</th>
-              <th>Compose</th>
-              <th>Created</th>
+              <th>{t("Name")}</th>
+              <th>{t("Driver")}</th>
+              <th>{t("Used by")}</th>
+              <th>{t("Compose")}</th>
+              <th>{t("Created")}</th>
               <th></th>
             </tr>
           </thead>
@@ -141,7 +143,7 @@ export default function Volumes() {
                       <Link
                         className="icon-link"
                         to={`/volumes/${encodeURIComponent(volume.name)}`}
-                        title="Browse files"
+                        title={t("Browse files")}
                       >
                         <HardDrive size={15} /> {volume.name}
                       </Link>
@@ -162,7 +164,7 @@ export default function Volumes() {
                           <Link
                             className="icon-link"
                             to={`/containers/${attachment.id}`}
-                            title={attachment.running ? "running" : "stopped"}
+                            title={attachment.running ? t("running") : t("stopped")}
                           >
                             <Circle
                               size={8}
@@ -173,12 +175,12 @@ export default function Volumes() {
                           </Link>
                           <div className="muted">
                             <code>{attachment.destination}</code>
-                            {!attachment.rw && " (ro)"}
+                            {!attachment.rw && ` (${t("ro")})`}
                           </div>
                         </div>
                       ))
                     ) : (
-                      <span className="badge">unused</span>
+                      <span className="badge">{t("unused")}</span>
                     )}
                   </td>
                   <td>{volume.compose_project ?? "—"}</td>
@@ -190,10 +192,10 @@ export default function Volumes() {
                       type="button"
                       className="secondary small"
                       disabled={busy || inUse}
-                      title={inUse ? "Volume is attached to a container" : "Delete volume"}
+                      title={inUse ? t("Volume is attached to a container") : t("Delete volume")}
                       onClick={() => onDelete(volume)}
                     >
-                      <Trash2 size={14} /> Delete
+                      <Trash2 size={14} /> {t("Delete")}
                     </button>
                   </td>
                 </tr>

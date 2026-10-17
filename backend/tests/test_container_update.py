@@ -171,6 +171,31 @@ def test_reload_skips_up_when_stop_fails(runs: SimpleNamespace) -> None:
     assert result["stderr"] == "cannot stop"
 
 
+def test_pull_skips_buildable_services_then_builds(runs: SimpleNamespace) -> None:
+    runs.results += [(0, "", "Pulled\n"), (0, "", "Built\n")]
+
+    result = compose_service.run_action(COMPOSE, "pull")
+
+    base = ["docker", "compose", "-f", str(COMPOSE)]
+    assert [command for command, _ in runs.calls] == [
+        base + ["pull", "--ignore-buildable"],
+        base + ["build", "--pull"],
+    ]
+    # Builds on a Pi are as slow as pulls.
+    assert all(kwargs["timeout"] == compose_service.PULL_TIMEOUT for _, kwargs in runs.calls)
+    assert result["exit_code"] == 0
+    assert result["stderr"] == "Pulled\nBuilt\n"
+
+
+def test_pull_reports_build_failure(runs: SimpleNamespace) -> None:
+    runs.results += [(0, "", "Pulled\n"), (17, "", "failed to solve\n")]
+
+    result = compose_service.run_action(COMPOSE, "pull")
+
+    assert result["exit_code"] == 17
+    assert result["stderr"].endswith("failed to solve\n")
+
+
 def test_restart_is_no_longer_a_project_action() -> None:
     # `docker compose restart` ignores Compose file edits; `reload` replaces it.
     assert "restart" not in compose_service.ALLOWED_ACTIONS

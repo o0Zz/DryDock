@@ -5,6 +5,7 @@ import { useAuth } from "../auth";
 import JobList from "../components/JobList";
 import { formatDate } from "../format";
 import { isActive, useJobs } from "../hooks/useJobs";
+import { translate, useT } from "../i18n";
 import type { Fail2banBan, Fail2banReport, HostUpdates } from "../types";
 
 // Package lists older than this mean the host no longer runs `apt update`.
@@ -15,20 +16,21 @@ function daysSince(value: string): number {
 }
 
 function Updates({ updates }: { updates: HostUpdates | null }) {
+  const t = useT();
   if (!updates) {
     return (
       <p className="muted">
-        Never checked. Use “Check updates”, or wait for the scheduled update check.
+        {t("Never checked. Use “Check updates”, or wait for the scheduled update check.")}
       </p>
     );
   }
   if (updates.error) {
-    return <div className="error">Last check failed: {updates.error}</div>;
+    return <div className="error">{t("Last check failed: {error}", { error: updates.error })}</div>;
   }
   if (!updates.supported) {
     return (
       <p className="muted">
-        The host has no apt. Only Debian, Ubuntu and Raspberry Pi OS are supported.
+        {t("The host has no apt. Only Debian, Ubuntu and Raspberry Pi OS are supported.")}
       </p>
     );
   }
@@ -37,56 +39,66 @@ function Updates({ updates }: { updates: HostUpdates | null }) {
     <>
       <ul className="fact-list">
         <li>
-          <span className="muted">Pending updates</span>
+          <span className="muted">{t("Pending updates")}</span>
           <strong>
             {updates.upgradable}{" "}
             {updates.security > 0 && (
-              <span className="badge sev-critical">{updates.security} security</span>
+              <span className="badge sev-critical">
+                {t("{count} security", { count: updates.security })}
+              </span>
             )}
           </strong>
         </li>
         <li>
-          <span className="muted">Reboot required</span>
+          <span className="muted">{t("Reboot required")}</span>
           <strong>
-            {updates.reboot_required ? <span className="badge sev-high">yes</span> : "no"}
+            {updates.reboot_required ? (
+              <span className="badge sev-high">{t("yes")}</span>
+            ) : (
+              t("no")
+            )}
           </strong>
         </li>
         <li>
-          <span className="muted">Package lists refreshed</span>
+          <span className="muted">{t("Package lists refreshed")}</span>
           <strong>
-            {formatDate(updates.lists_updated_at, "never")}
-            {stale && <span className="stat-detail-warn"> · stale</span>}
+            {formatDate(updates.lists_updated_at, t("never"))}
+            {stale && <span className="stat-detail-warn"> · {t("stale")}</span>}
           </strong>
         </li>
         <li>
-          <span className="muted">Kernel</span>
+          <span className="muted">{t("Kernel")}</span>
           <strong>{updates.kernel ?? "—"}</strong>
         </li>
         <li>
-          <span className="muted">Last check</span>
+          <span className="muted">{t("Last check")}</span>
           <strong>{formatDate(updates.checked_at)}</strong>
         </li>
       </ul>
       {stale && (
         <p className="muted">
-          The host has not run <code>apt update</code> for over {STALE_LISTS_DAYS} days, so this list
-          may miss updates. Install <code>unattended-upgrades</code> to refresh it daily.
+          {t("The host has not run")} <code>apt update</code>{" "}
+          {t("for over {days} days, so this list may miss updates. Install", {
+            days: STALE_LISTS_DAYS,
+          })}{" "}
+          <code>unattended-upgrades</code> {t("to refresh it daily.")}
         </p>
       )}
       {updates.packages.length > 0 && (
         <table className="projects-table">
           <thead>
             <tr>
-              <th>Package</th>
-              <th>Installed</th>
-              <th>Available</th>
+              <th>{t("Package")}</th>
+              <th>{t("Installed")}</th>
+              <th>{t("Available")}</th>
             </tr>
           </thead>
           <tbody>
             {updates.packages.map((pkg) => (
               <tr key={pkg.name}>
                 <td>
-                  {pkg.name} {pkg.security && <span className="badge sev-critical">security</span>}
+                  {pkg.name}{" "}
+                  {pkg.security && <span className="badge sev-critical">{t("security")}</span>}
                 </td>
                 <td className="muted">{pkg.current}</td>
                 <td>{pkg.candidate}</td>
@@ -100,17 +112,18 @@ function Updates({ updates }: { updates: HostUpdates | null }) {
 }
 
 function BanTable({ bans, empty }: { bans: Fail2banBan[]; empty: string }) {
+  const t = useT();
   if (bans.length === 0) return <p className="muted">{empty}</p>;
   return (
     <table className="projects-table">
       <thead>
         <tr>
           <th>IP</th>
-          <th>Jail</th>
-          <th>Banned</th>
-          <th>Until</th>
-          <th>Times</th>
-          <th>Log lines</th>
+          <th>{t("Jail")}</th>
+          <th>{t("Banned")}</th>
+          <th>{t("Until")}</th>
+          <th>{t("Times")}</th>
+          <th>{t("Log lines")}</th>
         </tr>
       </thead>
       <tbody>
@@ -121,12 +134,14 @@ function BanTable({ bans, empty }: { bans: Fail2banBan[]; empty: string }) {
             </td>
             <td>{ban.jail}</td>
             <td className="muted">{formatDate(ban.banned_at)}</td>
-            <td className="muted">{ban.expires_at ? formatDate(ban.expires_at) : "permanent"}</td>
+            <td className="muted">{ban.expires_at ? formatDate(ban.expires_at) : t("permanent")}</td>
             <td>{ban.ban_count}</td>
             <td>
               {ban.matches.length > 0 ? (
                 <details>
-                  <summary className="muted">{ban.matches.length} line(s)</summary>
+                  <summary className="muted">
+                    {t("{count} line(s)", { count: ban.matches.length })}
+                  </summary>
                   <pre className="match-lines">{ban.matches.join("\n")}</pre>
                 </details>
               ) : (
@@ -141,32 +156,37 @@ function BanTable({ bans, empty }: { bans: Fail2banBan[]; empty: string }) {
 }
 
 function Fail2ban({ report }: { report: Fail2banReport }) {
+  const t = useT();
   return (
     <>
       <p className="muted">
-        History since {formatDate(report.history_since, "—")}. fail2ban keeps it for{" "}
-        <code>dbpurgeage</code> (1 day by default).
+        {t("History since {date}. fail2ban keeps it for", {
+          date: formatDate(report.history_since, "—"),
+        })}{" "}
+        <code>dbpurgeage</code> {t("(1 day by default).")}
       </p>
       <table className="projects-table">
         <thead>
           <tr>
-            <th>Jail</th>
-            <th>Active bans</th>
-            <th>Bans in history</th>
-            <th>Last ban</th>
+            <th>{t("Jail")}</th>
+            <th>{t("Active bans")}</th>
+            <th>{t("Bans in history")}</th>
+            <th>{t("Last ban")}</th>
           </tr>
         </thead>
         <tbody>
           {report.jails.map((jail) => (
             <tr key={jail.name}>
               <td>
-                {jail.name} {!jail.enabled && <span className="badge">disabled</span>}
+                {jail.name} {!jail.enabled && <span className="badge">{t("disabled")}</span>}
                 {jail.enabled && jail.bans === 0 && (
                   <span
                     className="badge"
-                    title="This jail has banned nobody. Check that its log path and filter match your logs."
+                    title={t(
+                      "This jail has banned nobody. Check that its log path and filter match your logs.",
+                    )}
                   >
-                    no bans
+                    {t("no bans")}
                   </span>
                 )}
               </td>
@@ -180,7 +200,7 @@ function Fail2ban({ report }: { report: Fail2banReport }) {
 
       {report.top_users.length > 0 && (
         <>
-          <h3>User names tried on SSH</h3>
+          <h3>{t("User names tried on SSH")}</h3>
           <div className="button-row">
             {report.top_users.map((user) => (
               <span key={user.name} className="badge">
@@ -191,16 +211,17 @@ function Fail2ban({ report }: { report: Fail2banReport }) {
         </>
       )}
 
-      <h3>Active bans ({report.active_bans.length})</h3>
-      <BanTable bans={report.active_bans} empty="Nobody is banned right now." />
+      <h3>{t("Active bans ({count})", { count: report.active_bans.length })}</h3>
+      <BanTable bans={report.active_bans} empty={t("Nobody is banned right now.")} />
 
-      <h3>Recent bans</h3>
-      <BanTable bans={report.recent_bans} empty="No bans in fail2ban's history." />
+      <h3>{t("Recent bans")}</h3>
+      <BanTable bans={report.recent_bans} empty={t("No bans in fail2ban's history.")} />
     </>
   );
 }
 
 export default function Host() {
+  const t = useT();
   const { user } = useAuth();
   const [updates, setUpdates] = useState<HostUpdates | null | undefined>(undefined);
   const [report, setReport] = useState<Fail2banReport | null>(null);
@@ -223,8 +244,10 @@ export default function Host() {
       .catch((loadError: Error) =>
         setFail2banError(
           loadError instanceof ApiError && loadError.status === 404
-            ? `fail2ban was not found on the host (${loadError.message}). ` +
-                "Set DRYDOCK_FAIL2BAN_DB if its database lives elsewhere."
+            ? translate(
+                "fail2ban was not found on the host ({error}). Set DRYDOCK_FAIL2BAN_DB if its database lives elsewhere.",
+                { error: loadError.message },
+              )
             : loadError.message,
         ),
       );
@@ -242,10 +265,10 @@ export default function Host() {
   return (
     <div>
       <div className="row-between">
-        <h1>Host</h1>
+        <h1>{t("Host")}</h1>
         <div className="button-row">
           <button type="button" disabled={checking} onClick={() => start(api.checkHostUpdates)}>
-            <RefreshCw size={15} /> Check updates
+            <RefreshCw size={15} /> {t("Check updates")}
           </button>
         </div>
       </div>
@@ -254,9 +277,9 @@ export default function Host() {
       <JobList jobs={checkJobs} onDismiss={dismiss} />
 
       <section className="section">
-        <h2>OS updates</h2>
+        <h2>{t("OS updates")}</h2>
         {updates === undefined ? (
-          <div className="empty">Loading…</div>
+          <div className="empty">{t("Loading…")}</div>
         ) : (
           <Updates updates={updates} />
         )}
@@ -269,7 +292,7 @@ export default function Host() {
               <ShieldBan size={18} /> fail2ban
             </h2>
             <button type="button" className="secondary small" onClick={loadFail2ban}>
-              <RefreshCw size={14} /> Refresh
+              <RefreshCw size={14} /> {t("Refresh")}
             </button>
           </div>
           {fail2banError ? (
@@ -277,7 +300,7 @@ export default function Host() {
           ) : report ? (
             <Fail2ban report={report} />
           ) : (
-            <div className="empty">Loading…</div>
+            <div className="empty">{t("Loading…")}</div>
           )}
         </section>
       )}

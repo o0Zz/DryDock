@@ -1,5 +1,6 @@
 import { Shield, ShieldAlert, ShieldCheck } from "lucide-react";
 import { formatDate } from "../format";
+import { useT } from "../i18n";
 import type { ScanSummary } from "../types";
 
 /** Compact CVE summary for one image; clicking it queues a (re)scan. */
@@ -14,17 +15,18 @@ export default function ScanBadge({
   onScan: () => void;
   onOpen?: (scan: ScanSummary) => void;
 }) {
-  if (pending) return <span className="muted">scanning…</span>;
+  const t = useT();
+  if (pending) return <span className="muted">{t("scanning…")}</span>;
 
   if (!scan) {
     return (
       <button
         type="button"
         className="linklike"
-        title="Not scanned yet — click to run a Trivy scan"
+        title={t("Not scanned yet — click to run a Trivy scan")}
         onClick={onScan}
       >
-        <Shield size={14} /> scan
+        <Shield size={14} /> {t("scan")}
       </button>
     );
   }
@@ -36,10 +38,10 @@ export default function ScanBadge({
       <button
         type="button"
         className="linklike danger"
-        title={`Scan failed: ${scan.error}\nClick to retry`}
+        title={t("Scan failed: {error}\nClick to retry", { error: scan.error })}
         onClick={onScan}
       >
-        <ShieldAlert size={14} /> failed
+        <ShieldAlert size={14} /> {t("failed")}
       </button>
     );
   }
@@ -47,15 +49,19 @@ export default function ScanBadge({
   const total = scan.critical + scan.high + scan.medium + scan.low + scan.unknown;
   const severity = scan.critical > 0 ? "exited" : scan.high > 0 ? "paused" : "running";
   const Icon = total === 0 ? ShieldCheck : ShieldAlert;
-  const label = total === 0 ? "clean" : `${scan.critical}C · ${scan.high}H`;
+  const label = total === 0 ? t("clean") : `${scan.critical}C · ${scan.high}H`;
 
   const tooltip =
-    `Last scanned: ${scannedAt}\n` +
-    `Critical ${scan.critical} · High ${scan.high} · ` +
-    `Medium ${scan.medium} · Low ${scan.low}` +
-    (scan.unknown ? ` · Unknown ${scan.unknown}` : "") +
-    (scan.fixable ? `\n${scan.fixable} with a fix available` : "") +
-    (onOpen ? "\nClick for details" : "\nClick to rescan");
+    `${t("Last scanned: {date}", { date: scannedAt })}\n` +
+    t("Critical {critical} · High {high} · Medium {medium} · Low {low}", {
+      critical: scan.critical,
+      high: scan.high,
+      medium: scan.medium,
+      low: scan.low,
+    }) +
+    (scan.unknown ? ` · ${t("Unknown {count}", { count: scan.unknown })}` : "") +
+    (scan.fixable ? `\n${t("{count} with a fix available", { count: scan.fixable })}` : "") +
+    `\n${onOpen ? t("Click for details") : t("Click to rescan")}`;
 
   return (
     <button

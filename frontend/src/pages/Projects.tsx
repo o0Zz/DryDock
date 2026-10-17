@@ -4,19 +4,19 @@ import { Link, useNavigate } from "react-router-dom";
 import { api } from "../api";
 import { useConfirm } from "../components/ConfirmDialog";
 import { formatDate } from "../format";
+import { useT } from "../i18n";
 import { askDelete, waitForJob } from "../stackActions";
 import type { Project } from "../types";
 
 function StackStatus({ project }: { project: Project }) {
+  const t = useT();
   const total = project.containers.length;
-  if (total === 0) return <span className="badge">down</span>;
+  if (total === 0) return <span className="badge">{t("down")}</span>;
   const running = project.containers.filter((container) => container.state === "running").length;
-  if (running === total) return <span className="badge running">up ({running})</span>;
-  if (running === 0) return <span className="badge exited">stopped ({total})</span>;
+  if (running === total) return <span className="badge running">{t("up ({running})", { running })}</span>;
+  if (running === 0) return <span className="badge exited">{t("stopped ({total})", { total })}</span>;
   return (
-    <span className="badge paused">
-      partial ({running}/{total})
-    </span>
+    <span className="badge paused">{t("partial ({running}/{total})", { running, total })}</span>
   );
 }
 
@@ -29,6 +29,7 @@ export default function Projects() {
   const [deleting, setDeleting] = useState<string | null>(null);
   const navigate = useNavigate();
   const confirm = useConfirm();
+  const t = useT();
 
   const load = useCallback((): void => {
     api
@@ -58,15 +59,15 @@ export default function Projects() {
     }
   }
 
-  if (error) return <div className="error">Failed to load projects: {error}</div>;
-  if (!projects) return <div>Loading…</div>;
+  if (error) return <div className="error">{t("Failed to load projects: {error}", { error })}</div>;
+  if (!projects) return <div>{t("Loading…")}</div>;
 
   return (
     <div>
       <div className="row-between">
-        <h1>Projects</h1>
+        <h1>{t("Projects")}</h1>
         <button type="button" onClick={() => navigate("/projects/new")}>
-          <Plus size={15} /> New stack
+          <Plus size={15} /> {t("New stack")}
         </button>
       </div>
       {actionError && <div className="error">{actionError}</div>}
@@ -76,16 +77,16 @@ export default function Projects() {
         </div>
       )}
       {projects.length === 0 ? (
-        <div className="empty">No Compose projects found in the mounted repo.</div>
+        <div className="empty">{t("No Compose projects found in the mounted repo.")}</div>
       ) : (
         <table className="projects-table">
           <thead>
             <tr>
-              <th>Name</th>
-              <th>Status</th>
-              <th>Services</th>
-              <th>Path</th>
-              <th>Modified</th>
+              <th>{t("Name")}</th>
+              <th>{t("Status")}</th>
+              <th>{t("Services")}</th>
+              <th>{t("Path")}</th>
+              <th>{t("Modified")}</th>
               <th></th>
             </tr>
           </thead>
@@ -109,8 +110,8 @@ export default function Projects() {
                   <button
                     type="button"
                     className="secondary small icon-only"
-                    title="Delete this stack"
-                    aria-label="delete"
+                    title={t("Delete this stack")}
+                    aria-label={t("delete")}
                     disabled={deleting !== null}
                     onClick={() => remove(project)}
                   >
