@@ -151,7 +151,7 @@ export default function Containers() {
       {containers.length === 0 ? (
         <div className="empty">No containers running.</div>
       ) : (
-        <table className="projects-table">
+        <table className="projects-table compact">
           <thead>
             <tr>
               <th>Name</th>
@@ -169,12 +169,12 @@ export default function Containers() {
             {containers.map((c) => (
               <tr key={c.id}>
                 <td>
-                  <Link to={`/containers/${c.id}`} title="Details, logs, CVEs and updates">
+                  <Link
+                    to={`/containers/${c.id}`}
+                    title={`Details, logs, CVEs and updates\nCreated ${new Date(c.created_at).toLocaleString()}`}
+                  >
                     {c.name}
                   </Link>
-                  <div className="muted">
-                    created {new Date(c.created_at).toLocaleString()}
-                  </div>
                 </td>
                 <td>
                   {c.image}
@@ -200,10 +200,12 @@ export default function Containers() {
                   />
                 </td>
                 <td>
-                  <span className={`badge ${c.state}`}>
+                  <span
+                    className={`badge ${c.state}`}
+                    title={`Restart policy: ${c.restart_policy || "no"}`}
+                  >
                     <Circle size={8} fill="currentColor" /> {c.state}
                   </span>
-                  <div className="muted">restart: {c.restart_policy || "no"}</div>
                 </td>
                 <StatsCells stats={stats[c.id]} />
                 <td>
@@ -225,22 +227,25 @@ export default function Containers() {
                         <button
                           key={a}
                           type="button"
-                          className="secondary small"
+                          className="secondary small icon-only"
+                          title={a}
+                          aria-label={a}
                           disabled={busy === `${c.id}:${a}`}
                           onClick={() => runAction(c.id, a)}
                         >
-                          <Icon size={14} /> {a}
+                          <Icon size={14} />
                         </button>
                       );
                     })}
                     {user?.is_admin && c.state === "running" && (
                       <button
                         type="button"
-                        className="secondary small"
+                        className="secondary small icon-only"
                         title="Open a shell in this container"
+                        aria-label="console"
                         onClick={() => setConsoleFor(c)}
                       >
-                        <SquareTerminal size={14} /> console
+                        <SquareTerminal size={14} />
                       </button>
                     )}
                   </div>
