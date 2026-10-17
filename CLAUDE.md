@@ -53,6 +53,7 @@ Dockerfile             3-stage build (frontend, backend venv, runtime with docke
 - **Compose commands** (`compose_service`): DryDock passes `-f`, which turns off Compose's own override merge. So it adds `-f <stem>.override.y(a)ml` itself when that file sits next to the Compose file.
   - `-p`: a canonical file (`docker-compose.yml` and friends) keeps Compose's default, the folder name. A freely named file (`media.yml`) gets its own name, so files in one folder (the repo root included) do not share a project. A running stack keeps the project name of its containers, so `down` still finds them. See `repo_service.compose_project_name`.
 - **Editing:** validate the YAML first, then back up to `/data/backups/<project-id>/`, then write. New stacks are created as `<repo>/<name>/docker-compose.yml`. The name must match `^[a-z0-9][a-z0-9_-]*$`.
+  - The `.env` next to the Compose file gets the same flow (admin only). `compose_service._validate_env` checks the dotenv syntax Compose accepts: `KEY=value`, `export KEY=value`, `KEY: value`, a bare `KEY`, and quoted values that span lines. Stacks in one folder share one `.env`.
 - **Background jobs** (`job_service`, `tasks`): anything slow (scans, update checks, container update, project compose actions, image and volume prunes) returns a job with status 202. Command output goes in `Job.output`. The UI polls `/api/jobs`. `useJobs` re-attaches to active jobs when a page opens. `JobsIndicator` in the topbar shows them from any page.
 - **Update checks** (`update_service`): two independent signals.
   - Digest: the same tag was rebuilt (`latest`, `stable`).
@@ -66,7 +67,7 @@ Dockerfile             3-stage build (frontend, backend venv, runtime with docke
   - Download creates the helper without starting it and streams the file out with `get_archive` (`docker cp`). Only regular files download. The helper is removed when the stream ends.
   - The helper uses DryDock's own image, so nothing is pulled. Outside a container (dev) it falls back to `DRYDOCK_HELPER_IMAGE`, pulled on first use.
 - **Auth:** signed session cookie (Starlette `SessionMiddleware`), users table with an `is_admin` flag. A bootstrap admin is created on first start.
-  - Admin only: settings writes, users, app logs, console, unmasked env values, volume files.
+  - Admin only: settings writes, users, app logs, console, unmasked env values, `.env` files, volume files.
   - The console WebSocket is outside the HTTP auth dependency. It checks the session and the `Origin` header itself. Keep that check: other apps on the same host are same-site, so the browser sends them the cookie too.
 - **Trivy** runs with `--cache-dir <data>/trivy-cache`, so its DB survives the container being recreated.
 - **Database:** Alembic owns the schema. Startup upgrades to head and snapshots the database to `<data>/backups/db/` first (keeps 5). Never use `create_all`. See "Database migrations" below.

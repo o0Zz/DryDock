@@ -15,6 +15,7 @@ import {
 import { lazy, Suspense, useCallback, useEffect, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { api } from "../api";
+import { useAuth } from "../auth";
 import { useConfirm, type ConfirmOptions } from "../components/ConfirmDialog";
 import ImageName from "../components/ImageName";
 import LogPanel from "../components/LogPanel";
@@ -63,6 +64,10 @@ export default function ProjectDetail() {
   const [savedAt, setSavedAt] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [showLogs, setShowLogs] = useState(false);
+  const { user } = useAuth();
+  const [fileTab, setFileTab] = useState<"compose" | "env">("compose");
+  // The .env editor mounts on first open and then stays, so switching tabs keeps edits.
+  const [envOpened, setEnvOpened] = useState(false);
   // `?retag=<image>` arrives from a container's update shortcut: offer the
   // newer tags for that image as a one-click edit of the compose file.
   const [searchParams, setSearchParams] = useSearchParams();
@@ -268,37 +273,67 @@ export default function ProjectDetail() {
       </section>
 
       <section className="section">
-        <h2>Compose file</h2>
-        {retag && (
-          <RetagPanel
-            image={retag}
-            update={retagUpdate}
-            applied={retagApplied}
-            note={retagNote}
-            busy={saving || busyAction !== undefined}
-            onApply={applyTag}
-            onDeploy={saveAndDeploy}
-            onDismiss={dismissRetag}
-          />
+        {user?.is_admin ? (
+          <div className="tabs">
+            <button
+              type="button"
+              className={`tab ${fileTab === "compose" ? "active" : ""}`}
+              onClick={() => setFileTab("compose")}
+            >
+              Compose file
+            </button>
+            <button
+              type="button"
+              className={`tab ${fileTab === "env" ? "active" : ""}`}
+              title="Variables Compose substitutes into the file"
+              onClick={() => {
+                setFileTab("env");
+                setEnvOpened(true);
+              }}
+            >
+              .env
+            </button>
+          </div>
+        ) : (
+          <h2>Compose file</h2>
         )}
-        <Suspense fallback={<div className="empty">Loading editor…</div>}>
-          <YamlEditor value={compose} onChange={setCompose} />
-        </Suspense>
-        <div className="button-row">
-          <button type="button" onClick={save} disabled={!dirty || saving}>
-            <Save size={15} /> {saving ? "Saving…" : "Save"}
-          </button>
-          <button
-            type="button"
-            className="secondary"
-            onClick={() => setCompose(originalCompose)}
-            disabled={!dirty || saving}
-          >
-            <Undo2 size={15} /> Revert
-          </button>
-          {savedAt && !dirty && <span className="muted">{savedAt}</span>}
+        {envOpened && (
+          <div hidden={fileTab !== "env"}>
+            <EnvFile projectId={id} />
+          </div>
+        )}
+        <div hidden={fileTab !== "compose"}>
+          {retag && (
+            <RetagPanel
+              image={retag}
+              update={retagUpdate}
+              applied={retagApplied}
+              note={retagNote}
+              busy={saving || busyAction !== undefined}
+              onApply={applyTag}
+              onDeploy={saveAndDeploy}
+              onDismiss={dismissRetag}
+            />
+          )}
+          <Suspense fallback={<div className="empty">Loading editor…</div>}>
+            <YamlEditor value={compose} onChange={setCompose} />
+          </Suspense>
+          <div className="button-row">
+            <button type="button" onClick={save} disabled={!dirty || saving}>
+              <Save size={15} /> {saving ? "Saving…" : "Save"}
+            </button>
+            <button
+              type="button"
+              className="secondary"
+              onClick={() => setCompose(originalCompose)}
+              disabled={!dirty || saving}
+            >
+              <Undo2 size={15} /> Revert
+            </button>
+            {savedAt && !dirty && <span className="muted">{savedAt}</span>}
+          </div>
+          {saveError && <div className="error">{saveError}</div>}
         </div>
-        {saveError && <div className="error">{saveError}</div>}
       </section>
 
       {showLogs && (
@@ -309,6 +344,76 @@ export default function ProjectDetail() {
         />
       )}
     </div>
+  );
+}
+
+/** Editor for the `.env` next to the Compose file. Same validate, back up, write flow. */
+function EnvFile({ projectId }: { projectId: string }) {
+  const [content, setContent] = useState<string | null>(null);
+  const [original, setOriginal] = useState("");
+  const [exists, setExists] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [savedAt, setSavedAt] = useState<string | null>(null);
+
+  useEffect(() => {
+    api
+      .getEnv(projectId)
+      .then((envFile) => {
+        setContent(envFile.content);
+        setOriginal(envFile.content);
+        setExists(envFile.exists);
+      })
+      .catch((loadError: Error) => setError(loadError.message));
+  }, [projectId]);
+
+  const save = async (): Promise<void> => {
+    if (content === null) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const saved = await api.putEnv(projectId, content);
+      setOriginal(content);
+      setExists(true);
+      setSavedAt(saved.backup_path ? `Saved. Backup: ${saved.backup_path}` : "Saved.");
+    } catch (saveError) {
+      setError((saveError as Error).message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (content === null) {
+    return error ? <div className="error">{error}</div> : <div className="empty">Loading…</div>;
+  }
+  const dirty = content !== original;
+
+  return (
+    <>
+      <div className="muted" style={{ marginBottom: "0.5rem" }}>
+        {exists
+          ? "Stacks in the same folder share this file. Changes apply on the next up."
+          : "No .env in this folder yet. Saving creates it."}
+      </div>
+      <Suspense fallback={<div className="empty">Loading editor…</div>}>
+        <YamlEditor value={content} onChange={setContent} height="320px" plain />
+      </Suspense>
+      <div className="button-row">
+        <button type="button" onClick={save} disabled={!dirty || saving}>
+          <Save size={15} /> {saving ? "Saving…" : "Save"}
+        </button>
+        <button
+          type="button"
+          className="secondary"
+          onClick={() => setContent(original)}
+          disabled={!dirty || saving}
+        >
+          <Undo2 size={15} /> Revert
+        </button>
+        {savedAt && !dirty && <span className="muted">{savedAt}</span>}
+      </div>
+      {error && <div className="error">{error}</div>}
+    </>
   );
 }
 

@@ -21,8 +21,7 @@ LIST_LIMIT = 5
 
 
 def _needs_attention(container: Container) -> bool:
-    # Docker appends the health check result to the status, e.g. "Up 2 hours (unhealthy)".
-    return container.state == "restarting" or "(unhealthy)" in container.status
+    return container.state == "restarting" or container.health == "unhealthy"
 
 
 @router.get("", response_model=DashboardStats)

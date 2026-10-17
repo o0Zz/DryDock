@@ -1,9 +1,15 @@
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
 
+from app.core.security import require_admin
 from app.models.job import Job, JobKind
-from app.schemas.compose import ComposeContent, ComposeWriteResponse
+from app.schemas.compose import (
+    ComposeContent,
+    ComposeWriteResponse,
+    EnvContent,
+    EnvWriteResponse,
+)
 from app.schemas.job import JobRead
 from app.schemas.project import Project, ProjectCreate
 from app.services import compose_service, job_service, repo_service, tasks
@@ -47,9 +53,23 @@ def put_compose(project_id: str, body: ComposeContent) -> ComposeWriteResponse:
     return ComposeWriteResponse(backup_path=str(backup))
 
 
-@router.post(
-    "/{project_id}/{action}", response_model=JobRead, status_code=status.HTTP_202_ACCEPTED
+# .env files usually hold the stack's secrets, so they are admin only.
+@router.get("/{project_id}/env", response_model=EnvContent, dependencies=[Depends(require_admin)])
+def get_env(project_id: str) -> EnvContent:
+    content = compose_service.read_env(Path(_find_project(project_id).compose_path))
+    return EnvContent(content=content or "", exists=content is not None)
+
+
+@router.put(
+    "/{project_id}/env", response_model=EnvWriteResponse, dependencies=[Depends(require_admin)]
 )
+def put_env(project_id: str, body: EnvContent) -> EnvWriteResponse:
+    project = _find_project(project_id)
+    backup = compose_service.write_env(project.id, Path(project.compose_path), body.content)
+    return EnvWriteResponse(backup_path=str(backup) if backup else None)
+
+
+@router.post("/{project_id}/{action}", response_model=JobRead, status_code=status.HTTP_202_ACCEPTED)
 def run_action(project_id: str, action: str) -> Job:
     """Queue `docker compose <action>`; a pull or first `up` can take minutes."""
     if action not in compose_service.ALLOWED_ACTIONS:

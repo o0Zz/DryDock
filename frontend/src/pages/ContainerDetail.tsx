@@ -3,16 +3,18 @@ import {
   ChevronLeft,
   Circle,
   Info,
+  Pencil,
   RefreshCw,
   ScrollText,
   ShieldAlert,
   ShieldCheck,
   SquareTerminal,
 } from "lucide-react";
-import { Suspense, useCallback, useEffect, useState, type ReactNode } from "react";
+import { Suspense, useCallback, useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { api } from "../api";
 import { useAuth } from "../auth";
+import HealthBadge from "../components/HealthBadge";
 import ImageName from "../components/ImageName";
 import JobList from "../components/JobList";
 import LogPanel from "../components/LogPanel";
@@ -49,6 +51,7 @@ export default function ContainerDetail() {
     : "overview";
   const { user } = useAuth();
   const liveStats = useContainerStats()[id];
+  const navigate = useNavigate();
 
   const [detail, setDetail] = useState<ContainerDetailData | null>(null);
   const [project, setProject] = useState<Project | null>(null);
@@ -56,6 +59,8 @@ export default function ContainerDetail() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<ContainerAction | null>(null);
   const [showConsole, setShowConsole] = useState(false);
+  // The new name while the rename form is open.
+  const [newName, setNewName] = useState<string | null>(null);
 
   const load = useCallback((): void => {
     api
@@ -98,6 +103,21 @@ export default function ContainerDetail() {
     [id, load],
   );
 
+  const rename = async (event: FormEvent): Promise<void> => {
+    event.preventDefault();
+    if (newName === null) return;
+    setError(null);
+    try {
+      const renamed = await api.renameContainer(id, newName.trim());
+      setNewName(null);
+      // The page may have been opened by name, which no longer resolves.
+      if (renamed.id !== id) navigate(`/containers/${renamed.id}`, { replace: true });
+      else load();
+    } catch (renameError) {
+      setError((renameError as Error).message);
+    }
+  };
+
   if (loadError && !detail) return <div className="error">Failed to load: {loadError}</div>;
   if (!detail) return <div>Loading…</div>;
 
@@ -110,15 +130,44 @@ export default function ContainerDetail() {
       </div>
       <div className="row-between">
         <h1>
-          {detail.name}{" "}
+          {newName === null ? (
+            <>
+              {detail.name}{" "}
+              <button
+                type="button"
+                className="secondary small icon-only"
+                title="Rename"
+                aria-label="rename"
+                onClick={() => setNewName(detail.name)}
+              >
+                <Pencil size={14} />
+              </button>
+            </>
+          ) : (
+            <form className="button-row inline" style={{ display: "inline-flex" }} onSubmit={rename}>
+              <input
+                value={newName}
+                autoFocus
+                aria-label="New container name"
+                onChange={(event) => setNewName(event.target.value)}
+              />
+              <button type="submit" className="small" disabled={!newName.trim()}>
+                Rename
+              </button>
+              <button type="button" className="secondary small" onClick={() => setNewName(null)}>
+                Cancel
+              </button>
+              {detail.compose_service && (
+                <span className="muted" style={{ fontSize: "0.8rem", fontWeight: "normal" }}>
+                  Compose restores its own name when it recreates the container.
+                </span>
+              )}
+            </form>
+          )}{" "}
           <span className={`badge ${detail.state}`}>
             <Circle size={8} fill="currentColor" /> {detail.state}
           </span>
-          {detail.health && (
-            <span className={`badge ${detail.health === "healthy" ? "running" : "paused"}`}>
-              {detail.health}
-            </span>
-          )}
+          <HealthBadge health={detail.health} />
         </h1>
         <div className="button-row inline">
           {containerActionsFor(detail.state).map((action) => {

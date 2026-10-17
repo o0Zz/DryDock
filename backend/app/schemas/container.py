@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class ContainerPort(BaseModel):
@@ -26,6 +26,14 @@ class Container(BaseModel):
     # Compose file(s) this container was deployed from, per Docker's label.
     compose_config_files: str | None = None
     restart_policy: str | None = None
+    restart_count: int = 0
+    # Health check result: "healthy", "unhealthy" or "starting"; None without a check.
+    health: str | None = None
+
+
+class ContainerRename(BaseModel):
+    # Docker's own rule for container names.
+    name: str = Field(min_length=2, max_length=255, pattern=r"^[a-zA-Z0-9][a-zA-Z0-9_.-]+$")
 
 
 class EnvVar(BaseModel):
@@ -60,8 +68,6 @@ class ContainerDetail(Container):
     started_at: datetime | None = None
     finished_at: datetime | None = None
     exit_code: int | None = None
-    restart_count: int = 0
-    health: str | None = None
     env: list[EnvVar] = []
     # False when env values were masked for a non-admin viewer.
     env_revealed: bool = False

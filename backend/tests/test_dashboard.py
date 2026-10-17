@@ -28,9 +28,16 @@ def client() -> Iterator[TestClient]:
         app.dependency_overrides.clear()
 
 
-def _container(name: str, state: str, status: str) -> Container:
+def _container(name: str, state: str, health: str | None = None) -> Container:
     return Container(
-        id=name, name=name, image="nginx", status=status, state=state, created_at=NOW, ports=[]
+        id=name,
+        name=name,
+        image="nginx",
+        status=state,
+        state=state,
+        health=health,
+        created_at=NOW,
+        ports=[],
     )
 
 
@@ -51,10 +58,10 @@ def _check(image: str, *, rebuilt: bool, newest_tag: str | None) -> SimpleNamesp
 @pytest.fixture
 def stubbed(monkeypatch: pytest.MonkeyPatch) -> None:
     containers = [
-        _container("web", "running", "Up 2 hours"),
-        _container("db", "running", "Up 2 hours (unhealthy)"),
-        _container("worker", "restarting", "Restarting (1) 5 seconds ago"),
-        _container("old", "exited", "Exited (0) 3 days ago"),
+        _container("web", "running", "healthy"),
+        _container("db", "running", "unhealthy"),
+        _container("worker", "restarting"),
+        _container("old", "exited"),
     ]
     monkeypatch.setattr(dashboard_api.repo_service, "discover_projects", lambda: [])
     monkeypatch.setattr(docker_service, "list_containers", lambda all_states: containers)

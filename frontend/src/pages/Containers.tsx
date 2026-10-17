@@ -3,6 +3,7 @@ import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { api } from "../api";
 import { useAuth } from "../auth";
+import HealthBadge from "../components/HealthBadge";
 import ImageName from "../components/ImageName";
 import JobList from "../components/JobList";
 import { useConfirm } from "../components/ConfirmDialog";
@@ -226,7 +227,13 @@ export default function Containers() {
                     title={`Restart policy: ${container.restart_policy || "no"}`}
                   >
                     <Circle size={8} fill="currentColor" /> {container.state}
-                  </span>
+                  </span>{" "}
+                  <HealthBadge health={container.health} />
+                  {container.restart_count > 0 && (
+                    <div className="muted" title="Restarts since the container was created">
+                      {container.restart_count} restart{container.restart_count === 1 ? "" : "s"}
+                    </div>
+                  )}
                 </td>
                 <StatsCells stats={stats[container.id]} />
                 <td>

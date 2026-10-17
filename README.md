@@ -8,7 +8,7 @@ DryDock is designed to help you keep your containers secure over time:
 - **Get alerted:** scheduled scans and update checks can call a webhook when something needs attention.
 - **Change safely:** Compose edits are validated and backed up first, and nothing updates automatically.
 - **See it at a glance:** the dashboard shows running containers, open CVEs, what needs attention, and host CPU, memory and temperature.
-- **Control access:** login is required, and only admins can open a container shell, see secret values or read volume files.
+- **Control access:** login is required, and only admins can open a container shell, see secret values, edit `.env` files or read volume files.
 
 It runs as a single Docker image with a SQLite database. No cloud, no Kubernetes.
 
@@ -43,8 +43,8 @@ Works on `amd64` and `arm64` (Raspberry Pi 3, 4 and 5 with 64-bit OS).
 
 ## Features
 
-- **Stacks:** every Compose file in your folder shows up as a project. Any `*.yml` file with a `services:` section counts. Start, stop, pull, restart or edit each one, or create a new stack. A `*.override.yml` next to a Compose file is merged in, like `docker compose up` does.
-- **Containers:** start, stop, restart, pause or kill. State, CPU and memory, ports, live logs, a detail page, and a shell in the browser.
+- **Stacks:** every Compose file in your folder shows up as a project. Any `*.yml` file with a `services:` section counts. Start, stop, pull, restart or edit each one and its `.env`, or create a new stack. A `*.override.yml` next to a Compose file is merged in, like `docker compose up` does.
+- **Containers:** start, stop, restart, pause, kill or rename. State, health check, restart count, CPU and memory, ports, live logs, a detail page, and a shell in the browser.
 - **Images:** see which images are in use, and remove or prune the rest.
 - **CVE scans:** scan one image, all running images, or all images in your Compose files.
 - **Updates:** finds rebuilt tags (`latest`, `stable`) and newer versions (`2025.10.4` → `2026.10.2`). For `postgres:16.2` you see both the newest `16.x` and the newest overall. For a floating tag like `stable`, the containers list shows the version the image declares (`org.opencontainers.image.version` label), when it has one.

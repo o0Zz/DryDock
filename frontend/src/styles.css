@@ -722,6 +722,8 @@ input:focus {
   border-radius: 0;
   padding: 0.5rem 0.85rem;
   margin-bottom: -1px;
+  /* Labels are written as shown; ".env" must not become ".Env". */
+  text-transform: none;
 }
 .tabs button.tab:hover { color: var(--text); }
 .tabs button.tab.active {

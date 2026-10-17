@@ -191,6 +191,8 @@ def _to_schema(container: DockerContainer) -> Container:
         compose_service=labels.get("com.docker.compose.service"),
         compose_config_files=labels.get("com.docker.compose.project.config_files"),
         restart_policy=(host_config.get("RestartPolicy") or {}).get("Name") or None,
+        restart_count=attrs.get("RestartCount") or 0,
+        health=((attrs.get("State") or {}).get("Health") or {}).get("Status"),
     )
 
 
@@ -282,8 +284,6 @@ def get_container_detail(container_id: str, *, privileged: bool) -> ContainerDet
         started_at=_optional_time(state.get("StartedAt")),
         finished_at=_optional_time(state.get("FinishedAt")),
         exit_code=state.get("ExitCode"),
-        restart_count=attrs.get("RestartCount") or 0,
-        health=(state.get("Health") or {}).get("Status"),
         env=env,
         env_revealed=privileged,
         mounts=mounts,
@@ -305,6 +305,21 @@ def perform_action(container_id: str, action: str) -> None:
         if exc.response is not None and exc.response.status_code == 409:
             raise ContainerConflict(f"cannot {action} {container.name}: {exc.explanation}") from exc
         raise DockerUnavailable(str(exc)) from exc
+
+
+def rename_container(container_id: str, name: str) -> Container:
+    container = _get_container(container_id)
+    try:
+        container.rename(name)
+        container.reload()
+    except APIError as exc:
+        # 409 Conflict: another container already has the name.
+        if exc.response is not None and exc.response.status_code == 409:
+            raise ContainerConflict(f"cannot rename {container.name}: {exc.explanation}") from exc
+        raise DockerUnavailable(str(exc)) from exc
+    except DockerException as exc:
+        raise DockerUnavailable(str(exc)) from exc
+    return _to_schema(container)
 
 
 def remove_container(container_id: str) -> None:

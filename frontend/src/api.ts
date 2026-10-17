@@ -9,6 +9,8 @@ import type {
   ContainerDetail,
   ContainerStats,
   DashboardStats,
+  EnvContent,
+  EnvSaveResult,
   HostUsage,
   Job,
   LocalImage,
@@ -113,6 +115,12 @@ export const api = {
       method: "PUT",
       body: JSON.stringify({ content }),
     }),
+  getEnv: (id: string) => request<EnvContent>(`/api/projects/${id}/env`),
+  putEnv: (id: string, content: string) =>
+    request<EnvSaveResult>(`/api/projects/${id}/env`, {
+      method: "PUT",
+      body: JSON.stringify({ content }),
+    }),
   // Compose actions, like prunes below, queue a job and return it at once
   runAction: (id: string, action: ProjectAction) =>
     request<Job>(`/api/projects/${id}/${action}`, { method: "POST" }),
@@ -123,6 +131,11 @@ export const api = {
   containerAction: (id: string, action: ContainerAction) =>
     request<ContainerActionResult>(`/api/containers/${id}/${action}`, {
       method: "POST",
+    }),
+  renameContainer: (id: string, name: string) =>
+    request<Container>(`/api/containers/${id}/rename`, {
+      method: "POST",
+      body: JSON.stringify({ name }),
     }),
   deleteContainer: (id: string) => request<void>(`/api/containers/${id}`, { method: "DELETE" }),
   // Pull the image and recreate the Compose service — queued as a job

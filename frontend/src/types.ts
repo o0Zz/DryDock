@@ -39,6 +39,17 @@ export interface ComposeSaveResult {
   backup_path: string;
 }
 
+export interface EnvContent {
+  content: string;
+  /** False when the stack folder has no .env yet; saving creates it. */
+  exists: boolean;
+}
+
+export interface EnvSaveResult {
+  /** Null when there was no .env to back up. */
+  backup_path: string | null;
+}
+
 export interface Volume {
   name: string;
   driver: string;
@@ -107,6 +118,9 @@ export interface Container {
   compose_service: string | null;
   compose_config_files: string | null;
   restart_policy: string | null;
+  restart_count: number;
+  /** Health check result: "healthy", "unhealthy" or "starting"; null without a check. */
+  health: string | null;
 }
 
 export interface ContainerActionResult {
@@ -145,8 +159,6 @@ export interface ContainerDetail extends Container {
   started_at: string | null;
   finished_at: string | null;
   exit_code: number | null;
-  restart_count: number;
-  health: string | null;
   env: EnvVar[];
   env_revealed: boolean;
   mounts: MountInfo[];

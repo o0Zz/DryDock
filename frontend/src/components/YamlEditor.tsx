@@ -1,22 +1,25 @@
 import { yaml } from "@codemirror/lang-yaml";
 import CodeMirror from "@uiw/react-codemirror";
 
-/** Compose-file editor: YAML syntax highlighting, line numbers, bracket matching. */
+/** Compose-file editor: YAML syntax highlighting, line numbers, bracket matching.
+ * `plain` drops the YAML mode, for `.env` files. */
 export default function YamlEditor({
   value,
   onChange,
   height = "480px",
+  plain = false,
 }: {
   value: string;
   onChange: (next: string) => void;
   height?: string;
+  plain?: boolean;
 }) {
   return (
     <div className="yaml-editor">
       <CodeMirror
         value={value}
         height={height}
-        extensions={[yaml()]}
+        extensions={plain ? [] : [yaml()]}
         onChange={onChange}
         basicSetup={{
           lineNumbers: true,

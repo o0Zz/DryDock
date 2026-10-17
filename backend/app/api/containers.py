@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from app.core.security import get_current_user
 from app.models.job import Job, JobKind
 from app.models.user import User
-from app.schemas.container import Container, ContainerDetail, ContainerStats
+from app.schemas.container import Container, ContainerDetail, ContainerRename, ContainerStats
 from app.schemas.job import JobRead
 from app.services import docker_service, job_service, repo_service, tasks
 
@@ -29,9 +29,7 @@ def get_container(container_id: str) -> Container:
 
 
 @router.get("/{container_id}/inspect", response_model=ContainerDetail)
-def inspect_container(
-    container_id: str, user: User = Depends(get_current_user)
-) -> ContainerDetail:
+def inspect_container(container_id: str, user: User = Depends(get_current_user)) -> ContainerDetail:
     return docker_service.get_container_detail(container_id, privileged=user.is_admin)
 
 
@@ -40,10 +38,14 @@ def delete_container(container_id: str) -> None:
     docker_service.remove_container(container_id)
 
 
+# Declared before /{container_id}/{action} so "rename" is not taken as an action.
+@router.post("/{container_id}/rename", response_model=Container)
+def rename_container(container_id: str, body: ContainerRename) -> Container:
+    return docker_service.rename_container(container_id, body.name)
+
+
 # Declared before /{container_id}/{action} so "update" is not taken as an action.
-@router.post(
-    "/{container_id}/update", response_model=JobRead, status_code=status.HTTP_202_ACCEPTED
-)
+@router.post("/{container_id}/update", response_model=JobRead, status_code=status.HTTP_202_ACCEPTED)
 def update_container(container_id: str) -> Job:
     """Queue a pull of the container's image and a recreate of its Compose service.
 

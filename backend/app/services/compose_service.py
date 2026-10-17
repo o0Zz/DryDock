@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import re
 import shutil
 import subprocess
 from datetime import UTC, datetime
@@ -40,20 +41,80 @@ def _validate_yaml(content: str) -> None:
         raise ComposeError("Compose file must contain a 'services' mapping")
 
 
-def _backup_compose(project_id: str, compose_path: Path) -> Path:
+def _backup(project_id: str, path: Path, extension: str) -> Path:
     backup_dir = settings.backups_path / project_id
     backup_dir.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now(tz=UTC).strftime("%Y%m%dT%H%M%SZ")
-    backup_path = backup_dir / f"{stamp}{compose_path.suffix}"
-    shutil.copy2(compose_path, backup_path)
-    logger.info("Backed up %s to %s", compose_path, backup_path)
+    backup_path = backup_dir / f"{stamp}{extension}"
+    shutil.copy2(path, backup_path)
+    logger.info("Backed up %s to %s", path, backup_path)
     return backup_path
 
 
 def write_compose(project_id: str, compose_path: Path, content: str) -> Path:
     _validate_yaml(content)
-    backup = _backup_compose(project_id, compose_path)
+    backup = _backup(project_id, compose_path, compose_path.suffix)
     compose_path.write_text(content, encoding="utf-8")
+    return backup
+
+
+# --- .env ----------------------------------------------------------------------
+
+# `KEY=value`, `export KEY=value`, Compose's `KEY: value`, or a bare `KEY`.
+_ENV_ASSIGNMENT = re.compile(
+    r"^\s*(?:export\s+)?[A-Za-z_][A-Za-z0-9_.-]*\s*(?:[=:](?P<value>.*))?$"
+)
+
+
+def env_path(compose_path: Path) -> Path:
+    """The `.env` Compose reads for this file: the one in the project folder.
+    Stacks that share a folder share it too."""
+    return compose_path.parent / ".env"
+
+
+def read_env(compose_path: Path) -> str | None:
+    path = env_path(compose_path)
+    return path.read_text(encoding="utf-8") if path.is_file() else None
+
+
+def _closes(value: str, quote: str) -> bool:
+    """Whether a quoted value that opened earlier ends in `value`."""
+    index = 0
+    while (index := value.find(quote, index)) != -1:
+        if quote == "'" or value[index - 1 : index] != "\\":
+            return True
+        index += 1
+    return False
+
+
+def _validate_env(content: str) -> None:
+    """Check the dotenv syntax Compose accepts, so a typo fails here, not on the next `up`."""
+    open_quote: tuple[str, int] | None = None
+    for number, line in enumerate(content.splitlines(), start=1):
+        if open_quote:
+            if _closes(line, open_quote[0]):
+                open_quote = None
+            continue
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        match = _ENV_ASSIGNMENT.match(line)
+        if match is None:
+            raise ComposeError(f"Line {number}: expected KEY=value, got {stripped[:40]!r}")
+        value = (match["value"] or "").strip()
+        # Double and single quotes may span lines; the value ends at the matching quote.
+        if value[:1] in ("'", '"') and not _closes(value[1:], value[0]):
+            open_quote = (value[0], number)
+    if open_quote:
+        raise ComposeError(f"Line {open_quote[1]}: quoted value is never closed")
+
+
+def write_env(project_id: str, compose_path: Path, content: str) -> Path | None:
+    """Validate, back up the current file if there is one, then write. Returns the backup."""
+    _validate_env(content)
+    path = env_path(compose_path)
+    backup = _backup(project_id, path, ".env") if path.is_file() else None
+    path.write_text(content, encoding="utf-8")
     return backup
 
 
@@ -152,13 +213,9 @@ def pull_service(compose_path: Path, service: str, *, project_name: str | None =
     _check(result, "pull")
 
 
-def recreate_service(
-    compose_path: Path, service: str, *, project_name: str | None = None
-) -> None:
+def recreate_service(compose_path: Path, service: str, *, project_name: str | None = None) -> None:
     """Recreate one service on its current image, leaving the rest of the stack alone."""
-    result = _compose(
-        compose_path, ["up", "-d", "--no-deps", service], project_name=project_name
-    )
+    result = _compose(compose_path, ["up", "-d", "--no-deps", service], project_name=project_name)
     _check(result, "up")
 
 
