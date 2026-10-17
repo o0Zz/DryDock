@@ -58,6 +58,10 @@ class NotAFile(Exception):
     """Raised when a volume path to download is a folder, link or device."""
 
 
+class RegistryLoginFailed(Exception):
+    """Raised when a registry rejects credentials (or cannot be reached to check them)."""
+
+
 class ContainerRunning(Exception):
     """Raised when trying to remove a container that is still running."""
 
@@ -744,6 +748,29 @@ def open_volume_file(name: str, path: str, *, image: str) -> VolumeFile:
     )
 
 
+# --- Registries --------------------------------------------------------------
+
+
+def registry_login(registry: str, username: str, password: str) -> None:
+    """Have the daemon check credentials against the registry.
+
+    Uses a throwaway client: docker-py keeps a successful login in memory, and
+    the shared client must only use what is stored on disk.
+    """
+    try:
+        client = docker.from_env()
+    except DockerException as exc:
+        raise DockerUnavailable(str(exc)) from exc
+    try:
+        client.login(username=username, password=password, registry=registry, reauth=True)
+    except APIError as exc:
+        raise RegistryLoginFailed(f"login to {registry} failed: {exc.explanation or exc}") from exc
+    except DockerException as exc:
+        raise DockerUnavailable(str(exc)) from exc
+    finally:
+        client.close()
+
+
 # --- Images ------------------------------------------------------------------
 
 
@@ -788,14 +815,14 @@ def local_repo_digest(image: str) -> str | None:
     return None
 
 
-def registry_digest(image: str) -> str:
+def registry_digest(image: str, auth_config: dict[str, str] | None = None) -> str:
     """Look up an image's current manifest digest in its registry.
 
     This is a metadata request only - nothing is downloaded, which is what makes
     running it across every image practical on a Pi.
     """
     try:
-        return _client().images.get_registry_data(image).id
+        return _client().images.get_registry_data(image, auth_config=auth_config).id
     except NotFound as exc:
         raise DockerUnavailable(f"{image} not found in registry") from exc
     except APIError as exc:

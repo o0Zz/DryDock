@@ -58,7 +58,7 @@ Dockerfile             3-stage build (frontend, backend venv, runtime with docke
 - **Update checks** (`update_service`): two independent signals.
   - Digest: the same tag was rebuilt (`latest`, `stable`).
   - Running version: `Container.image_version` comes from the `org.opencontainers.image.version` label (container labels include image labels, so no extra inspect). It is dropped when `ref.name` names another image, such as a version inherited from an ubuntu base. Many official Docker Hub images do not set it.
-  - Newer tag: `registry_service` lists the registry's tags over the v2 API with an anonymous bearer token. Only tags of the same shape count (same prefix, same number of parts, same suffix), so prereleases and other variants are ignored. It reports the newest tag and the newest within the current major, and skips outlier majors (a jump of more than 3).
+  - Newer tag: `registry_service` lists the registry's tags over the v2 API with a bearer token (anonymous, or logged in with the stored credentials). Only tags of the same shape count (same prefix, same number of parts, same suffix), so prereleases and other variants are ignored. It reports the newest tag and the newest within the current major, and skips outlier majors (a jump of more than 3).
 - **Live data:** logs use SSE (`/api/logs/...`). Container stats are polled every 5s. The console is a WebSocket (`/api/containers/{id}/exec`).
 - **Dashboard:** `/api/dashboard` returns counts and the "needs attention" lists in one call. CVE and update counts only include tracked images (running or named in a Compose file), so replaced tags stop counting. Host facts come from `docker info`.
   - Host load (`/api/dashboard/host`, polled every 5s) comes from `host_service`. It reads `/proc` and `/sys/class/thermal`. These are not namespaced, so inside the container they describe the host. Each value is `null` where missing (Windows dev, VMs without a sensor).
@@ -67,11 +67,13 @@ Dockerfile             3-stage build (frontend, backend venv, runtime with docke
   - Download creates the helper without starting it and streams the file out with `get_archive` (`docker cp`). Only regular files download. The helper is removed when the stream ends.
   - The helper uses DryDock's own image, so nothing is pulled. Outside a container (dev) it falls back to `DRYDOCK_HELPER_IMAGE`, pulled on first use.
 - **Auth:** signed session cookie (Starlette `SessionMiddleware`), users table with an `is_admin` flag. A bootstrap admin is created on first start.
-  - Admin only: settings writes, users, app logs, console, unmasked env values, `.env` files, volume files.
+  - API tokens (`api_tokens` table, `/api/tokens`): `get_current_user` also accepts `Authorization: Bearer ddt_...`. Only a SHA-256 of the token is stored, and the token acts as its user. `last_used_at` is written at most once a minute.
+  - Admin only: settings writes, users, app logs, console, unmasked env values, `.env` files, volume files, registry credentials.
   - The console WebSocket is outside the HTTP auth dependency. It checks the session and the `Origin` header itself. Keep that check: other apps on the same host are same-site, so the browser sends them the cookie too.
+- **Registry credentials** (`registry_auth_service`): stored in a standard Docker `config.json` at `<data>/docker/` (base64 `auths`, mode 600). `docker compose` and `trivy` get `DOCKER_CONFIG` pointing there (`subprocess_env()`), the digest check passes `auth_config` to the daemon, and the tag check logs in to the token endpoint. Saving a login first checks it with `docker login` on a throwaway client. Credential helpers (`credsStore`) are not supported.
 - **Trivy** runs with `--cache-dir <data>/trivy-cache`, so its DB survives the container being recreated.
 - **Database:** Alembic owns the schema. Startup upgrades to head and snapshots the database to `<data>/backups/db/` first (keeps 5). Never use `create_all`. See "Database migrations" below.
-- **API:** REST under `/api`; every router except `auth` and `/api/health` requires a session. FastAPI docs at `/docs` list all routes.
+- **API:** REST under `/api`; every router except `auth` and `/api/health` requires a session or an API token. FastAPI docs at `/docs` list all routes.
 
 ## Development
 
@@ -141,7 +143,6 @@ Kubernetes, Swarm, multi-host, RBAC beyond admin/user, plugins, an auto-update e
 
 ## Known gaps
 
-- No registry credentials: private registries fail both update checks.
 - Volume files are read-only: no upload, edit or delete.
 - YAML backups cannot be browsed or restored from the UI yet.
 - `todo.txt`: multilanguage UI.

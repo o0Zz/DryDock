@@ -1,5 +1,7 @@
 import type {
   ApiErrorBody,
+  ApiToken,
+  ApiTokenCreated,
   AppSettings,
   ComposeContent,
   ComposeSaveResult,
@@ -16,6 +18,7 @@ import type {
   LocalImage,
   Project,
   ProjectAction,
+  RegistryCredential,
   ScanDetail,
   ScanSummary,
   SettingsPatch,
@@ -174,6 +177,24 @@ export const api = {
     request<AppSettings>("/api/settings", {
       method: "PUT",
       body: JSON.stringify(patch),
+    }),
+
+  // API tokens (the signed-in user's own)
+  listTokens: () => request<ApiToken[]>("/api/tokens"),
+  createToken: (name: string) =>
+    request<ApiTokenCreated>("/api/tokens", { method: "POST", body: JSON.stringify({ name }) }),
+  deleteToken: (id: number) => request<void>(`/api/tokens/${id}`, { method: "DELETE" }),
+
+  // registry credentials (admin)
+  listRegistries: () => request<RegistryCredential[]>("/api/registries"),
+  addRegistry: (registry: string, username: string, password: string) =>
+    request<RegistryCredential>("/api/registries", {
+      method: "POST",
+      body: JSON.stringify({ registry, username, password }),
+    }),
+  removeRegistry: (registry: string) =>
+    request<void>(`/api/registries?registry=${encodeURIComponent(registry)}`, {
+      method: "DELETE",
     }),
 
   // volumes

@@ -19,7 +19,9 @@ from app.api import (
     jobs,
     logs,
     projects,
+    registries,
     scans,
+    tokens,
     updates,
     users,
     volumes,
@@ -109,6 +111,7 @@ _ERROR_STATUS: dict[type[Exception], tuple[int, str]] = {
     docker_service.ImageInUse: (409, "{}"),
     docker_service.VolumeInUse: (409, "{}"),
     docker_service.NotAFile: (400, "{}"),
+    docker_service.RegistryLoginFailed: (400, "{}"),
     docker_service.ContainerRunning: (409, "{}"),
     docker_service.ContainerConflict: (409, "{}"),
     compose_service.ComposeError: (400, "{}"),
@@ -142,6 +145,8 @@ app.include_router(jobs.router, dependencies=_auth)
 app.include_router(settings_api.router, dependencies=_auth)
 app.include_router(logs.router, dependencies=_auth)
 app.include_router(users.router)  # already guarded by require_admin
+app.include_router(registries.router, dependencies=_auth)
+app.include_router(tokens.router, dependencies=_auth)
 app.include_router(console.router)  # WebSocket; checks the session itself
 
 

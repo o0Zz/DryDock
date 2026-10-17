@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 
-from app.services import docker_service, registry_service
+from app.services import docker_service, registry_auth_service, registry_service
 
 logger = logging.getLogger(__name__)
 
@@ -31,17 +31,18 @@ def check_image(image: str) -> UpdateResult:
         # Already pinned to a digest, so by definition it is what it says it is.
         return UpdateResult(image=image, local_digest=image.split("@", 1)[1])
 
-    result = _check_digest(image)
+    auth = registry_auth_service.credentials(registry_service.parse_reference(image)[0])
+    result = _check_digest(image, auth)
     # Independent of the digest check: still useful when the image is not pulled yet.
     try:
-        result.newest_tag, result.newest_same_major_tag = registry_service.newer_tags(image)
+        result.newest_tag, result.newest_same_major_tag = registry_service.newer_tags(image, auth)
     except registry_service.RegistryError as exc:
         logger.info("Tag check for %s failed: %s", image, exc)
         result.tag_error = str(exc)
     return result
 
 
-def _check_digest(image: str) -> UpdateResult:
+def _check_digest(image: str, auth: registry_service.Credentials = None) -> UpdateResult:
     """Compare an image's local digest against the registry's for the same tag.
 
     Uses a registry manifest lookup (``docker manifest inspect`` equivalent), so
@@ -60,7 +61,9 @@ def _check_digest(image: str) -> UpdateResult:
         return UpdateResult(image=image, error="no registry digest (built locally?)")
 
     try:
-        remote_digest = docker_service.registry_digest(image)
+        remote_digest = docker_service.registry_digest(
+            image, {"username": auth[0], "password": auth[1]} if auth else None
+        )
     except docker_service.DockerUnavailable as exc:
         return UpdateResult(image=image, local_digest=local_digest, error=str(exc))
 

@@ -7,6 +7,7 @@ for *other* tags of the same shape with a higher version.
 
 from __future__ import annotations
 
+import base64
 import logging
 import re
 from dataclasses import dataclass
@@ -133,26 +134,37 @@ def find_newer(current: str, tags: list[str]) -> tuple[str | None, str | None]:
 # --- Registry API ------------------------------------------------------------
 
 
-def _anonymous_token(client: httpx.Client, challenge: str) -> str:
-    """Follow a `WWW-Authenticate: Bearer realm=...` challenge anonymously."""
+# (username, password), or None to stay anonymous.
+Credentials = tuple[str, str] | None
+
+
+def _authorization(client: httpx.Client, challenge: str, auth: Credentials) -> str:
+    """Answer a `WWW-Authenticate` challenge: a bearer token from the realm (with
+    the credentials when there are some), or Basic auth."""
     scheme, _, params = challenge.partition(" ")
+    if scheme.lower() == "basic":
+        if auth is None:
+            raise RegistryError("registry requires credentials")
+        return "Basic " + base64.b64encode(f"{auth[0]}:{auth[1]}".encode()).decode()
     if scheme.lower() != "bearer":
         raise RegistryError(f"unsupported registry auth: {scheme}")
     fields = dict(_CHALLENGE_RE.findall(params))
     realm = fields.pop("realm", None)
     if not realm:
         raise RegistryError("registry auth challenge has no realm")
-    response = client.get(realm, params=fields)
+    response = client.get(realm, params=fields, auth=auth)
+    if response.status_code in (401, 403) and auth is not None:
+        raise RegistryError("registry rejected the stored credentials")
     if response.status_code != 200:
         raise RegistryError(f"registry token request failed ({response.status_code})")
     body = response.json()
     token = body.get("token") or body.get("access_token")
     if not token:
         raise RegistryError("registry returned no token")
-    return token
+    return f"Bearer {token}"
 
 
-def list_tags(registry: str, repository: str) -> list[str]:
+def list_tags(registry: str, repository: str, auth: Credentials = None) -> list[str]:
     url: str | None = f"https://{registry}/v2/{repository}/tags/list?n={PAGE_SIZE}"
     headers: dict[str, str] = {}
     tags: list[str] = []
@@ -164,10 +176,14 @@ def list_tags(registry: str, repository: str) -> list[str]:
                 response = client.get(url, headers=headers)
                 if response.status_code == 401 and "Authorization" not in headers:
                     challenge = response.headers.get("www-authenticate", "")
-                    headers["Authorization"] = f"Bearer {_anonymous_token(client, challenge)}"
+                    headers["Authorization"] = _authorization(client, challenge, auth)
                     response = client.get(url, headers=headers)
                 if response.status_code in (401, 403):
-                    raise RegistryError("registry requires credentials")
+                    raise RegistryError(
+                        "registry rejected the stored credentials"
+                        if auth
+                        else "registry requires credentials"
+                    )
                 if response.status_code == 404:
                     raise RegistryError("repository not found in registry")
                 response.raise_for_status()
@@ -185,10 +201,10 @@ def list_tags(registry: str, repository: str) -> list[str]:
     return tags
 
 
-def newer_tags(image: str) -> tuple[str | None, str | None]:
+def newer_tags(image: str, auth: Credentials = None) -> tuple[str | None, str | None]:
     """(newest, newest same major) for `image`, or (None, None) when its tag is
     not a version. Raises RegistryError when the registry cannot be queried."""
     registry, repository, tag = parse_reference(image)
     if parse_version(tag) is None:
         return None, None
-    return find_newer(tag, list_tags(registry, repository))
+    return find_newer(tag, list_tags(registry, repository, auth))

@@ -76,6 +76,7 @@ def test_adopts_pre_alembic_database() -> None:
             connection.execute(text(f"ALTER TABLE update_checks DROP COLUMN {column}"))
         # Added after the move to Alembic, so no legacy database has it.
         connection.execute(text("ALTER TABLE jobs DROP COLUMN output"))
+        connection.execute(text("DROP TABLE api_tokens"))
         connection.execute(
             text(
                 "INSERT INTO users (username, hashed_password, is_admin, is_active, created_at) "

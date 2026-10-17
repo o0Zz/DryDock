@@ -2,6 +2,8 @@ import { KeyRound, RefreshCw, Save } from "lucide-react";
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { api } from "../api";
 import { useAuth } from "../auth";
+import ApiTokens from "../components/ApiTokens";
+import RegistryCredentials from "../components/RegistryCredentials";
 import { formatDate } from "../format";
 import type { AppSettings, Job, SettingsPatch } from "../types";
 
@@ -194,6 +196,8 @@ export default function Settings() {
       </form>
 
       <ChangePassword />
+      <ApiTokens />
+      {user?.is_admin && <RegistryCredentials />}
 
       <section className="section">
         <h2>Environment</h2>

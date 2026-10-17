@@ -341,3 +341,23 @@ export interface ContainerStats {
   block_write: number;
   pids: number | null;
 }
+
+export interface ApiToken {
+  id: number;
+  name: string;
+  /** First characters of the token, to tell tokens apart. */
+  prefix: string;
+  created_at: string;
+  last_used_at: string | null;
+}
+
+/** Only returned at creation: the full token is never shown again. */
+export interface ApiTokenCreated extends ApiToken {
+  token: string;
+}
+
+export interface RegistryCredential {
+  /** `https://index.docker.io/v1/` for Docker Hub, else the registry host. */
+  registry: string;
+  username: string;
+}

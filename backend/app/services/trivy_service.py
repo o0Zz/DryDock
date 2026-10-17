@@ -6,6 +6,7 @@ import subprocess
 from dataclasses import dataclass, field
 
 from app.core.config import settings
+from app.services import registry_auth_service
 
 logger = logging.getLogger(__name__)
 
@@ -109,6 +110,8 @@ def scan_image(image: str) -> ScanResult:
             capture_output=True,
             text=True,
             timeout=SCAN_TIMEOUT + 30,
+            # Registry credentials, for when trivy has to fetch the image itself.
+            env=registry_auth_service.subprocess_env(),
         )
     except FileNotFoundError as exc:
         raise TrivyError("`trivy` CLI not found on PATH") from exc

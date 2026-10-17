@@ -10,7 +10,7 @@ from pathlib import Path
 import yaml
 
 from app.core.config import settings
-from app.services import host_path_service
+from app.services import host_path_service, registry_auth_service
 from app.services.repo_service import COMPOSE_FILENAMES
 
 logger = logging.getLogger(__name__)
@@ -169,6 +169,8 @@ def _compose(
             text=True,
             timeout=timeout,
             cwd=host_path_service.to_host(compose_path).parent,
+            # Registry credentials for pulls.
+            env=registry_auth_service.subprocess_env(),
         )
     except FileNotFoundError as exc:
         raise ComposeError("`docker` CLI not found on PATH") from exc
