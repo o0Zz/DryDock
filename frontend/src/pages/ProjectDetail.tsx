@@ -41,10 +41,13 @@ const ACTION_ICONS: Record<ProjectAction, LucideIcon> = {
   stop: Square,
 };
 
+// Button text when it differs from the action name.
+const ACTION_TEXT: Partial<Record<ProjectAction, string>> = { pull: "pull & build" };
+
 const ACTION_HINTS: Record<ProjectAction, string> = {
   up: "Start the stack; recreates services whose config changed",
   down: "Stop and remove the stack's containers and networks",
-  pull: "Download newer images (not applied until up or reload)",
+  pull: "Download newer images and rebuild services with a build: section (applied on up or reload)",
   reload: "Stop the stack, then up: applies your Compose file changes",
   stop: "Stop the containers without removing them",
 };
@@ -317,7 +320,10 @@ export default function ProjectDetail() {
                 title={ACTION_HINTS[action]}
                 onClick={() => runAction(action)}
               >
-                <Icon size={15} /> {busyAction === action ? `${action}…` : action}
+                <Icon size={15} />{" "}
+                {busyAction === action
+                  ? `${ACTION_TEXT[action] ?? action}…`
+                  : (ACTION_TEXT[action] ?? action)}
               </button>
             );
           })}
