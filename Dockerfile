@@ -11,7 +11,7 @@ RUN npm run build
 
 
 # ---------- Stage 2: build the backend + install deps ----------
-FROM ghcr.io/astral-sh/uv:0.9-python3.11-bookworm-slim AS backend
+FROM ghcr.io/astral-sh/uv:0.13-python3.11-trixie-slim AS backend
 WORKDIR /app
 ENV UV_LINK_MODE=copy \
     UV_COMPILE_BYTECODE=1 \
@@ -30,12 +30,14 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 
 
 # ---------- Stage 3: runtime ----------
-FROM python:3.11-slim-bookworm AS runtime
+FROM python:3.11-slim-trixie AS runtime
 
 ARG TARGETARCH
-ARG TRIVY_VERSION=0.72.0
-ARG DOCKER_VERSION=27.4.1
-ARG COMPOSE_VERSION=2.32.1
+# These are Go binaries that embed their own Go stdlib, so stale versions are
+# the main source of CVEs in this image. Keep them current.
+ARG TRIVY_VERSION=0.76.0
+ARG DOCKER_VERSION=29.9.1
+ARG COMPOSE_VERSION=5.6.0
 
 # Install docker CLI + compose plugin + trivy from static binaries.
 # We deliberately avoid Docker's apt repository (gpg --dearmor is flaky
@@ -45,6 +47,8 @@ ARG COMPOSE_VERSION=2.32.1
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 RUN set -eux; \
     apt-get update; \
+    # Pick up Debian security fixes published after the base image was built.
+    apt-get upgrade -y; \
     apt-get install -y --no-install-recommends ca-certificates curl tini; \
     case "${TARGETARCH:-amd64}" in \
         amd64) DOCKER_ARCH=x86_64;  COMPOSE_ARCH=x86_64;  TRIVY_ARCH=64bit ;; \
@@ -55,7 +59,7 @@ RUN set -eux; \
     # Docker CLI (static bundle contains the full client; keep only `docker`)
     curl -fsSL "https://download.docker.com/linux/static/stable/${DOCKER_ARCH}/docker-${DOCKER_VERSION}.tgz" \
         | tar -xz -C /usr/local/bin --strip-components=1 docker/docker; \
-    # Compose v2 plugin
+    # Compose plugin
     install -m 0755 -d /usr/local/lib/docker/cli-plugins; \
     curl -fsSL "https://github.com/docker/compose/releases/download/v${COMPOSE_VERSION}/docker-compose-linux-${COMPOSE_ARCH}" \
         -o /usr/local/lib/docker/cli-plugins/docker-compose; \
@@ -66,7 +70,10 @@ RUN set -eux; \
     docker --version; docker compose version; trivy --version; \
     apt-get purge -y curl; \
     apt-get autoremove -y; \
-    rm -rf /var/lib/apt/lists/*
+    rm -rf /var/lib/apt/lists/*; \
+    # The app runs from its own venv. The system setuptools/wheel are unused
+    # and vendor packages with known CVEs.
+    python -m pip uninstall -y setuptools wheel || true
 
 WORKDIR /app
 
