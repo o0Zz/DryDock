@@ -23,6 +23,8 @@ class JobKind:
     IMAGE_PRUNE = "image_prune"
     VOLUME_PRUNE = "volume_prune"
     NETWORK_PRUNE = "network_prune"
+    # Delete, rename or duplicate a stack.
+    STACK_CHANGE = "stack_change"
 
 
 class Job(Base):

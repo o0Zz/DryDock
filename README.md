@@ -43,7 +43,7 @@ Works on `amd64` and `arm64` (Raspberry Pi 3, 4 and 5 with 64-bit OS).
 
 ## Features
 
-- **Stacks:** every Compose file in your folder shows up as a project. Any `*.yml` file with a `services:` section counts. Start, stop, pull, restart or edit each one and its `.env`, or create a new stack. A `*.override.yml` next to a Compose file is merged in, like `docker compose up` does.
+- **Stacks:** every Compose file in your folder shows up as a project. Any `*.yml` file with a `services:` section counts. Start, stop, pull, restart or edit each one and its `.env`. Create, rename, duplicate or delete a stack; a delete backs the stack up first. A `*.override.yml` next to a Compose file is merged in, like `docker compose up` does.
 - **Containers:** start, stop, restart, pause, kill or rename. State, health check, restart count, CPU and memory, ports, live logs, a detail page, and a shell in the browser.
 - **Images:** see which images are in use, and remove or prune the rest.
 - **CVE scans:** scan one image, all running images, or all images in your Compose files.

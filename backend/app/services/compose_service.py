@@ -132,7 +132,7 @@ def create_compose(name: str, content: str) -> Path:
     return compose_path
 
 
-def _override_path(compose_path: Path) -> Path | None:
+def override_path(compose_path: Path) -> Path | None:
     """The `<stem>.override.y(a)ml` next to a Compose file, if any. Passing -f turns
     off Compose's own override merge, so it has to be added back explicitly."""
     for suffix in (".yml", ".yaml"):
@@ -144,7 +144,7 @@ def _override_path(compose_path: Path) -> Path | None:
 
 def _command(compose_path: Path, args: list[str], project_name: str | None = None) -> list[str]:
     command = ["docker", "compose", "-f", str(host_path_service.to_host(compose_path))]
-    override = _override_path(compose_path)
+    override = override_path(compose_path)
     if override is not None:
         command += ["-f", str(host_path_service.to_host(override))]
     if project_name:
@@ -205,6 +205,18 @@ def _check(result: subprocess.CompletedProcess[str], step: str) -> None:
     if result.returncode != 0:
         detail = (result.stderr or result.stdout or "").strip()[-1000:]
         raise ComposeError(f"`docker compose {step}` failed (exit {result.returncode}): {detail}")
+
+
+def down(
+    compose_path: Path, *, remove_volumes: bool = False, project_name: str | None = None
+) -> str:
+    """`docker compose down`, with `-v` to remove the stack's named volumes too.
+    Returns the command output; raises ComposeError when it fails."""
+    args = ["down", "--remove-orphans", *(["--volumes"] if remove_volumes else [])]
+    result = _compose(compose_path, args, project_name=project_name)
+    _check(result, "down")
+    # docker compose writes its progress to stderr, so keep both streams.
+    return "\n".join(text for text in (result.stdout, result.stderr) if text)
 
 
 def pull_service(compose_path: Path, service: str, *, project_name: str | None = None) -> None:

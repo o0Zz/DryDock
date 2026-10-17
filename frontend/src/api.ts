@@ -23,6 +23,7 @@ import type {
   ScanDetail,
   ScanSummary,
   SettingsPatch,
+  StackChangeAccepted,
   UpdateSummary,
   User,
   UserPatch,
@@ -124,6 +125,19 @@ export const api = {
     request<EnvSaveResult>(`/api/projects/${id}/env`, {
       method: "PUT",
       body: JSON.stringify({ content }),
+    }),
+  // Stack changes queue a job: `down` comes first, and a folder copy can take a while.
+  deleteProject: (id: string, removeVolumes: boolean) =>
+    request<Job>(`/api/projects/${id}?remove_volumes=${removeVolumes}`, { method: "DELETE" }),
+  renameProject: (id: string, name: string) =>
+    request<StackChangeAccepted>(`/api/projects/${id}/rename`, {
+      method: "POST",
+      body: JSON.stringify({ name }),
+    }),
+  duplicateProject: (id: string, name: string) =>
+    request<StackChangeAccepted>(`/api/projects/${id}/duplicate`, {
+      method: "POST",
+      body: JSON.stringify({ name }),
     }),
   // Compose actions, like prunes below, queue a job and return it at once
   runAction: (id: string, action: ProjectAction) =>

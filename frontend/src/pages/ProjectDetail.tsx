@@ -3,17 +3,20 @@ import {
   ArrowUpCircle,
   ChevronLeft,
   Circle,
+  Copy,
   Download,
+  PenLine,
   Play,
   RotateCw,
   Save,
   ScrollText,
   Square,
+  Trash2,
   Undo2,
   type LucideIcon,
 } from "lucide-react";
-import { lazy, Suspense, useCallback, useEffect, useState } from "react";
-import { Link, useParams, useSearchParams } from "react-router-dom";
+import { lazy, Suspense, useCallback, useEffect, useState, type ReactNode } from "react";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { api } from "../api";
 import { useAuth } from "../auth";
 import { useConfirm, type ConfirmOptions } from "../components/ConfirmDialog";
@@ -22,6 +25,7 @@ import LogPanel from "../components/LogPanel";
 import { formatPorts } from "../format";
 import { isActive, useJobs } from "../hooks/useJobs";
 import { imageRepo, retagImage } from "../imageRef";
+import { askDelete, askName, waitForJob } from "../stackActions";
 import type { Project, ProjectAction, UpdateSummary } from "../types";
 
 // CodeMirror is by far the heaviest dependency in the bundle and is only
@@ -64,6 +68,10 @@ export default function ProjectDetail() {
   const [savedAt, setSavedAt] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [showLogs, setShowLogs] = useState(false);
+  // Label of the delete, rename or duplicate job while it runs.
+  const [stackBusy, setStackBusy] = useState<string | null>(null);
+  const [stackNotice, setStackNotice] = useState<ReactNode>(null);
+  const navigate = useNavigate();
   const { user } = useAuth();
   const [fileTab, setFileTab] = useState<"compose" | "env">("compose");
   // The .env editor mounts on first open and then stays, so switching tabs keeps edits.
@@ -160,6 +168,69 @@ export default function ProjectDetail() {
     }
   };
 
+  const changeStack = async (label: string, change: () => Promise<void>): Promise<void> => {
+    setActionError(null);
+    setStackNotice(null);
+    setStackBusy(label);
+    try {
+      await change();
+    } catch (changeError) {
+      setActionError((changeError as Error).message);
+    } finally {
+      setStackBusy(null);
+    }
+  };
+
+  const deleteStack = async (): Promise<void> => {
+    if (!project) return;
+    const choice = await askDelete(confirm, project);
+    if (!choice) return;
+    await changeStack("Deleting…", async () => {
+      await waitForJob(await api.deleteProject(id, choice.removeVolumes));
+      navigate("/projects");
+    });
+  };
+
+  const renameStack = async (): Promise<void> => {
+    if (!project) return;
+    const name = await askName(confirm, {
+      title: `Rename stack ${project.name}?`,
+      message:
+        "It is brought down first and stays down. Named volumes keep the old project name: " +
+        "after up, the stack gets new, empty ones, unless the file names them (name: or external).",
+      confirmLabel: "Rename",
+      initial: project.name,
+    });
+    if (!name || name === project.name) return;
+    await changeStack("Renaming…", async () => {
+      const accepted = await api.renameProject(id, name);
+      await waitForJob(accepted.job);
+      navigate(`/projects/${accepted.project_id}`, { replace: true });
+    });
+  };
+
+  const duplicateStack = async (): Promise<void> => {
+    if (!project) return;
+    const name = await askName(confirm, {
+      title: `Duplicate stack ${project.name}?`,
+      message:
+        "Copies its folder (or its Compose files in a shared folder). Nothing starts. Change " +
+        "fixed container names and host ports before you bring the copy up.",
+      confirmLabel: "Duplicate",
+      initial: `${project.name}-copy`,
+    });
+    if (!name) return;
+    await changeStack("Duplicating…", async () => {
+      const accepted = await api.duplicateProject(id, name);
+      await waitForJob(accepted.job);
+      setStackNotice(
+        <>
+          Copied as <Link to={`/projects/${accepted.project_id}`}>{name}</Link>.
+        </>,
+      );
+    });
+  };
+
   if (loadError) return <div className="error">Failed to load: {loadError}</div>;
   if (!project) return <div>Loading…</div>;
 
@@ -185,14 +256,46 @@ export default function ProjectDetail() {
       </div>
       <div className="row-between">
         <h1>{project.name}</h1>
-        <button type="button" className="secondary" onClick={() => setShowLogs(true)}>
-          <ScrollText size={15} /> Stack logs
-        </button>
+        <div className="button-row inline">
+          {stackBusy && <span className="muted">{stackBusy}</span>}
+          <button type="button" className="secondary" onClick={() => setShowLogs(true)}>
+            <ScrollText size={15} /> Stack logs
+          </button>
+          <button
+            type="button"
+            className="secondary"
+            disabled={stackBusy !== null || busyAction !== undefined}
+            onClick={renameStack}
+          >
+            <PenLine size={15} /> Rename
+          </button>
+          <button
+            type="button"
+            className="secondary"
+            disabled={stackBusy !== null}
+            onClick={duplicateStack}
+          >
+            <Copy size={15} /> Duplicate
+          </button>
+          <button
+            type="button"
+            className="secondary"
+            disabled={stackBusy !== null || busyAction !== undefined}
+            onClick={deleteStack}
+          >
+            <Trash2 size={15} /> Delete
+          </button>
+        </div>
       </div>
       <div className="muted">
         <code>{project.relative_path}</code>
       </div>
 
+      {stackNotice && (
+        <div className="output ok" style={{ padding: "0.75rem" }}>
+          {stackNotice}
+        </div>
+      )}
       <section className="section">
         <h2>Actions</h2>
         <div className="button-row">

@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from app.core.security import require_admin
 from app.models.job import Job, JobKind
@@ -11,8 +11,8 @@ from app.schemas.compose import (
     EnvWriteResponse,
 )
 from app.schemas.job import JobRead
-from app.schemas.project import Project, ProjectCreate
-from app.services import compose_service, job_service, repo_service, tasks
+from app.schemas.project import Project, ProjectCreate, StackChangeAccepted, StackRename
+from app.services import compose_service, job_service, repo_service, stack_service, tasks
 
 router = APIRouter(prefix="/api/projects", tags=["projects"])
 
@@ -67,6 +67,60 @@ def put_env(project_id: str, body: EnvContent) -> EnvWriteResponse:
     project = _find_project(project_id)
     backup = compose_service.write_env(project.id, Path(project.compose_path), body.content)
     return EnvWriteResponse(backup_path=str(backup) if backup else None)
+
+
+@router.delete("/{project_id}", response_model=JobRead, status_code=status.HTTP_202_ACCEPTED)
+def delete_project(project_id: str, remove_volumes: bool = Query(default=False)) -> Job:
+    """Queue `down` (with `-v` on request), a backup, then removal of the stack's files."""
+    project = repo_service.attach_containers([_find_project(project_id)])[0]
+    return job_service.submit(
+        JobKind.STACK_CHANGE,
+        f"Delete {project.name}",
+        tasks.stack_delete_runner(
+            project,
+            project_name=repo_service.compose_project_name(project),
+            stop=bool(project.containers),
+            remove_volumes=remove_volumes,
+        ),
+    )
+
+
+# Declared before /{project_id}/{action} so "rename" is not taken as an action.
+@router.post(
+    "/{project_id}/rename", response_model=StackChangeAccepted, status_code=status.HTTP_202_ACCEPTED
+)
+def rename_project(project_id: str, body: StackRename) -> StackChangeAccepted:
+    """Queue `down`, then a move to the new name. The stack is left down."""
+    project = repo_service.attach_containers([_find_project(project_id)])[0]
+    new_id = stack_service.new_project_id(project, body.name)
+    job = job_service.submit(
+        JobKind.STACK_CHANGE,
+        f"Rename {project.name} to {body.name}",
+        tasks.stack_rename_runner(
+            project,
+            body.name,
+            project_name=repo_service.compose_project_name(project),
+            stop=bool(project.containers),
+        ),
+    )
+    return StackChangeAccepted(job=JobRead.model_validate(job), project_id=new_id)
+
+
+@router.post(
+    "/{project_id}/duplicate",
+    response_model=StackChangeAccepted,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+def duplicate_project(project_id: str, body: StackRename) -> StackChangeAccepted:
+    """Queue a copy under the new name. Nothing is started."""
+    project = _find_project(project_id)
+    new_id = stack_service.new_project_id(project, body.name)
+    job = job_service.submit(
+        JobKind.STACK_CHANGE,
+        f"Duplicate {project.name} as {body.name}",
+        tasks.stack_duplicate_runner(project, body.name),
+    )
+    return StackChangeAccepted(job=JobRead.model_validate(job), project_id=new_id)
 
 
 @router.post("/{project_id}/{action}", response_model=JobRead, status_code=status.HTTP_202_ACCEPTED)

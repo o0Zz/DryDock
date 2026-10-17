@@ -1,8 +1,10 @@
-import { FolderGit2, Plus } from "lucide-react";
-import { useEffect, useState } from "react";
+import { FolderGit2, Plus, Trash2 } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { api } from "../api";
+import { useConfirm } from "../components/ConfirmDialog";
 import { formatDate } from "../format";
+import { askDelete, waitForJob } from "../stackActions";
 import type { Project } from "../types";
 
 function StackStatus({ project }: { project: Project }) {
@@ -21,14 +23,40 @@ function StackStatus({ project }: { project: Project }) {
 export default function Projects() {
   const [projects, setProjects] = useState<Project[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  // The stack being deleted, while its job runs.
+  const [deleting, setDeleting] = useState<string | null>(null);
   const navigate = useNavigate();
+  const confirm = useConfirm();
 
-  useEffect(() => {
+  const load = useCallback((): void => {
     api
       .listProjects()
       .then(setProjects)
       .catch((loadError: Error) => setError(loadError.message));
   }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  async function remove(project: Project): Promise<void> {
+    const choice = await askDelete(confirm, project);
+    if (!choice) return;
+    setActionError(null);
+    setNotice(null);
+    setDeleting(project.id);
+    try {
+      const job = await waitForJob(await api.deleteProject(project.id, choice.removeVolumes));
+      setNotice(job.message);
+    } catch (deleteError) {
+      setActionError((deleteError as Error).message);
+    } finally {
+      setDeleting(null);
+      load();
+    }
+  }
 
   if (error) return <div className="error">Failed to load projects: {error}</div>;
   if (!projects) return <div>Loading…</div>;
@@ -41,6 +69,12 @@ export default function Projects() {
           <Plus size={15} /> New stack
         </button>
       </div>
+      {actionError && <div className="error">{actionError}</div>}
+      {notice && (
+        <div className="output ok" style={{ padding: "0.75rem" }}>
+          {notice}
+        </div>
+      )}
       {projects.length === 0 ? (
         <div className="empty">No Compose projects found in the mounted repo.</div>
       ) : (
@@ -52,6 +86,7 @@ export default function Projects() {
               <th>Services</th>
               <th>Path</th>
               <th>Modified</th>
+              <th></th>
             </tr>
           </thead>
           <tbody>
@@ -70,6 +105,18 @@ export default function Projects() {
                   <code>{project.relative_path}</code>
                 </td>
                 <td>{formatDate(project.modified_at)}</td>
+                <td>
+                  <button
+                    type="button"
+                    className="secondary small icon-only"
+                    title="Delete this stack"
+                    aria-label="delete"
+                    disabled={deleting !== null}
+                    onClick={() => remove(project)}
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </td>
               </tr>
             ))}
           </tbody>

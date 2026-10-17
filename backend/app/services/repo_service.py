@@ -21,7 +21,7 @@ COMPOSE_FILENAMES = ("docker-compose.yml", "docker-compose.yaml", "compose.yml",
 YAML_SUFFIXES = {".yml", ".yaml"}
 
 
-def _project_id(path: Path) -> str:
+def project_id(path: Path) -> str:
     return hashlib.sha1(str(path.resolve()).encode("utf-8")).hexdigest()[:12]
 
 
@@ -64,7 +64,7 @@ def _project_from_compose(compose_path: Path, repo_root: Path) -> Project:
     except ValueError:
         relative_path = compose_path.as_posix()
     return Project(
-        id=_project_id(compose_path),
+        id=project_id(compose_path),
         name=name,
         compose_path=str(compose_path),
         relative_path=relative_path,

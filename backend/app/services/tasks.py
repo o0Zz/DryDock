@@ -16,12 +16,14 @@ from sqlalchemy.orm import Session
 
 from app.models.scan import Scan, ScanFinding
 from app.models.update import UpdateCheck
+from app.schemas.project import Project
 from app.services import (
     compose_service,
     docker_service,
     notify_service,
     repo_service,
     settings_service,
+    stack_service,
     trivy_service,
     update_service,
 )
@@ -248,6 +250,62 @@ def project_action_runner(
                 f"`docker compose {action}` failed (exit {result['exit_code']}): {detail}"
             )
         ctx.advance(f"docker compose {action} done")
+
+    return run
+
+
+def stack_delete_runner(
+    project: Project, *, project_name: str | None, stop: bool, remove_volumes: bool
+) -> JobRunner:
+    """Build a job body that brings a stack down, backs it up and deletes its files."""
+
+    def run(ctx: JobContext) -> None:
+        ctx.set_total(2)
+        if stop or remove_volumes:
+            ctx.note("docker compose down")
+            ctx.set_output(
+                compose_service.down(
+                    Path(project.compose_path),
+                    remove_volumes=remove_volumes,
+                    project_name=project_name,
+                )
+            )
+        ctx.advance("Backing up and deleting files")
+        backup = stack_service.delete(project)
+        ctx.advance(f"Deleted {project.name}. Backup: {backup}")
+
+    return run
+
+
+def stack_rename_runner(
+    project: Project, new_name: str, *, project_name: str | None, stop: bool
+) -> JobRunner:
+    """Build a job body that brings a stack down, then moves it to a new name.
+
+    It stays down: its named volumes belong to the old Compose project name.
+    """
+
+    def run(ctx: JobContext) -> None:
+        ctx.set_total(2)
+        if stop:
+            ctx.note("docker compose down")
+            ctx.set_output(
+                compose_service.down(Path(project.compose_path), project_name=project_name)
+            )
+        ctx.advance(f"Renaming to {new_name}")
+        stack_service.rename(project, new_name)
+        ctx.advance(f"Renamed {project.name} to {new_name}")
+
+    return run
+
+
+def stack_duplicate_runner(project: Project, new_name: str) -> JobRunner:
+    """Build a job body that copies a stack under a new name, without starting it."""
+
+    def run(ctx: JobContext) -> None:
+        ctx.set_total(1, f"Copying to {new_name}")
+        stack_service.duplicate(project, new_name)
+        ctx.advance(f"Duplicated {project.name} as {new_name}")
 
     return run
 

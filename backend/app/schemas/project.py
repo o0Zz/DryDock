@@ -3,6 +3,7 @@ from datetime import datetime
 from pydantic import BaseModel, Field
 
 from app.schemas.container import Container
+from app.schemas.job import JobRead
 
 
 class ProjectService(BaseModel):
@@ -27,3 +28,14 @@ class ProjectCreate(BaseModel):
     # restricts to lowercase letters, digits, '-' and '_'.
     name: str = Field(pattern=r"^[a-z0-9][a-z0-9_-]*$", max_length=64)
     content: str
+
+
+class StackRename(BaseModel):
+    # Same rule as ProjectCreate: it becomes the folder or file name and the project name.
+    name: str = Field(pattern=r"^[a-z0-9][a-z0-9_-]*$", max_length=64)
+
+
+class StackChangeAccepted(BaseModel):
+    job: JobRead
+    # ID the stack has once the job is done (rename, duplicate).
+    project_id: str
