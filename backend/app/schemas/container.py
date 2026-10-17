@@ -20,4 +20,6 @@ class Container(BaseModel):
     ports: list[ContainerPort]
     compose_project: str | None = None
     compose_service: str | None = None
+    # Compose file(s) this container was deployed from, per Docker's label.
+    compose_config_files: str | None = None
     restart_policy: str | None = None

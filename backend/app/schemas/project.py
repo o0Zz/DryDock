@@ -2,6 +2,8 @@ from datetime import datetime
 
 from pydantic import BaseModel
 
+from app.schemas.container import Container
+
 
 class ProjectService(BaseModel):
     name: str
@@ -15,3 +17,6 @@ class Project(BaseModel):
     relative_path: str
     modified_at: datetime
     services: list[ProjectService]
+    # Containers Docker currently associates with this Compose file. Empty when
+    # the stack is down or the daemon is unreachable.
+    containers: list[Container] = []

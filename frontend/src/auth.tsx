@@ -41,8 +41,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Any API call that returns 401 kicks us back to the login screen.
   useEffect(() => {
     const onUnauthorized = () => setUser(null);
-    window.addEventListener("harborguard:unauthorized", onUnauthorized);
-    return () => window.removeEventListener("harborguard:unauthorized", onUnauthorized);
+    window.addEventListener("drydock:unauthorized", onUnauthorized);
+    return () => window.removeEventListener("drydock:unauthorized", onUnauthorized);
   }, []);
 
   const login = useCallback(async (username: string, password: string) => {

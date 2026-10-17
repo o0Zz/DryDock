@@ -27,7 +27,7 @@ export default function Login() {
       <form className="login-card" onSubmit={onSubmit}>
         <div className="brand login-brand">
           <Anchor size={24} />
-          HarborGuard
+          DryDock
         </div>
         <p className="muted">Sign in to manage your stacks</p>
         <label>

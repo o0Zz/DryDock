@@ -1,9 +1,16 @@
 import type {
   ActionResult,
+  AppSettings,
   ComposeContent,
   Container,
+  DashboardStats,
+  Job,
   Project,
   PruneResult,
+  ScanDetail,
+  ScanSummary,
+  SettingsPatch,
+  UpdateSummary,
   User,
   Volume,
 } from "./types";
@@ -24,7 +31,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   });
   if (res.status === 401) {
     // Let the app drop back to the login screen from anywhere.
-    window.dispatchEvent(new Event("harborguard:unauthorized"));
+    window.dispatchEvent(new Event("drydock:unauthorized"));
   }
   if (!res.ok) {
     let detail = `${res.status} ${res.statusText}`;
@@ -81,6 +88,9 @@ export const api = {
   deleteUser: (id: number) =>
     request<void>(`/api/users/${id}`, { method: "DELETE" }),
 
+  // dashboard
+  dashboard: () => request<DashboardStats>("/api/dashboard"),
+
   // projects / containers
   listProjects: () => request<Project[]>("/api/projects"),
   getProject: (id: string) => request<Project>(`/api/projects/${id}`),
@@ -96,6 +106,39 @@ export const api = {
   containerAction: (id: string, action: "start" | "stop" | "restart") =>
     request<{ status: string; action: string }>(`/api/containers/${id}/${action}`, {
       method: "POST",
+    }),
+
+  // CVE scans — the POSTs queue a background job and return it immediately
+  listScans: () => request<ScanSummary[]>("/api/scans"),
+  scanHistory: (image: string) =>
+    request<ScanSummary[]>(`/api/scans?image=${encodeURIComponent(image)}`),
+  getScan: (id: number) => request<ScanDetail>(`/api/scans/${id}`),
+  scanImage: (image: string) =>
+    request<Job>("/api/scans/image", {
+      method: "POST",
+      body: JSON.stringify({ image }),
+    }),
+  scanRunning: () => request<Job>("/api/scans/running", { method: "POST" }),
+  scanCompose: () => request<Job>("/api/scans/compose", { method: "POST" }),
+
+  // update checks
+  listUpdates: () => request<UpdateSummary[]>("/api/updates"),
+  checkUpdates: (images?: string[]) =>
+    request<Job>("/api/updates/check", {
+      method: "POST",
+      body: JSON.stringify({ images: images ?? null }),
+    }),
+
+  // background jobs
+  listJobs: (limit = 25) => request<Job[]>(`/api/jobs?limit=${limit}`),
+  getJob: (id: string) => request<Job>(`/api/jobs/${id}`),
+
+  // settings
+  getSettings: () => request<AppSettings>("/api/settings"),
+  updateSettings: (patch: SettingsPatch) =>
+    request<AppSettings>("/api/settings", {
+      method: "PUT",
+      body: JSON.stringify(patch),
     }),
 
   // volumes

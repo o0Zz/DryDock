@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from collections.abc import Iterator
+from datetime import UTC, datetime
 from functools import lru_cache
-from typing import Iterator
 
 import docker
 from docker.errors import APIError, DockerException, NotFound
+from docker.errors import ImageNotFound as DockerImageNotFound
 from docker.models.containers import Container as DockerContainer
 from docker.models.volumes import Volume as DockerVolume
 
@@ -24,6 +25,10 @@ class VolumeInUse(Exception):
     """Raised when trying to remove a volume that is attached to a container."""
 
 
+class ImageNotFound(Exception):
+    """Raised when an image reference is not present in the local image store."""
+
+
 @lru_cache(maxsize=1)
 def _client() -> docker.DockerClient:
     try:
@@ -38,7 +43,7 @@ def _reset_client() -> None:
 
 def _parse_created(raw: str | int | float) -> datetime:
     if isinstance(raw, (int, float)):
-        return datetime.fromtimestamp(float(raw), tz=timezone.utc)
+        return datetime.fromtimestamp(float(raw), tz=UTC)
     # Docker's API returns e.g. "2024-01-02T03:04:05.6789Z" — trim beyond microseconds
     text = str(raw).replace("Z", "+00:00")
     if "." in text:
@@ -55,7 +60,7 @@ def _parse_created(raw: str | int | float) -> datetime:
     try:
         return datetime.fromisoformat(text)
     except ValueError:
-        return datetime.now(tz=timezone.utc)
+        return datetime.now(tz=UTC)
 
 
 def _parse_ports(attrs: dict) -> list[ContainerPort]:
@@ -88,7 +93,9 @@ def _to_schema(c: DockerContainer) -> Container:
     attrs = c.attrs or {}
     labels = attrs.get("Config", {}).get("Labels") or {}
     host_config = attrs.get("HostConfig") or {}
-    image_tags = (attrs.get("Config") or {}).get("Image") or (c.image.tags[0] if c.image and c.image.tags else "")
+    image_tags = (attrs.get("Config") or {}).get("Image") or (
+        c.image.tags[0] if c.image and c.image.tags else ""
+    )
     return Container(
         id=c.id or "",
         name=c.name or "",
@@ -99,6 +106,7 @@ def _to_schema(c: DockerContainer) -> Container:
         ports=_parse_ports(attrs),
         compose_project=labels.get("com.docker.compose.project"),
         compose_service=labels.get("com.docker.compose.service"),
+        compose_config_files=labels.get("com.docker.compose.project.config_files"),
         restart_policy=(host_config.get("RestartPolicy") or {}).get("Name") or None,
     )
 
@@ -233,3 +241,69 @@ def prune_volumes() -> PruneResult:
         deleted=result.get("VolumesDeleted") or [],
         space_reclaimed=result.get("SpaceReclaimed") or 0,
     )
+
+
+# --- Images ------------------------------------------------------------------
+
+
+def _repo_of(reference: str) -> str:
+    """Strip the tag and/or digest off an image reference, keeping the repo."""
+    reference = reference.split("@", 1)[0]
+    slash = reference.rfind("/")
+    colon = reference.rfind(":")
+    # A colon before the last slash belongs to a registry port, not a tag.
+    if colon > slash:
+        reference = reference[:colon]
+    return reference
+
+
+def local_repo_digest(image: str) -> str | None:
+    """Return the registry digest recorded for a locally-present image.
+
+    ``None`` means the image exists but was never pulled from a registry (built
+    locally or loaded from a tarball), so there is nothing to compare against.
+    """
+    try:
+        img = _client().images.get(image)
+    except DockerImageNotFound as exc:
+        raise ImageNotFound(image) from exc
+    except DockerException as exc:
+        raise DockerUnavailable(str(exc)) from exc
+
+    repo_digests = (img.attrs or {}).get("RepoDigests") or []
+    if not repo_digests:
+        return None
+
+    wanted = _repo_of(image)
+    for entry in repo_digests:
+        repo, _, digest = entry.partition("@")
+        if not digest:
+            continue
+        if repo == wanted or repo.endswith(f"/{wanted}") or wanted.endswith(f"/{repo}"):
+            return digest
+    # Single-repo image whose reference we could not normalise - use it anyway.
+    if len(repo_digests) == 1:
+        return repo_digests[0].partition("@")[2] or None
+    return None
+
+
+def registry_digest(image: str) -> str:
+    """Look up an image's current manifest digest in its registry.
+
+    This is a metadata request only - nothing is downloaded, which is what makes
+    running it across every image practical on a Pi.
+    """
+    try:
+        return _client().images.get_registry_data(image).id
+    except NotFound as exc:
+        raise DockerUnavailable(f"{image} not found in registry") from exc
+    except APIError as exc:
+        # Private registries answer 401/403 here when no credentials are configured.
+        raise DockerUnavailable(f"registry lookup failed: {exc}") from exc
+    except DockerException as exc:
+        raise DockerUnavailable(str(exc)) from exc
+
+
+def running_images() -> list[str]:
+    """Distinct images used by currently running containers."""
+    return sorted({c.image for c in list_containers(all_states=False) if c.image})

@@ -1,12 +1,12 @@
-# HarborGuard
+# DryDock
 
-HarborGuard is a lightweight, self-hosted Docker management UI designed for homelabs and Raspberry Pi setups.
+DryDock is a lightweight, self-hosted Docker management UI designed for homelabs and Raspberry Pi setups.
 
 The goal is to build a simple all-in-one alternative to tools like Portainer, focused on managing Docker Compose files from a mounted repository, checking image updates, scanning for CVEs, and providing a clean web UI for day-to-day container operations.
 
 ## Project Goal
 
-HarborGuard allows the user to mount a local folder containing Docker Compose YAML files and manage everything from a browser.
+DryDock allows the user to mount a local folder containing Docker Compose YAML files and manage everything from a browser.
 
 Core features:
 
@@ -31,7 +31,7 @@ Primary target:
 * Local LAN usage
 * Homelab / self-hosted services
 
-HarborGuard should not require Kubernetes, cloud services, or a complex external database.
+DryDock should not require Kubernetes, cloud services, or a complex external database.
 
 ## Tech Stack
 
@@ -72,7 +72,7 @@ SQLite is used for:
 
 ### Packaging
 
-HarborGuard should run as a single Docker image.
+DryDock should run as a single Docker image.
 
 Expected container mounts:
 
@@ -80,12 +80,12 @@ Expected container mounts:
 volumes:
   - /var/run/docker.sock:/var/run/docker.sock
   - /path/to/compose-repo:/repo
-  - harborguard_data:/data
+  - drydock_data:/data
 ```
 
 The mounted `/repo` folder contains the user’s Docker Compose projects.
 
-The mounted Docker socket allows HarborGuard to inspect containers, stream logs, and interact with Docker.
+The mounted Docker socket allows DryDock to inspect containers, stream logs, and interact with Docker.
 
 ## High-Level Architecture
 
@@ -119,7 +119,7 @@ FastAPI Backend
 
 ## Compose Repository Model
 
-HarborGuard expects a mounted folder such as `/repo`.
+DryDock expects a mounted folder such as `/repo`.
 
 Example structure:
 
@@ -283,7 +283,7 @@ Dashboard should show:
 
 ## Security Notes
 
-HarborGuard mounts the Docker socket:
+DryDock mounts the Docker socket:
 
 ```text
 /var/run/docker.sock
@@ -293,7 +293,7 @@ This effectively gives the app root-equivalent control over the Docker host.
 
 Therefore:
 
-* Do not expose HarborGuard directly to the internet
+* Do not expose DryDock directly to the internet
 * Use it only on LAN, VPN, Tailscale, or WireGuard
 * Add authentication before any serious use
 * Consider read-only modes for some features later
@@ -420,7 +420,7 @@ Do not build these at first:
 * Plugin system
 * Full Portainer replacement
 
-HarborGuard should start as a focused, local Docker Compose manager.
+DryDock should start as a focused, local Docker Compose manager.
 
 ## Design Principles
 
@@ -438,35 +438,36 @@ HarborGuard should start as a focused, local Docker Compose manager.
 
 ```yaml
 services:
-  harborguard:
-    image: harborguard/harborguard:latest
-    container_name: harborguard
+  drydock:
+    image: drydock/drydock:latest
+    container_name: drydock
     restart: unless-stopped
     ports:
       - "8080:8080"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - /home/pi/docker:/repo
-      - harborguard_data:/data
+      - drydock_data:/data
     environment:
       - TZ=Europe/Paris
-      - HARBORGUARD_REPO_PATH=/repo
-      - HARBORGUARD_DATA_PATH=/data
+      - DRYDOCK_REPO_PATH=/repo
+      - DRYDOCK_DATA_PATH=/data
 
 volumes:
-  harborguard_data:
+  drydock_data:
 ```
 
 ## Project Name
 
-Project name: HarborGuard
+Project name: DryDock
 
 Meaning:
 
-HarborGuard is the place where all Docker Compose stacks live, can be edited, monitored, updated and scanned.
+A dry dock is where ships are pulled out of the water to be inspected, repaired and repainted before going back out. DryDock is the same idea for Docker Compose stacks: the place where they live, can be edited, monitored, updated and scanned.
 
 Alternative names considered:
 
+* HarborGuard
 * StackNest
 * DockPilot
 * ComposeHub
@@ -478,4 +479,4 @@ Alternative names considered:
 * ComposeKeeper
 * DockPanel
 
-HarborGuard is preferred because it is short, friendly, self-hosted oriented, and not limited only to Raspberry Pi.
+DryDock is preferred because it is short, friendly, self-hosted oriented, evokes inspection and maintenance, and is not limited only to Raspberry Pi.

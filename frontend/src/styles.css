@@ -240,16 +240,28 @@ button:disabled {
   cursor: not-allowed;
 }
 
+/* Wraps the CodeMirror instance so it reads as one framed editor. */
 .yaml-editor {
   width: 100%;
-  font-family: "Cascadia Code", Consolas, Menlo, monospace;
-  font-size: 0.875rem;
-  background: #ffffff;
-  color: var(--text);
   border: 1px solid var(--border);
   border-radius: 6px;
-  padding: 0.75rem;
-  resize: vertical;
+  overflow: hidden;
+  background: #ffffff;
+}
+
+.yaml-editor .cm-editor {
+  font-family: "Cascadia Code", Consolas, Menlo, monospace;
+  font-size: 0.875rem;
+}
+
+.yaml-editor .cm-editor.cm-focused {
+  outline: none;
+}
+
+.yaml-editor .cm-gutters {
+  background: var(--bg);
+  border-right: 1px solid var(--border);
+  color: var(--muted);
 }
 
 .output {
@@ -325,6 +337,11 @@ button.linklike svg {
 .badge.running { background: rgba(63, 185, 80, 0.15); color: #1a7f37; }
 .badge.exited, .badge.dead { background: rgba(248, 81, 73, 0.15); color: #cf222e; }
 .badge.paused, .badge.restarting { background: rgba(210, 153, 34, 0.15); color: #9a6700; }
+
+/* CVE badge doubles as a rescan button */
+button.badge.scan-badge { text-transform: none; cursor: pointer; }
+button.linklike.danger { color: #cf222e; }
+button.linklike.danger svg { color: #cf222e; }
 
 .log-panel {
   position: fixed;
@@ -424,3 +441,142 @@ input:focus {
   white-space: pre-wrap;
   word-break: break-word;
 }
+
+
+/* --- Dashboard tiles --------------------------------------------------- */
+
+.stat-link {
+  text-decoration: none;
+  color: inherit;
+}
+
+.stat-link .stat:hover {
+  border-color: var(--accent);
+}
+
+.stat-danger .stat-icon { background: rgba(248, 81, 73, 0.12); color: #cf222e; }
+.stat-warn .stat-icon { background: rgba(210, 153, 34, 0.15); color: #9a6700; }
+.stat-ok .stat-icon { background: rgba(63, 185, 80, 0.15); color: #1a7f37; }
+
+.fact-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-width: 520px;
+}
+
+.fact-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--border);
+}
+
+/* --- Background job progress ------------------------------------------- */
+
+.job-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin: 1rem 0;
+}
+
+.job {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel);
+}
+
+.job-success { border-color: rgba(63, 185, 80, 0.4); }
+.job-error { border-color: rgba(248, 81, 73, 0.4); }
+
+.job-icon { display: flex; padding-top: 0.15rem; color: var(--muted); }
+.job-success .job-icon { color: #1a7f37; }
+.job-error .job-icon { color: #cf222e; }
+
+.job-body { flex: 1; min-width: 0; }
+.job-label { font-weight: 500; font-size: 0.9rem; }
+
+.job-bar {
+  margin-top: 0.4rem;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--border);
+  overflow: hidden;
+}
+
+.job-bar-fill {
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.3s ease;
+}
+
+.spin { animation: spin 1s linear infinite; }
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* --- Slide-over detail panel ------------------------------------------- */
+
+.drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: min(900px, 95vw);
+  background: var(--panel);
+  border-left: 1px solid var(--border);
+  box-shadow: -8px 0 32px rgba(0, 0, 0, 0.15);
+  display: flex;
+  flex-direction: column;
+  z-index: 100;
+}
+
+.drawer-body {
+  flex: 1;
+  overflow: auto;
+  padding: 1rem;
+}
+
+.drawer-body .projects-table { margin-top: 0.5rem; }
+
+/* --- Forms -------------------------------------------------------------- */
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.875rem;
+  color: var(--muted);
+  max-width: 420px;
+  margin-bottom: 0.75rem;
+}
+
+.field-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-top: 0.5rem;
+}
+
+.field-row label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.875rem;
+  color: var(--muted);
+}
+
+.field-row input[type="number"] { width: 8rem; }
+
+.section p.muted { margin-top: 0; }
+
+/* Action clusters inside table rows sit flush with the row. */
+.button-row.inline { margin-top: 0; }

@@ -1,6 +1,6 @@
-from datetime import datetime
-
 from pydantic import BaseModel, ConfigDict, Field
+
+from app.schemas.common import UtcDatetime
 
 
 class LoginRequest(BaseModel):
@@ -15,7 +15,7 @@ class UserRead(BaseModel):
     username: str
     is_admin: bool
     is_active: bool
-    created_at: datetime
+    created_at: UtcDatetime
 
 
 class UserCreate(BaseModel):

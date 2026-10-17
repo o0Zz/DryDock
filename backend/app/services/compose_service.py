@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 import shutil
 import subprocess
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import yaml
@@ -38,7 +38,7 @@ def validate_yaml(content: str) -> dict:
 def backup_compose(project_id: str, compose_path: Path) -> Path:
     backup_dir = settings.backups_path / project_id
     backup_dir.mkdir(parents=True, exist_ok=True)
-    ts = datetime.now(tz=timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    ts = datetime.now(tz=UTC).strftime("%Y%m%dT%H%M%SZ")
     backup_path = backup_dir / f"{ts}{compose_path.suffix}"
     shutil.copy2(compose_path, backup_path)
     logger.info("Backed up %s to %s", compose_path, backup_path)
@@ -80,3 +80,32 @@ def run_action(compose_path: Path, action: str, *, detached: bool = True) -> dic
         "stdout": proc.stdout,
         "stderr": proc.stderr,
     }
+
+
+def stream_logs(compose_path: Path, *, tail: int = 200) -> subprocess.Popen[bytes]:
+    """Follow the aggregated logs of a Compose project.
+
+    Returns the running process; the caller owns it and must terminate it when
+    the client goes away.
+    """
+    cmd = [
+        "docker",
+        "compose",
+        "-f",
+        str(compose_path),
+        "logs",
+        "--follow",
+        "--no-color",
+        "--tail",
+        str(tail),
+    ]
+    logger.info("Streaming: %s", " ".join(cmd))
+    try:
+        return subprocess.Popen(  # noqa: S603 - args list, no shell
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            cwd=compose_path.parent,
+        )
+    except FileNotFoundError as exc:
+        raise ComposeError("`docker` CLI not found on PATH") from exc

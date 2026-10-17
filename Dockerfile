@@ -76,8 +76,8 @@ COPY --from=backend /app/app /app/app
 ENV PATH="/app/.venv/bin:${PATH}" \
     PYTHONPATH=/app \
     PYTHONUNBUFFERED=1 \
-    HARBORGUARD_REPO_PATH=/repo \
-    HARBORGUARD_DATA_PATH=/data
+    DRYDOCK_REPO_PATH=/repo \
+    DRYDOCK_DATA_PATH=/data
 
 # Frontend build output — served as static files by FastAPI
 COPY --from=frontend /build/dist /app/static
@@ -87,4 +87,5 @@ RUN mkdir -p /data /repo
 EXPOSE 8080
 
 ENTRYPOINT ["/usr/bin/tini", "--"]
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8080"]
+# --proxy-headers lets a reverse proxy pass through the real scheme/client IP.
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8080", "--proxy-headers", "--forwarded-allow-ips", "*"]

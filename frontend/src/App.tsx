@@ -5,6 +5,8 @@ import {
   LayoutDashboard,
   LogOut,
   Boxes,
+  Settings as SettingsIcon,
+  ShieldAlert,
   Users as UsersIcon,
 } from "lucide-react";
 import { NavLink, Route, Routes } from "react-router-dom";
@@ -14,6 +16,8 @@ import Dashboard from "./pages/Dashboard";
 import Login from "./pages/Login";
 import ProjectDetail from "./pages/ProjectDetail";
 import Projects from "./pages/Projects";
+import Scans from "./pages/Scans";
+import Settings from "./pages/Settings";
 import Users from "./pages/Users";
 import Volumes from "./pages/Volumes";
 
@@ -33,7 +37,7 @@ export default function App() {
       <header className="topbar">
         <div className="brand">
           <Anchor size={22} />
-          HarborGuard <span className="version">v{__APP_VERSION__}</span>
+          DryDock <span className="version">v{__APP_VERSION__}</span>
         </div>
         <div className="topbar-user">
           <span className="topbar-user-name">
@@ -59,6 +63,12 @@ export default function App() {
           <NavLink to="/volumes">
             <HardDrive size={18} /> Volumes
           </NavLink>
+          <NavLink to="/scans">
+            <ShieldAlert size={18} /> Scans
+          </NavLink>
+          <NavLink to="/settings">
+            <SettingsIcon size={18} /> Settings
+          </NavLink>
           {user.is_admin && (
             <NavLink to="/users">
               <UsersIcon size={18} /> Users
@@ -73,6 +83,8 @@ export default function App() {
           <Route path="/projects/:id" element={<ProjectDetail />} />
           <Route path="/containers" element={<Containers />} />
           <Route path="/volumes" element={<Volumes />} />
+          <Route path="/scans" element={<Scans />} />
+          <Route path="/settings" element={<Settings />} />
           {user.is_admin && <Route path="/users" element={<Users />} />}
         </Routes>
       </main>

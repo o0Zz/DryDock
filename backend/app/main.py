@@ -9,11 +9,24 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy import select
 from starlette.middleware.sessions import SessionMiddleware
 
-from app.api import auth, containers, logs, projects, users, volumes
+from app.api import (
+    auth,
+    containers,
+    dashboard,
+    jobs,
+    logs,
+    projects,
+    scans,
+    updates,
+    users,
+    volumes,
+)
+from app.api import settings as settings_api
 from app.core.config import settings
 from app.core.database import SessionLocal, init_db
 from app.core.security import get_current_user, hash_password
 from app.models.user import User
+from app.services import job_service, scheduler_service
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 logger = logging.getLogger(__name__)
@@ -41,10 +54,21 @@ def _seed_admin() -> None:
 async def lifespan(app: FastAPI):
     init_db()
     _seed_admin()
-    yield
+    scheduler_service.start()
+    try:
+        yield
+    finally:
+        scheduler_service.shutdown()
+        job_service.shutdown()
 
 
-app = FastAPI(title="HarborGuard", version="0.1.0", lifespan=lifespan)
+app = FastAPI(
+    title="DryDock",
+    version="0.1.0",
+    lifespan=lifespan,
+    # Non-empty when a reverse proxy serves the app under a sub-path.
+    root_path=settings.root_path,
+)
 
 app.add_middleware(
     CORSMiddleware,
@@ -69,9 +93,14 @@ app.include_router(auth.router)
 
 # Everything below requires an authenticated session.
 _auth = [Depends(get_current_user)]
+app.include_router(dashboard.router, dependencies=_auth)
 app.include_router(projects.router, dependencies=_auth)
 app.include_router(containers.router, dependencies=_auth)
 app.include_router(volumes.router, dependencies=_auth)
+app.include_router(scans.router, dependencies=_auth)
+app.include_router(updates.router, dependencies=_auth)
+app.include_router(jobs.router, dependencies=_auth)
+app.include_router(settings_api.router, dependencies=_auth)
 app.include_router(logs.router, dependencies=_auth)
 app.include_router(users.router)  # already guarded by require_admin
 
