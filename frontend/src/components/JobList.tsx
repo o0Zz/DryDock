@@ -1,4 +1,5 @@
 import { AlertCircle, AlertTriangle, CheckCircle2, Loader2, X } from "lucide-react";
+import { isActive } from "../hooks/useJobs";
 import type { Job } from "../types";
 
 /** Jobs end "success" even when some images failed (the summary says
@@ -22,7 +23,7 @@ export default function JobList({
   return (
     <div className="job-list">
       {jobs.map((job) => {
-        const running = job.status === "pending" || job.status === "running";
+        const running = isActive(job);
         const pct = job.total > 0 ? Math.round((job.done / job.total) * 100) : 0;
         const failed = failedCount(job);
         return (

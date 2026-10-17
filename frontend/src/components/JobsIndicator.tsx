@@ -1,17 +1,13 @@
 import { ListChecks, Loader2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { api } from "../api";
-import { JOBS_CHANGED_EVENT } from "../hooks/useJobs";
+import { isActive, JOBS_CHANGED_EVENT } from "../hooks/useJobs";
 import type { Job } from "../types";
 import JobList from "./JobList";
 
 const RECENT = 10;
 const ACTIVE_POLL_MS = 1500;
 const IDLE_POLL_MS = 10_000;
-
-function isActive(job: Job): boolean {
-  return job.status === "pending" || job.status === "running";
-}
 
 /** Topbar pill showing background jobs (scans, update checks, scheduled runs)
  * from any page; click for the recent list with progress. */

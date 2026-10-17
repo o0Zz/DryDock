@@ -11,6 +11,7 @@ import {
 import { useEffect, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api";
+import { formatDate } from "../format";
 import type { DashboardStats } from "../types";
 
 function Stat({
@@ -42,10 +43,6 @@ function Stat({
   ) : (
     body
   );
-}
-
-function when(value: string | null): string {
-  return value ? new Date(value).toLocaleString() : "never";
 }
 
 export default function Dashboard() {
@@ -129,11 +126,11 @@ export default function Dashboard() {
         <ul className="fact-list">
           <li>
             <span className="muted">Last CVE scan</span>
-            <strong>{when(stats.last_scan_at)}</strong>
+            <strong>{formatDate(stats.last_scan_at, "never")}</strong>
           </li>
           <li>
             <span className="muted">Last update check</span>
-            <strong>{when(stats.last_update_check_at)}</strong>
+            <strong>{formatDate(stats.last_update_check_at, "never")}</strong>
           </li>
           <li>
             <span className="muted">Open critical / high findings</span>

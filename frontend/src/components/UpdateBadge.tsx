@@ -1,10 +1,16 @@
 import { ArrowUpCircle, CheckCircle2 } from "lucide-react";
+import { formatDate } from "../format";
 import type { UpdateSummary } from "../types";
+
+/** Either kind of update: same tag rebuilt, or a newer version tag (as UpdateCheck.has_update). */
+export function hasUpdate(update: UpdateSummary | null | undefined): boolean {
+  return !!update && (update.update_available || !!update.newest_tag);
+}
 
 /** Compact "is a newer image available" status for one image. */
 export default function UpdateBadge({ update }: { update: UpdateSummary | undefined }) {
   if (!update) return <span className="muted">not checked</span>;
-  const checked = new Date(update.checked_at).toLocaleString();
+  const checked = formatDate(update.checked_at);
   // A newer version tag wins over digest status: it is what a pinned tag needs,
   // and it is known even when the image is not pulled locally.
   if (update.newest_tag) {

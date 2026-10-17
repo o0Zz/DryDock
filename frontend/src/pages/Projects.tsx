@@ -2,6 +2,7 @@ import { FolderGit2, Plus } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { api } from "../api";
+import { formatDate } from "../format";
 import type { Project } from "../types";
 
 function StackStatus({ project }: { project: Project }) {
@@ -68,7 +69,7 @@ export default function Projects() {
                 <td>
                   <code>{p.relative_path}</code>
                 </td>
-                <td>{new Date(p.modified_at).toLocaleString()}</td>
+                <td>{formatDate(p.modified_at)}</td>
               </tr>
             ))}
           </tbody>

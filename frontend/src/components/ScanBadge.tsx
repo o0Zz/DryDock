@@ -1,4 +1,5 @@
 import { Shield, ShieldAlert, ShieldCheck } from "lucide-react";
+import { formatDate } from "../format";
 import type { ScanSummary } from "../types";
 
 /** Compact CVE summary for one image; clicking it queues a (re)scan. */
@@ -28,7 +29,7 @@ export default function ScanBadge({
     );
   }
 
-  const when = new Date(scan.scanned_at).toLocaleString();
+  const when = formatDate(scan.scanned_at);
 
   if (scan.error) {
     return (

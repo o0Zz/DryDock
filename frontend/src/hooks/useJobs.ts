@@ -7,8 +7,9 @@ const POLL_MS = 1500;
 /** Fired when a job is started from any page, so the topbar refreshes at once. */
 export const JOBS_CHANGED_EVENT = "drydock:jobs-changed";
 
-function isFinished(job: Job): boolean {
-  return job.status === "success" || job.status === "error";
+/** Still pending or running. */
+export function isActive(job: Job): boolean {
+  return job.status === "pending" || job.status === "running";
 }
 
 /**
@@ -16,12 +17,15 @@ function isFinished(job: Job): boolean {
  *
  * Scans routinely take minutes, so the API hands back a job instead of blocking
  * the request; this polls the ones we started and calls `onSettled` once each
- * finishes so the page can reload whatever the job produced.
+ * finishes so the page can reload whatever the job produced. `start` queues a
+ * job and reports a failed request through `onError` (cleared with null first).
  */
-export function useJobs(onSettled?: () => void) {
+export function useJobs(onSettled?: () => void, onError?: (message: string | null) => void) {
   const [jobs, setJobs] = useState<Job[]>([]);
   const settled = useRef(onSettled);
   settled.current = onSettled;
+  const failed = useRef(onError);
+  failed.current = onError;
 
   const track = useCallback((job: Job) => {
     setJobs((prev) =>
@@ -29,6 +33,18 @@ export function useJobs(onSettled?: () => void) {
     );
     window.dispatchEvent(new Event(JOBS_CHANGED_EVENT));
   }, []);
+
+  const start = useCallback(
+    async (fn: () => Promise<Job>) => {
+      failed.current?.(null);
+      try {
+        track(await fn());
+      } catch (e) {
+        failed.current?.((e as Error).message);
+      }
+    },
+    [track],
+  );
 
   // Re-attach to jobs still running server-side (started before navigating
   // away, or by the scheduler), so progress and busy state survive page changes.
@@ -50,7 +66,7 @@ export function useJobs(onSettled?: () => void) {
     setJobs((prev) => prev.filter((j) => j.id !== id));
   }, []);
 
-  const active = jobs.filter((j) => !isFinished(j));
+  const active = jobs.filter(isActive);
 
   useEffect(() => {
     if (active.length === 0) return;
@@ -64,7 +80,7 @@ export function useJobs(onSettled?: () => void) {
       setJobs((prev) =>
         prev.map((j) => updated.find((u) => u.id === j.id) ?? j),
       );
-      if (updated.some(isFinished)) settled.current?.();
+      if (updated.some((j) => !isActive(j))) settled.current?.();
     }, POLL_MS);
 
     return () => {
@@ -74,5 +90,5 @@ export function useJobs(onSettled?: () => void) {
     // Re-arm whenever the set of unfinished jobs changes.
   }, [active.map((j) => j.id).join(",")]);
 
-  return { jobs, track, dismiss, busy: active.length > 0 };
+  return { jobs, track, start, dismiss, busy: active.length > 0 };
 }

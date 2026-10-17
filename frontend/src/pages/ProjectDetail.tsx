@@ -18,9 +18,10 @@ import { api } from "../api";
 import { useConfirm, type ConfirmOptions } from "../components/ConfirmDialog";
 import ImageName from "../components/ImageName";
 import LogPanel from "../components/LogPanel";
-import { useJobs } from "../hooks/useJobs";
+import { formatPorts } from "../format";
+import { isActive, useJobs } from "../hooks/useJobs";
 import { imageRepo, retagImage } from "../imageRef";
-import type { Job, Project, UpdateSummary } from "../types";
+import type { Project, UpdateSummary } from "../types";
 
 // CodeMirror is by far the heaviest dependency in the bundle and is only
 // needed on this page, so it loads on demand.
@@ -49,10 +50,6 @@ const CONFIRM: Partial<Record<Action, ConfirmOptions>> = {
 // Must match the job label built by the backend route (`Up web`, `Pull web`).
 function actionLabel(action: Action, project: string): string {
   return `${action[0].toUpperCase()}${action.slice(1)} ${project}`;
-}
-
-function isRunning(job: Job): boolean {
-  return job.status === "pending" || job.status === "running";
 }
 
 export default function ProjectDetail() {
@@ -120,21 +117,15 @@ export default function ProjectDetail() {
 
   // Compose actions run as background jobs. Container state almost always
   // changes, so the project reloads when one ends.
-  const { jobs, track } = useJobs(() => reloadProject().catch(() => undefined));
+  const { jobs, start } = useJobs(() => reloadProject().catch(() => undefined), setActionError);
 
   const runAction = useCallback(
     async (action: Action) => {
       const question = CONFIRM[action];
       if (question && !(await confirm(question))) return;
-
-      setActionError(null);
-      try {
-        track(await api.runAction(id, action));
-      } catch (e) {
-        setActionError((e as Error).message);
-      }
+      await start(() => api.runAction(id, action));
     },
-    [id, track],
+    [id, start],
   );
 
   const applyTag = (tag: string) => {
@@ -175,7 +166,7 @@ export default function ProjectDetail() {
   );
   const lastJob = actionJobs[actionJobs.length - 1];
   const busyAction = ACTIONS.find((a) =>
-    actionJobs.some((j) => isRunning(j) && j.label === actionLabel(a, project.name)),
+    actionJobs.some((j) => isActive(j) && j.label === actionLabel(a, project.name)),
   );
 
   return (
@@ -216,12 +207,12 @@ export default function ProjectDetail() {
         {lastJob && (
           <div
             className={
-              isRunning(lastJob) ? "output" : lastJob.status === "success" ? "output ok" : "output fail"
+              isActive(lastJob) ? "output" : lastJob.status === "success" ? "output ok" : "output fail"
             }
           >
             <div className="output-header">
               <strong>{lastJob.label}</strong>
-              <span>{isRunning(lastJob) ? `${lastJob.status}…` : lastJob.status}</span>
+              <span>{isActive(lastJob) ? `${lastJob.status}…` : lastJob.status}</span>
             </div>
             {lastJob.output && <pre>{lastJob.output}</pre>}
             {lastJob.error && !lastJob.output && <pre className="stderr">{lastJob.error}</pre>}
@@ -265,10 +256,7 @@ export default function ProjectDetail() {
                     </span>
                   </td>
                   <td>
-                    {c.ports
-                      .filter((p) => p.public_port)
-                      .map((p) => `${p.public_port}→${p.private_port}/${p.protocol}`)
-                      .join(", ") || "—"}
+                    {formatPorts(c.ports)}
                   </td>
                 </tr>
               ))}

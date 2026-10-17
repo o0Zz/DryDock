@@ -9,12 +9,12 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "../api";
 import { useConfirm } from "../components/ConfirmDialog";
 import JobList from "../components/JobList";
-import { formatBytes } from "../components/Meter";
 import ScanBadge from "../components/ScanBadge";
 import ScanFindings from "../components/ScanFindings";
-import UpdateBadge from "../components/UpdateBadge";
+import UpdateBadge, { hasUpdate } from "../components/UpdateBadge";
+import { formatBytes, formatDate } from "../format";
 import { useJobs } from "../hooks/useJobs";
-import type { Job, LocalImage, ScanDetail, ScanSummary, UpdateSummary } from "../types";
+import type { LocalImage, ScanDetail, ScanSummary, UpdateSummary } from "../types";
 
 interface Row {
   image: string;
@@ -37,7 +37,7 @@ function rank(row: Row): [number, number, number, string] {
   return [
     row.scan?.critical ? 0 : 1,
     row.scan?.high ? 0 : 1,
-    row.update?.update_available || row.update?.newest_tag ? 0 : 1,
+    hasUpdate(row.update) ? 0 : 1,
     row.image,
   ];
 }
@@ -93,7 +93,7 @@ export default function Images() {
     load();
     loadImages();
   }, [load, loadImages]);
-  const { jobs, track, dismiss, busy } = useJobs(onJobSettled);
+  const { jobs, start, dismiss, busy } = useJobs(onJobSettled, setError);
 
   useEffect(() => {
     load();
@@ -139,18 +139,6 @@ export default function Images() {
         return ac - bc || ah - bh || au - bu || an.localeCompare(bn);
       });
   }, [scans, updates, running, composeImages, localImages, filter]);
-
-  const start = useCallback(
-    async (fn: () => Promise<Job>) => {
-      setError(null);
-      try {
-        track(await fn());
-      } catch (e) {
-        setError((e as Error).message);
-      }
-    },
-    [track],
-  );
 
   const remove = useCallback(
     async (fn: () => Promise<string>) => {
@@ -343,7 +331,7 @@ export default function Images() {
                   <UpdateBadge update={row.update} />
                 </td>
                 <td className="muted">
-                  {row.scan ? new Date(row.scan.scanned_at).toLocaleString() : "never"}
+                  {formatDate(row.scan?.scanned_at, "never")}
                 </td>
                 <td>
                   <div className="button-row inline">
@@ -398,7 +386,7 @@ function FindingsPanel({ detail, onClose }: { detail: ScanDetail; onClose: () =>
         <div>
           <strong>{detail.image}</strong>{" "}
           <span className="muted">
-            — scanned {new Date(detail.scanned_at).toLocaleString()}
+            — scanned {formatDate(detail.scanned_at)}
           </span>
         </div>
         <button type="button" className="secondary small" onClick={onClose}>

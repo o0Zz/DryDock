@@ -1,46 +1,24 @@
-import {
-  ArrowUpCircle,
-  Circle,
-  Play,
-  RefreshCw,
-  RotateCw,
-  ShieldCheck,
-  Square,
-  SquareTerminal,
-  Trash2,
-  type LucideIcon,
-} from "lucide-react";
-import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { ArrowUpCircle, Circle, RefreshCw, ShieldCheck, SquareTerminal, Trash2 } from "lucide-react";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { api } from "../api";
 import { useAuth } from "../auth";
 import ImageName from "../components/ImageName";
 import JobList from "../components/JobList";
-import Meter, { formatBytes } from "../components/Meter";
 import { useConfirm } from "../components/ConfirmDialog";
+import Meter from "../components/Meter";
 import ScanBadge from "../components/ScanBadge";
 import UpdateAction from "../components/UpdateAction";
 import { useContainerStats } from "../hooks/useContainerStats";
-import { useJobs } from "../hooks/useJobs";
-import type {
-  Container,
-  ContainerStats,
-  Job,
-  Project,
-  ScanSummary,
-  UpdateSummary,
-} from "../types";
-
-type Action = "start" | "stop" | "restart";
-const ACTIONS: Action[] = ["start", "stop", "restart"];
-const ACTION_ICONS: Record<Action, LucideIcon> = {
-  start: Play,
-  stop: Square,
-  restart: RotateCw,
-};
-
-// xterm.js is heavy; only load it when a console is opened.
-const ContainerConsole = lazy(() => import("../components/ContainerConsole"));
+import {
+  CONTAINER_ACTION_ICONS,
+  CONTAINER_ACTIONS,
+  ContainerConsole,
+  type ContainerAction,
+} from "../containerActions";
+import { formatBytes, formatDate, formatPorts } from "../format";
+import { isActive, useJobs } from "../hooks/useJobs";
+import type { Container, ContainerStats, Project, ScanSummary, UpdateSummary } from "../types";
 
 export default function Containers() {
   const [containers, setContainers] = useState<Container[] | null>(null);
@@ -90,27 +68,15 @@ export default function Containers() {
     refresh();
   }, [loadScans, refresh]);
 
-  const { jobs, track, dismiss, busy: jobsRunning } = useJobs(onJobSettled);
+  const { jobs, track, start, dismiss, busy: jobsRunning } = useJobs(onJobSettled, setError);
 
   useEffect(() => {
     refresh();
     loadScans();
   }, [refresh, loadScans]);
 
-  const start = useCallback(
-    async (fn: () => Promise<Job>) => {
-      setError(null);
-      try {
-        track(await fn());
-      } catch (e) {
-        setError((e as Error).message);
-      }
-    },
-    [track],
-  );
-
   const runAction = useCallback(
-    async (id: string, action: Action) => {
+    async (id: string, action: ContainerAction) => {
       const key = `${id}:${action}`;
       setBusy(key);
       try {
@@ -152,7 +118,7 @@ export default function Containers() {
   const pendingImages = useMemo(() => {
     const images = new Set<string>();
     for (const job of jobs) {
-      if (job.status !== "pending" && job.status !== "running") continue;
+      if (!isActive(job)) continue;
       // tasks.py reports per-image progress as "Scanning <image>".
       const progress = /^Scanning (.+)$/.exec(job.message ?? "");
       if (progress) images.add(progress[1]);
@@ -221,21 +187,18 @@ export default function Containers() {
                 <td>
                   <Link
                     to={`/containers/${c.id}`}
-                    title={`Details, logs, CVEs and updates\nCreated ${new Date(c.created_at).toLocaleString()}`}
+                    title={`Details, logs, CVEs and updates\nCreated ${formatDate(c.created_at)}`}
                   >
                     {c.name}
                   </Link>
                 </td>
                 <td>
-                  <ImageName image={c.image} version={c.image_version} />
-{" "}
+                  <ImageName image={c.image} version={c.image_version} />{" "}
                   <UpdateAction
                     container={c}
                     update={updates[c.image]}
                     project={projects[c.id]}
-                    pending={jobs.some(
-                      (j) => j.label === `Update ${c.name}` && !["success", "error"].includes(j.status),
-                    )}
+                    pending={jobs.some((j) => j.label === `Update ${c.name}` && isActive(j))}
                     onJob={track}
                     onError={setError}
                   />
@@ -258,10 +221,7 @@ export default function Containers() {
                 </td>
                 <StatsCells stats={stats[c.id]} />
                 <td>
-                  {c.ports
-                    .filter((p) => p.public_port)
-                    .map((p) => `${p.public_port}→${p.private_port}/${p.protocol}`)
-                    .join(", ") || "—"}
+                  {formatPorts(c.ports)}
                 </td>
                 <td>
                   {c.compose_project
@@ -270,8 +230,8 @@ export default function Containers() {
                 </td>
                 <td>
                   <div className="button-row inline">
-                    {ACTIONS.map((a) => {
-                      const Icon = ACTION_ICONS[a];
+                    {CONTAINER_ACTIONS.map((a) => {
+                      const Icon = CONTAINER_ACTION_ICONS[a];
                       return (
                         <button
                           key={a}

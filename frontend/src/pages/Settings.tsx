@@ -2,11 +2,8 @@ import { KeyRound, RefreshCw, Save } from "lucide-react";
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { api } from "../api";
 import { useAuth } from "../auth";
+import { formatDate } from "../format";
 import type { AppSettings, Job, SettingsPatch } from "../types";
-
-function when(value: string | null | undefined): string {
-  return value ? new Date(value).toLocaleString() : "not scheduled";
-}
 
 export default function Settings() {
   const { user } = useAuth();
@@ -109,7 +106,7 @@ export default function Settings() {
                 onChange={(e) => edit({ scan_interval_hours: Number(e.target.value) })}
               />
             </label>
-            <div className="muted">Next run: {when(settings.next_scan_run)}</div>
+            <div className="muted">Next run: {formatDate(settings.next_scan_run, "not scheduled")}</div>
           </div>
         </section>
 
@@ -139,7 +136,7 @@ export default function Settings() {
                 onChange={(e) => edit({ update_check_interval_hours: Number(e.target.value) })}
               />
             </label>
-            <div className="muted">Next run: {when(settings.next_update_run)}</div>
+            <div className="muted">Next run: {formatDate(settings.next_update_run, "not scheduled")}</div>
           </div>
         </section>
 
@@ -247,7 +244,7 @@ export default function Settings() {
                   <td className="muted">{job.trigger}</td>
                   <td className="muted">{job.error ?? job.message ?? "—"}</td>
                   <td className="muted">
-                    {job.started_at ? new Date(job.started_at).toLocaleString() : "—"}
+                    {formatDate(job.started_at)}
                   </td>
                 </tr>
               ))}

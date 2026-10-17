@@ -3,45 +3,39 @@ import {
   ChevronLeft,
   Circle,
   Info,
-  Play,
   RefreshCw,
-  RotateCw,
   ScrollText,
   ShieldAlert,
   ShieldCheck,
-  Square,
   SquareTerminal,
-  type LucideIcon,
 } from "lucide-react";
-import { lazy, Suspense, useCallback, useEffect, useState, type ReactNode } from "react";
+import { Suspense, useCallback, useEffect, useState, type ReactNode } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { api } from "../api";
 import { useAuth } from "../auth";
 import ImageName from "../components/ImageName";
 import JobList from "../components/JobList";
 import LogPanel from "../components/LogPanel";
-import Meter, { formatBytes } from "../components/Meter";
+import Meter from "../components/Meter";
 import ScanFindings from "../components/ScanFindings";
 import UpdateAction from "../components/UpdateAction";
-import UpdateBadge from "../components/UpdateBadge";
+import UpdateBadge, { hasUpdate } from "../components/UpdateBadge";
+import {
+  CONTAINER_ACTION_ICONS,
+  CONTAINER_ACTIONS,
+  ContainerConsole,
+  type ContainerAction,
+} from "../containerActions";
+import { formatBytes, formatDate } from "../format";
 import { useContainerStats } from "../hooks/useContainerStats";
 import { useJobs } from "../hooks/useJobs";
 import type {
   ContainerDetail as Detail,
-  Job,
   Project,
   ScanDetail,
   ScanSummary,
   UpdateSummary,
 } from "../types";
-
-type Action = "start" | "stop" | "restart";
-const ACTIONS: Action[] = ["start", "stop", "restart"];
-const ACTION_ICONS: Record<Action, LucideIcon> = {
-  start: Play,
-  stop: Square,
-  restart: RotateCw,
-};
 
 const TABS = [
   { key: "overview", label: "Overview", icon: Info },
@@ -50,13 +44,6 @@ const TABS = [
   { key: "updates", label: "Updates", icon: ArrowUpCircle },
 ] as const;
 type Tab = (typeof TABS)[number]["key"];
-
-// xterm.js is heavy; only load it when a console is opened.
-const ContainerConsole = lazy(() => import("../components/ContainerConsole"));
-
-function when(value: string | null): string {
-  return value ? new Date(value).toLocaleString() : "—";
-}
 
 export default function ContainerDetail() {
   const { id = "" } = useParams();
@@ -71,7 +58,7 @@ export default function ContainerDetail() {
   const [project, setProject] = useState<Project | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState<Action | null>(null);
+  const [busy, setBusy] = useState<ContainerAction | null>(null);
   const [showConsole, setShowConsole] = useState(false);
 
   const load = useCallback(() => {
@@ -94,7 +81,7 @@ export default function ContainerDetail() {
   }, [id, load]);
 
   const runAction = useCallback(
-    async (action: Action) => {
+    async (action: ContainerAction) => {
       setBusy(action);
       setError(null);
       try {
@@ -134,8 +121,8 @@ export default function ContainerDetail() {
           )}
         </h1>
         <div className="button-row inline">
-          {ACTIONS.map((a) => {
-            const Icon = ACTION_ICONS[a];
+          {CONTAINER_ACTIONS.map((a) => {
+            const Icon = CONTAINER_ACTION_ICONS[a];
             return (
               <button
                 key={a}
@@ -274,9 +261,9 @@ function OverviewTab({ detail, isAdmin }: { detail: Detail; isAdmin: boolean }) 
       <Facts
         rows={[
           ["Status", detail.status],
-          ["Created", when(detail.created_at)],
-          ["Started", when(detail.started_at)],
-          ["Finished", when(detail.finished_at)],
+          ["Created", formatDate(detail.created_at)],
+          ["Started", formatDate(detail.started_at)],
+          ["Finished", formatDate(detail.finished_at)],
           ["Exit code", detail.exit_code ?? "—"],
           ["Restart policy", detail.restart_policy || "no"],
           ["Restart count", detail.restart_count],
@@ -462,18 +449,9 @@ function CvesTab({ image }: { image: string }) {
       .catch((e: Error) => setError(e.message));
   }, [image, openScan]);
 
-  const { jobs, track, dismiss, busy } = useJobs(load);
+  const { jobs, start, dismiss, busy } = useJobs(load, setError);
 
   useEffect(load, [load]);
-
-  const rescan = async () => {
-    setError(null);
-    try {
-      track(await api.scanImage(image));
-    } catch (e) {
-      setError((e as Error).message);
-    }
-  };
 
   return (
     <>
@@ -481,7 +459,7 @@ function CvesTab({ image }: { image: string }) {
         <div className="muted">
           {scan && !scan.error ? (
             <>
-              Scanned {when(scan.scanned_at)} — <strong>{scan.critical}</strong> critical,{" "}
+              Scanned {formatDate(scan.scanned_at)} — <strong>{scan.critical}</strong> critical,{" "}
               <strong>{scan.high}</strong> high, {scan.medium} medium, {scan.low} low
               {scan.fixable > 0 && ` · ${scan.fixable} fixable`}
             </>
@@ -489,7 +467,7 @@ function CvesTab({ image }: { image: string }) {
             "Image not scanned yet."
           ) : null}
         </div>
-        <button type="button" className="secondary" disabled={busy} onClick={rescan}>
+        <button type="button" className="secondary" disabled={busy} onClick={() => start(() => api.scanImage(image))}>
           <ShieldCheck size={15} /> {history?.length ? "Rescan" : "Scan now"}
         </button>
       </div>
@@ -511,7 +489,7 @@ function CvesTab({ image }: { image: string }) {
                 <tr key={h.id} className={scan?.id === h.id ? "selected" : undefined}>
                   <td>
                     <button type="button" className="linklike" onClick={() => openScan(h)}>
-                      {when(h.scanned_at)}
+                      {formatDate(h.scanned_at)}
                     </button>
                   </td>
                   <td>
@@ -556,20 +534,11 @@ function UpdatesTab({ container, project }: { container: Detail; project: Projec
       .catch(() => undefined);
   }, [load, container.name, container.id, navigate]);
 
-  const { jobs, track, dismiss, busy } = useJobs(onJobSettled);
+  const { jobs, track, start, dismiss, busy } = useJobs(onJobSettled, setError);
 
   useEffect(load, [load]);
 
-  const check = async (fn: () => Promise<Job>) => {
-    setError(null);
-    try {
-      track(await fn());
-    } catch (e) {
-      setError((e as Error).message);
-    }
-  };
-
-  const outdated = !!update && (update.update_available || !!update.newest_tag);
+  const outdated = hasUpdate(update);
 
   return (
     <>
@@ -589,7 +558,7 @@ function UpdatesTab({ container, project }: { container: Detail; project: Projec
           type="button"
           className="secondary"
           disabled={busy}
-          onClick={() => check(() => api.checkUpdates([image]))}
+          onClick={() => start(() => api.checkUpdates([image]))}
         >
           <ArrowUpCircle size={15} /> Check now
         </button>
@@ -604,7 +573,7 @@ function UpdatesTab({ container, project }: { container: Detail; project: Projec
       ) : (
         <Facts
           rows={[
-            ["Checked", when(update.checked_at)],
+            ["Checked", formatDate(update.checked_at)],
             ["Local digest", update.local_digest ? <code>{update.local_digest}</code> : "—"],
             ["Remote digest", update.remote_digest ? <code>{update.remote_digest}</code> : "—"],
             ["Same tag rebuilt", update.update_available ? "yes — pull to update" : "no"],

@@ -4,7 +4,8 @@ import { Link } from "react-router-dom";
 import { api } from "../api";
 import { useConfirm } from "../components/ConfirmDialog";
 import JobList from "../components/JobList";
-import { useJobs } from "../hooks/useJobs";
+import { formatDate } from "../format";
+import { isActive, useJobs } from "../hooks/useJobs";
 import type { Volume } from "../types";
 
 export default function Volumes() {
@@ -33,7 +34,7 @@ export default function Volumes() {
   // (scans), so only this page's own kind is shown.
   const { jobs, track, dismiss } = useJobs(refresh);
   const pruneJobs = jobs.filter((j) => j.kind === "volume_prune");
-  const pruning = pruneJobs.some((j) => j.status === "pending" || j.status === "running");
+  const pruning = pruneJobs.some(isActive);
 
   async function run(fn: () => Promise<unknown>, ok?: string) {
     setBusy(true);
@@ -170,7 +171,7 @@ export default function Volumes() {
                   </td>
                   <td>{v.compose_project ?? "—"}</td>
                   <td className="muted">
-                    {v.created_at ? new Date(v.created_at).toLocaleString() : "—"}
+                    {formatDate(v.created_at)}
                   </td>
                   <td>
                     <button
