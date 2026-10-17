@@ -27,7 +27,7 @@ backend/
     schemas/           Pydantic API models
     services/          logic: docker_service, compose_service, repo_service, trivy_service,
                        registry_service, update_service, job_service, tasks, scheduler_service,
-                       settings_service, notify_service
+                       settings_service, notify_service, history_service, host_service
   migrations/versions/ Alembic revisions
   tests/               pytest
 frontend/src/
@@ -48,6 +48,8 @@ Dockerfile             3-stage build (frontend, backend venv, runtime with docke
   - The project ID is a hash of the file path.
   - Containers are matched to a project by the `com.docker.compose.project.config_files` label: the exact path first, then a path ending in the same repo-relative path (host and container mount roots differ), then by project name.
 - **Host paths** (`host_path_service`): the Docker daemon resolves bind-mount paths on the host, but Compose builds them from where DryDock sees the file (`/repo/...`). At startup DryDock reads the host source of its own `/repo` mount and creates a symlink at that host path pointing to `/repo`. Compose then runs through that path, so `./file` mounts resolve on the host. `DRYDOCK_REPO_HOST_PATH` overrides detection.
+- **Compose commands** (`compose_service`): DryDock passes `-f`, which turns off Compose's own override merge. So it adds `-f <stem>.override.y(a)ml` itself when that file sits next to the Compose file.
+  - `-p`: a canonical file (`docker-compose.yml` and friends) keeps Compose's default, the folder name. A freely named file (`media.yml`) gets its own name, so files in one folder (the repo root included) do not share a project. A running stack keeps the project name of its containers, so `down` still finds them. See `repo_service.compose_project_name`.
 - **Editing:** validate the YAML first, then back up to `/data/backups/<project-id>/`, then write. New stacks are created as `<repo>/<name>/docker-compose.yml`. The name must match `^[a-z0-9][a-z0-9_-]*$`.
 - **Background jobs** (`job_service`, `tasks`): anything slow (scans, update checks, container update, project compose actions, image and volume prunes) returns a job with status 202. Command output goes in `Job.output`. The UI polls `/api/jobs`. `useJobs` re-attaches to active jobs when a page opens. `JobsIndicator` in the topbar shows them from any page.
 - **Update checks** (`update_service`): two independent signals.
@@ -55,9 +57,12 @@ Dockerfile             3-stage build (frontend, backend venv, runtime with docke
   - Running version: `Container.image_version` comes from the `org.opencontainers.image.version` label (container labels include image labels, so no extra inspect). It is dropped when `ref.name` names another image, such as a version inherited from an ubuntu base. Many official Docker Hub images do not set it.
   - Newer tag: `registry_service` lists the registry's tags over the v2 API with an anonymous bearer token. Only tags of the same shape count (same prefix, same number of parts, same suffix), so prereleases and other variants are ignored. It reports the newest tag and the newest within the current major, and skips outlier majors (a jump of more than 3).
 - **Live data:** logs use SSE (`/api/logs/...`). Container stats are polled every 5s. The console is a WebSocket (`/api/containers/{id}/exec`).
+- **Dashboard:** `/api/dashboard` returns counts and the "needs attention" lists in one call. CVE and update counts only include tracked images (running or named in a Compose file), so replaced tags stop counting. Host facts come from `docker info`.
+  - Host load (`/api/dashboard/host`, polled every 5s) comes from `host_service`. It reads `/proc` and `/sys/class/thermal`. These are not namespaced, so inside the container they describe the host. Each value is `null` where missing (Windows dev, VMs without a sensor).
 - **Auth:** signed session cookie (Starlette `SessionMiddleware`), users table with an `is_admin` flag. A bootstrap admin is created on first start.
   - Admin only: settings writes, users, app logs, console, unmasked env values.
   - The console WebSocket is outside the HTTP auth dependency. It checks the session and the `Origin` header itself. Keep that check: other apps on the same host are same-site, so the browser sends them the cookie too.
+- **Trivy** runs with `--cache-dir <data>/trivy-cache`, so its DB survives the container being recreated.
 - **Database:** Alembic owns the schema. Startup upgrades to head and snapshots the database to `<data>/backups/db/` first (keeps 5). Never use `create_all`. See "Database migrations" below.
 - **API:** REST under `/api`; every router except `auth` and `/api/health` requires a session. FastAPI docs at `/docs` list all routes.
 
@@ -129,8 +134,6 @@ Kubernetes, Swarm, multi-host, RBAC beyond admin/user, plugins, an auto-update e
 
 ## Known gaps
 
-- Root-level Compose files share the Compose project name of the repo folder (no `-p` is passed). This can clash with stacks started from the host.
-- The Trivy DB cache is not on `/data`, so it is downloaded again after the container is recreated.
 - No registry credentials: private registries fail both update checks.
 - YAML backups cannot be browsed or restored from the UI yet.
 - `todo.txt`: multilanguage UI.

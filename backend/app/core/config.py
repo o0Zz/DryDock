@@ -35,6 +35,10 @@ class Settings(BaseSettings):
         return self.data_path / "backups"
 
     @property
+    def trivy_cache_path(self) -> Path:
+        return self.data_path / "trivy-cache"
+
+    @property
     def db_path(self) -> Path:
         return self.data_path / "drydock.db"
 

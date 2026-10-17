@@ -55,7 +55,9 @@ def _action_result(
 ) -> list[tuple[Path, str]]:
     calls: list[tuple[Path, str]] = []
 
-    def run_action(compose_path: Path, action: str) -> dict[str, str | int]:
+    def run_action(
+        compose_path: Path, action: str, *, project_name: str | None = None
+    ) -> dict[str, str | int]:
         calls.append((compose_path, action))
         return {"action": action, "exit_code": exit_code, "stdout": stdout, "stderr": stderr}
 
@@ -170,6 +172,7 @@ def project(monkeypatch: pytest.MonkeyPatch) -> Project:
         services=[],
     )
     monkeypatch.setattr(projects_api.repo_service, "discover_projects", lambda: [web])
+    monkeypatch.setattr(projects_api.repo_service, "attach_containers", lambda projects: projects)
     return web
 
 

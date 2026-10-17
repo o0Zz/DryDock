@@ -10,7 +10,7 @@ import Meter from "../components/Meter";
 import ScanBadge from "../components/ScanBadge";
 import UpdateAction from "../components/UpdateAction";
 import { useContainerStats } from "../hooks/useContainerStats";
-import { CONTAINER_ACTION_ICONS, CONTAINER_ACTIONS, ContainerConsole } from "../containerActions";
+import { CONTAINER_ACTION_ICONS, ContainerConsole, containerActionsFor } from "../containerActions";
 import { formatBytes, formatDate, formatPorts } from "../format";
 import { isActive, useJobs } from "../hooks/useJobs";
 import type {
@@ -239,7 +239,7 @@ export default function Containers() {
                 </td>
                 <td>
                   <div className="button-row inline">
-                    {CONTAINER_ACTIONS.map((action) => {
+                    {containerActionsFor(container.state).map((action) => {
                       const Icon = CONTAINER_ACTION_ICONS[action];
                       return (
                         <button

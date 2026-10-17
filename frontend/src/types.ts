@@ -8,7 +8,7 @@ export interface User {
 
 export type ProjectAction = "up" | "down" | "pull" | "restart" | "stop";
 
-export type ContainerAction = "start" | "stop" | "restart";
+export type ContainerAction = "start" | "stop" | "restart" | "pause" | "unpause" | "kill";
 
 export interface UserPatch {
   password?: string;
@@ -237,12 +237,48 @@ export type SettingsPatch = Partial<
   >
 >;
 
+export interface HostInfo {
+  os: string | null;
+  kernel: string | null;
+  architecture: string | null;
+  docker_version: string | null;
+  cpus: number | null;
+  memory_total: number | null;
+}
+
+/** Live host load; a field is null where the host does not expose it. */
+export interface HostUsage {
+  cpu_percent: number | null;
+  load_1m: number | null;
+  memory_total: number | null;
+  memory_used: number | null;
+  uptime_seconds: number | null;
+  temperature_c: number | null;
+}
+
+export interface ContainerAlert {
+  id: string;
+  name: string;
+  status: string;
+}
+
+export interface ImageRisk {
+  image: string;
+  critical: number;
+  high: number;
+}
+
+export interface ImageUpdate {
+  image: string;
+  newest_tag: string | null;
+  rebuilt: boolean;
+}
+
 export interface DashboardStats {
   projects: number;
   services: number;
   containers_running: number;
   containers_stopped: number;
-  containers_unhealthy: number;
   volumes: number;
   images_tracked: number;
   images_scanned: number;
@@ -253,6 +289,10 @@ export interface DashboardStats {
   updates_available: number;
   last_scan_at: string | null;
   last_update_check_at: string | null;
+  unhealthy_containers: ContainerAlert[];
+  most_vulnerable: ImageRisk[];
+  updates: ImageUpdate[];
+  host: HostInfo | null;
   docker_error: string | null;
 }
 

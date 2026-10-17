@@ -20,7 +20,7 @@ import Meter from "../components/Meter";
 import ScanFindings from "../components/ScanFindings";
 import UpdateAction from "../components/UpdateAction";
 import UpdateBadge, { hasUpdate } from "../components/UpdateBadge";
-import { CONTAINER_ACTION_ICONS, CONTAINER_ACTIONS, ContainerConsole } from "../containerActions";
+import { CONTAINER_ACTION_ICONS, ContainerConsole, containerActionsFor } from "../containerActions";
 import { formatBytes, formatDate } from "../format";
 import { useContainerStats } from "../hooks/useContainerStats";
 import { useJobs } from "../hooks/useJobs";
@@ -121,7 +121,7 @@ export default function ContainerDetail() {
           )}
         </h1>
         <div className="button-row inline">
-          {CONTAINER_ACTIONS.map((action) => {
+          {containerActionsFor(detail.state).map((action) => {
             const Icon = CONTAINER_ACTION_ICONS[action];
             return (
               <button

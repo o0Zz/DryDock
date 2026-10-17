@@ -65,8 +65,10 @@ def _container_stream(container_id: str, tail: int) -> AsyncIterator[bytes]:
     return _pump(read_line, stream.close, container_id)
 
 
-def _project_stream(compose_path: Path, tail: int, label: str) -> AsyncIterator[bytes]:
-    process = compose_service.stream_logs(compose_path, tail=tail)
+def _project_stream(
+    compose_path: Path, tail: int, label: str, project_name: str | None
+) -> AsyncIterator[bytes]:
+    process = compose_service.stream_logs(compose_path, tail=tail, project_name=project_name)
 
     def read_line() -> bytes | None:
         assert process.stdout is not None
@@ -105,9 +107,15 @@ async def stream_project_logs(
     project = repo_service.find_project(project_id)
     if project is None:
         raise HTTPException(status_code=404, detail="Project not found")
+    project = repo_service.attach_containers([project])[0]
 
     try:
-        stream = _project_stream(Path(project.compose_path), tail, project.name)
+        stream = _project_stream(
+            Path(project.compose_path),
+            tail,
+            project.name,
+            repo_service.compose_project_name(project),
+        )
     except compose_service.ComposeError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 

@@ -54,9 +54,13 @@ def run_action(project_id: str, action: str) -> Job:
     """Queue `docker compose <action>`; a pull or first `up` can take minutes."""
     if action not in compose_service.ALLOWED_ACTIONS:
         raise HTTPException(status_code=400, detail=f"Unsupported action: {action}")
-    project = _find_project(project_id)
+    project = repo_service.attach_containers([_find_project(project_id)])[0]
     return job_service.submit(
         JobKind.PROJECT_ACTION,
         f"{action.capitalize()} {project.name}",
-        tasks.project_action_runner(Path(project.compose_path), action),
+        tasks.project_action_runner(
+            Path(project.compose_path),
+            action,
+            project_name=repo_service.compose_project_name(project),
+        ),
     )

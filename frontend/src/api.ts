@@ -9,6 +9,7 @@ import type {
   ContainerDetail,
   ContainerStats,
   DashboardStats,
+  HostUsage,
   Job,
   LocalImage,
   Project,
@@ -95,6 +96,7 @@ export const api = {
 
   // dashboard
   dashboard: () => request<DashboardStats>("/api/dashboard"),
+  hostUsage: () => request<HostUsage>("/api/dashboard/host"),
 
   // projects / containers
   listProjects: () => request<Project[]>("/api/projects"),

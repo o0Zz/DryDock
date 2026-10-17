@@ -232,12 +232,14 @@ def container_update_runner(
     return run
 
 
-def project_action_runner(compose_path: Path, action: str) -> JobRunner:
+def project_action_runner(
+    compose_path: Path, action: str, *, project_name: str | None = None
+) -> JobRunner:
     """Build a job body that runs `docker compose <action>` on a whole project."""
 
     def run(ctx: JobContext) -> None:
         ctx.set_total(1, f"docker compose {action}")
-        result = compose_service.run_action(compose_path, action)
+        result = compose_service.run_action(compose_path, action, project_name=project_name)
         # docker compose writes its progress to stderr, so keep both streams.
         ctx.set_output("\n".join(text for text in (result["stdout"], result["stderr"]) if text))
         if result["exit_code"] != 0:

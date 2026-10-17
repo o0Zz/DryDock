@@ -167,6 +167,23 @@ def attach_containers(projects: list[Project]) -> list[Project]:
     return projects
 
 
+def compose_project_name(project: Project) -> str | None:
+    """The `-p` to pass for a project, or None to keep Compose's default (the folder name).
+
+    Freely named files (`media.yml`) get their own name, otherwise every such file in a
+    folder, the repo root included, shares one Compose project. A stack that is already
+    running keeps the name it was started with, so `down` still finds its containers.
+    Call with containers attached.
+    """
+    running = next((c.compose_project for c in project.containers if c.compose_project), None)
+    if running:
+        return running
+    if Path(project.compose_path).name in COMPOSE_FILENAMES:
+        return None
+    # Compose accepts lowercase letters, digits, '-' and '_', starting with a letter or digit.
+    return re.sub(r"[^a-z0-9_-]", "", project.name.lower()).lstrip("_-") or None
+
+
 def project_for_container(container_id: str) -> Project | None:
     """The repo project a container was deployed from, if any."""
     for project in attach_containers(discover_projects()):

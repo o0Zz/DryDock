@@ -3,6 +3,18 @@ import { useEffect, useRef, useState } from "react";
 
 type Status = "connecting" | "open" | "closed" | "error";
 
+// Older lines are dropped so a long session does not keep growing memory.
+const MAX_LINES = 5000;
+// Within this many pixels of the end counts as "at the bottom".
+const FOLLOW_SLACK = 24;
+// SGR colours and other CSI sequences; rendered as text they are noise.
+const ANSI_PATTERN = /\u001b\[[0-9;?]*[ -/]*[@-~]/g;
+
+function appendLine(previous: string[], line: string): string[] {
+  const next = [...previous, line.replace(ANSI_PATTERN, "")];
+  return next.length > MAX_LINES ? next.slice(-MAX_LINES) : next;
+}
+
 /** Live log viewer backed by a Server-Sent Events endpoint. Floats over the
  * page by default; `inline` renders it in the page flow instead. */
 export default function LogPanel({
@@ -21,20 +33,23 @@ export default function LogPanel({
 }) {
   const [lines, setLines] = useState<string[]>([]);
   const [status, setStatus] = useState<Status>("connecting");
-  const bottomRef = useRef<HTMLDivElement | null>(null);
+  const bodyRef = useRef<HTMLPreElement | null>(null);
+  // Follow new lines only while the user has not scrolled up to read back.
+  const followRef = useRef(true);
 
   useEffect(() => {
     setLines([]);
     setStatus("connecting");
+    followRef.current = true;
     const eventSource = new EventSource(url);
 
     eventSource.addEventListener("open", () => setStatus("open"));
     eventSource.addEventListener("close", () => setStatus("closed"));
     eventSource.addEventListener("error", (event: MessageEvent) => {
       setStatus("error");
-      if (event.data) setLines((previous) => [...previous, `[error] ${event.data}`]);
+      if (event.data) setLines((previous) => appendLine(previous, `[error] ${event.data}`));
     });
-    eventSource.onmessage = (event) => setLines((previous) => [...previous, event.data]);
+    eventSource.onmessage = (event) => setLines((previous) => appendLine(previous, event.data));
     eventSource.onerror = () => setStatus("error");
 
     return () => eventSource.close();
@@ -46,8 +61,15 @@ export default function LogPanel({
     : lines;
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ block: "end" });
-  }, [shownLines.length]);
+    const body = bodyRef.current;
+    if (body && followRef.current) body.scrollTop = body.scrollHeight;
+  }, [shownLines]);
+
+  const onScroll = () => {
+    const body = bodyRef.current;
+    if (!body) return;
+    followRef.current = body.scrollHeight - body.scrollTop - body.clientHeight < FOLLOW_SLACK;
+  };
 
   return (
     <div className={inline ? "log-panel inline" : "log-panel"}>
@@ -62,9 +84,8 @@ export default function LogPanel({
           </button>
         )}
       </div>
-      <pre className="log-body">
+      <pre className="log-body" ref={bodyRef} onScroll={onScroll}>
         {shownLines.join("\n")}
-        <div ref={bottomRef} />
       </pre>
     </div>
   );

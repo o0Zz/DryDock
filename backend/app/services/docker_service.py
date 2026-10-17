@@ -52,6 +52,10 @@ class ContainerRunning(Exception):
     """Raised when trying to remove a container that is still running."""
 
 
+class ContainerConflict(Exception):
+    """Raised when Docker refuses an action in the container's current state."""
+
+
 class ImageNotFound(Exception):
     """Raised when an image reference is not present in the local image store."""
 
@@ -280,10 +284,17 @@ def get_container_detail(container_id: str, *, privileged: bool) -> ContainerDet
 
 
 def perform_action(container_id: str, action: str) -> None:
-    allowed = {"start", "stop", "restart"}
+    allowed = {"start", "stop", "restart", "kill", "pause", "unpause"}
     if action not in allowed:
         raise ValueError(f"Unsupported action: {action}")
-    getattr(_get_container(container_id), action)()
+    container = _get_container(container_id)
+    try:
+        getattr(container, action)()
+    except APIError as exc:
+        # 409 Conflict: e.g. kill or pause on a container that is not running.
+        if exc.response is not None and exc.response.status_code == 409:
+            raise ContainerConflict(f"cannot {action} {container.name}: {exc.explanation}") from exc
+        raise DockerUnavailable(str(exc)) from exc
 
 
 def remove_container(container_id: str) -> None:

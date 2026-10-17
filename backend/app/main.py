@@ -109,6 +109,7 @@ _ERROR_STATUS: dict[type[Exception], tuple[int, str]] = {
     docker_service.ImageInUse: (409, "{}"),
     docker_service.VolumeInUse: (409, "{}"),
     docker_service.ContainerRunning: (409, "{}"),
+    docker_service.ContainerConflict: (409, "{}"),
     compose_service.ComposeError: (400, "{}"),
     compose_service.ComposeExists: (409, "{}"),
 }

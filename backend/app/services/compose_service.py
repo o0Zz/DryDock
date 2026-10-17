@@ -71,8 +71,21 @@ def create_compose(name: str, content: str) -> Path:
     return compose_path
 
 
+def _override_path(compose_path: Path) -> Path | None:
+    """The `<stem>.override.y(a)ml` next to a Compose file, if any. Passing -f turns
+    off Compose's own override merge, so it has to be added back explicitly."""
+    for suffix in (".yml", ".yaml"):
+        candidate = compose_path.with_name(f"{compose_path.stem}.override{suffix}")
+        if candidate.is_file():
+            return candidate
+    return None
+
+
 def _command(compose_path: Path, args: list[str], project_name: str | None = None) -> list[str]:
-    command = ["docker", "compose", "-f", str(compose_path)]
+    command = ["docker", "compose", "-f", str(host_path_service.to_host(compose_path))]
+    override = _override_path(compose_path)
+    if override is not None:
+        command += ["-f", str(host_path_service.to_host(override))]
     if project_name:
         command += ["-p", project_name]
     return command + args
@@ -86,7 +99,6 @@ def _compose(
     timeout: int = 300,
 ) -> subprocess.CompletedProcess[str]:
     # Through the host-path alias, so relative bind mounts resolve on the host.
-    compose_path = host_path_service.to_host(compose_path)
     command = _command(compose_path, args, project_name)
     logger.info("Running: %s", " ".join(command))
     try:
@@ -95,7 +107,7 @@ def _compose(
             capture_output=True,
             text=True,
             timeout=timeout,
-            cwd=compose_path.parent,
+            cwd=host_path_service.to_host(compose_path).parent,
         )
     except FileNotFoundError as exc:
         raise ComposeError("`docker` CLI not found on PATH") from exc
@@ -107,7 +119,7 @@ def _compose(
 PULL_TIMEOUT = 1800
 
 
-def run_action(compose_path: Path, action: str) -> dict:
+def run_action(compose_path: Path, action: str, *, project_name: str | None = None) -> dict:
     if action not in ALLOWED_ACTIONS:
         raise ComposeError(f"Unsupported action: {action}")
 
@@ -116,7 +128,7 @@ def run_action(compose_path: Path, action: str) -> dict:
         args.append("-d")
     # `up` pulls missing images too, so both can take as long as a pull.
     timeout = PULL_TIMEOUT if action in ("up", "pull") else 300
-    result = _compose(compose_path, args, timeout=timeout)
+    result = _compose(compose_path, args, project_name=project_name, timeout=timeout)
 
     return {
         "action": action,
@@ -150,21 +162,24 @@ def recreate_service(
     _check(result, "up")
 
 
-def stream_logs(compose_path: Path, *, tail: int = 200) -> subprocess.Popen[bytes]:
+def stream_logs(
+    compose_path: Path, *, tail: int = 200, project_name: str | None = None
+) -> subprocess.Popen[bytes]:
     """Follow the aggregated logs of a Compose project.
 
     Returns the running process; the caller owns it and must terminate it when
     the client goes away.
     """
-    compose_path = host_path_service.to_host(compose_path)
-    command = _command(compose_path, ["logs", "--follow", "--no-color", "--tail", str(tail)])
+    command = _command(
+        compose_path, ["logs", "--follow", "--no-color", "--tail", str(tail)], project_name
+    )
     logger.info("Streaming: %s", " ".join(command))
     try:
         return subprocess.Popen(  # noqa: S603 - args list, no shell
             command,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
-            cwd=compose_path.parent,
+            cwd=host_path_service.to_host(compose_path).parent,
         )
     except FileNotFoundError as exc:
         raise ComposeError("`docker` CLI not found on PATH") from exc

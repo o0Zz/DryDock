@@ -5,6 +5,8 @@ import logging
 import subprocess
 from dataclasses import dataclass, field
 
+from app.core.config import settings
+
 logger = logging.getLogger(__name__)
 
 # How long a single image scan may run before we give up (DB download + scan).
@@ -95,6 +97,9 @@ def scan_image(image: str) -> ScanResult:
         "json",
         "--timeout",
         f"{SCAN_TIMEOUT}s",
+        # On /data, so the vulnerability DB survives the container being recreated.
+        "--cache-dir",
+        str(settings.trivy_cache_path),
         image,
     ]
     logger.info("Scanning image %s with trivy", image)
