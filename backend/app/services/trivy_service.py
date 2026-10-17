@@ -15,15 +15,8 @@ SCAN_TIMEOUT = 600
 # Findings are sorted worst-first before the cap is applied.
 MAX_FINDINGS = 500
 
-_SEVERITY_KEYS = {
-    "CRITICAL": "critical",
-    "HIGH": "high",
-    "MEDIUM": "medium",
-    "LOW": "low",
-    "UNKNOWN": "unknown",
-}
-
-_SEVERITY_RANK = {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 3, "UNKNOWN": 4}
+# Worst first. Lowercased, these are also the count columns on Scan.
+SEVERITIES = ("CRITICAL", "HIGH", "MEDIUM", "LOW", "UNKNOWN")
 
 
 class TrivyError(Exception):
@@ -49,7 +42,7 @@ class ScanResult:
 
 
 def _parse(payload: dict) -> ScanResult:
-    counts = {key: 0 for key in _SEVERITY_KEYS.values()}
+    counts = {severity.lower(): 0 for severity in SEVERITIES}
     counts["fixable"] = 0
     findings: list[Finding] = []
 
@@ -57,10 +50,9 @@ def _parse(payload: dict) -> ScanResult:
         target = result.get("Target")
         for vuln in result.get("Vulnerabilities") or []:
             severity = (vuln.get("Severity") or "").upper()
-            key = _SEVERITY_KEYS.get(severity)
-            if key is None:
+            if severity not in SEVERITIES:
                 continue
-            counts[key] += 1
+            counts[severity.lower()] += 1
             fixed = vuln.get("FixedVersion") or None
             if fixed:
                 counts["fixable"] += 1
@@ -80,7 +72,7 @@ def _parse(payload: dict) -> ScanResult:
     # Worst first, then fixable ones ahead of unfixable, then stable by CVE id.
     findings.sort(
         key=lambda f: (
-            _SEVERITY_RANK.get(f.severity, 9),
+            SEVERITIES.index(f.severity),
             0 if f.fixed_version else 1,
             f.vulnerability_id,
         )

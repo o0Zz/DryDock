@@ -88,11 +88,7 @@ def _project_stream(compose_path: Path, tail: int, label: str) -> AsyncIterator[
 async def stream_container_logs(
     container_id: str, tail: int = Query(default=200, ge=0, le=10_000)
 ) -> StreamingResponse:
-    try:
-        docker_service.get_container(container_id)
-    except docker_service.DockerUnavailable as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-
+    docker_service.get_container(container_id)
     return StreamingResponse(
         _container_stream(container_id, tail),
         media_type="text/event-stream",
@@ -104,9 +100,7 @@ async def stream_container_logs(
 async def stream_project_logs(
     project_id: str, tail: int = Query(default=200, ge=0, le=10_000)
 ) -> StreamingResponse:
-    project = next(
-        (p for p in repo_service.discover_projects() if p.id == project_id), None
-    )
+    project = repo_service.find_project(project_id)
     if project is None:
         raise HTTPException(status_code=404, detail="Project not found")
 

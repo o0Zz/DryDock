@@ -14,6 +14,7 @@ from docker.models.containers import Container as DockerContainer
 from docker.models.images import Image as DockerImage
 from docker.models.volumes import Volume as DockerVolume
 
+from app.schemas.common import PruneResult
 from app.schemas.container import (
     Container,
     ContainerDetail,
@@ -24,13 +25,21 @@ from app.schemas.container import (
     NetworkInfo,
 )
 from app.schemas.image import ContainerRef, Image
-from app.schemas.volume import PruneResult, Volume, VolumeUser
+from app.schemas.volume import Volume, VolumeUser
 
 logger = logging.getLogger(__name__)
 
 
 class DockerUnavailable(Exception):
     """Raised when the Docker daemon cannot be reached."""
+
+
+class DockerNotFound(DockerUnavailable):
+    """Raised when a container or volume does not exist.
+
+    A subclass so callers that only care whether Docker answered can keep
+    catching DockerUnavailable; the API maps this one to 404, the base to 503.
+    """
 
 
 class VolumeInUse(Exception):
@@ -59,6 +68,24 @@ def _client() -> docker.DockerClient:
 
 def _reset_client() -> None:
     _client.cache_clear()
+
+
+def _get_container(container_id: str) -> DockerContainer:
+    try:
+        return _client().containers.get(container_id)
+    except NotFound as exc:
+        raise DockerNotFound(f"container {container_id} not found") from exc
+    except DockerException as exc:
+        raise DockerUnavailable(str(exc)) from exc
+
+
+def _get_volume(name: str) -> DockerVolume:
+    try:
+        return _client().volumes.get(name)
+    except NotFound as exc:
+        raise DockerNotFound(f"volume {name} not found") from exc
+    except DockerException as exc:
+        raise DockerUnavailable(str(exc)) from exc
 
 
 def _parse_created(raw: str | int | float) -> datetime:
@@ -160,13 +187,7 @@ def list_containers(*, all_states: bool = True) -> list[Container]:
 
 
 def get_container(container_id: str) -> Container:
-    try:
-        c = _client().containers.get(container_id)
-    except NotFound as exc:
-        raise DockerUnavailable(f"container {container_id} not found") from exc
-    except DockerException as exc:
-        raise DockerUnavailable(str(exc)) from exc
-    return _to_schema(c)
+    return _to_schema(_get_container(container_id))
 
 
 MASKED_VALUE = "••••••"
@@ -188,13 +209,7 @@ def _as_list(value: str | list[str] | None) -> list[str] | None:
 def get_container_detail(container_id: str, *, privileged: bool) -> ContainerDetail:
     """Inspect one container. `privileged` (admin) reveals env values and
     includes the raw inspect payload; otherwise env values are masked."""
-    try:
-        c = _client().containers.get(container_id)
-    except NotFound as exc:
-        raise DockerUnavailable(f"container {container_id} not found") from exc
-    except DockerException as exc:
-        raise DockerUnavailable(str(exc)) from exc
-
+    c = _get_container(container_id)
     attrs = c.attrs or {}
     config = attrs.get("Config") or {}
     state = attrs.get("State") or {}
@@ -251,24 +266,12 @@ def perform_action(container_id: str, action: str) -> None:
     allowed = {"start", "stop", "restart"}
     if action not in allowed:
         raise ValueError(f"Unsupported action: {action}")
-    try:
-        c = _client().containers.get(container_id)
-    except NotFound as exc:
-        raise DockerUnavailable(f"container {container_id} not found") from exc
-    except DockerException as exc:
-        raise DockerUnavailable(str(exc)) from exc
-
-    getattr(c, action)()
+    getattr(_get_container(container_id), action)()
 
 
 def remove_container(container_id: str) -> None:
     """Remove a stopped container. Its named volumes are left alone."""
-    try:
-        c = _client().containers.get(container_id)
-    except NotFound as exc:
-        raise DockerUnavailable(f"container {container_id} not found") from exc
-    except DockerException as exc:
-        raise DockerUnavailable(str(exc)) from exc
+    c = _get_container(container_id)
     try:
         c.remove()
     except APIError as exc:
@@ -279,14 +282,7 @@ def remove_container(container_id: str) -> None:
 
 
 def stream_logs(container_id: str, *, tail: int = 200) -> Iterator[bytes]:
-    try:
-        c = _client().containers.get(container_id)
-    except NotFound as exc:
-        raise DockerUnavailable(f"container {container_id} not found") from exc
-    except DockerException as exc:
-        raise DockerUnavailable(str(exc)) from exc
-
-    return c.logs(stream=True, follow=True, tail=tail, timestamps=False)
+    return _get_container(container_id).logs(stream=True, follow=True, tail=tail, timestamps=False)
 
 
 # --- Stats -------------------------------------------------------------------
@@ -405,7 +401,7 @@ def open_exec(container_id: str, *, cols: int = 80, rows: int = 24) -> ExecSessi
         )["Id"]
         sock = api.exec_start(exec_id, tty=True, socket=True)
     except NotFound as exc:
-        raise DockerUnavailable(f"container {container_id} not found") from exc
+        raise DockerNotFound(f"container {container_id} not found") from exc
     except APIError as exc:
         # 409 Conflict: container is not running.
         raise DockerUnavailable(exc.explanation or str(exc)) from exc
@@ -419,11 +415,9 @@ def open_exec(container_id: str, *, cols: int = 80, rows: int = 24) -> ExecSessi
 def mount_source(container_id: str, destination: str) -> str | None:
     """Host path (or volume path) mounted at `destination` in a container."""
     try:
-        c = _client().containers.get(container_id)
-    except NotFound:
+        c = _get_container(container_id)
+    except DockerNotFound:
         return None
-    except DockerException as exc:
-        raise DockerUnavailable(str(exc)) from exc
     for mount in (c.attrs or {}).get("Mounts") or []:
         if mount.get("Destination") == destination:
             return mount.get("Source") or None
@@ -482,11 +476,9 @@ def list_volumes() -> list[Volume]:
 
 
 def get_volume(name: str) -> Volume:
+    v = _get_volume(name)
     try:
-        v = _client().volumes.get(name)
         usage = _volume_usage()
-    except NotFound as exc:
-        raise DockerUnavailable(f"volume {name} not found") from exc
     except DockerException as exc:
         raise DockerUnavailable(str(exc)) from exc
     return _volume_to_schema(v, usage)
@@ -501,12 +493,7 @@ def create_volume(name: str, driver: str = "local", labels: dict[str, str] | Non
 
 
 def remove_volume(name: str, *, force: bool = False) -> None:
-    try:
-        v = _client().volumes.get(name)
-    except NotFound as exc:
-        raise DockerUnavailable(f"volume {name} not found") from exc
-    except DockerException as exc:
-        raise DockerUnavailable(str(exc)) from exc
+    v = _get_volume(name)
     try:
         v.remove(force=force)
     except APIError as exc:

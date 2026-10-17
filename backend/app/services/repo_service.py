@@ -2,17 +2,22 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import re
+from collections import defaultdict
 from datetime import UTC, datetime
 from pathlib import Path
 
 import yaml
 
 from app.core.config import settings
+from app.schemas.container import Container
 from app.schemas.project import Project, ProjectService
+from app.services import docker_service
 
 logger = logging.getLogger(__name__)
 
-COMPOSE_FILENAMES = {"docker-compose.yml", "docker-compose.yaml", "compose.yml", "compose.yaml"}
+# In order of preference when one folder holds several.
+COMPOSE_FILENAMES = ("docker-compose.yml", "docker-compose.yaml", "compose.yml", "compose.yaml")
 YAML_SUFFIXES = {".yml", ".yaml"}
 
 
@@ -41,14 +46,10 @@ def _parse_services(compose_path: Path) -> list[ProjectService]:
     services = data.get("services") if isinstance(data, dict) else None
     if not isinstance(services, dict):
         return []
-
-    result: list[ProjectService] = []
-    for name, spec in services.items():
-        image = None
-        if isinstance(spec, dict):
-            image = spec.get("image")
-        result.append(ProjectService(name=str(name), image=image))
-    return result
+    return [
+        ProjectService(name=str(name), image=spec.get("image") if isinstance(spec, dict) else None)
+        for name, spec in services.items()
+    ]
 
 
 def _project_from_compose(compose_path: Path, repo_root: Path) -> Project:
@@ -92,7 +93,7 @@ def discover_projects() -> list[Project]:
             # One canonical compose file per directory — prefer docker-compose.yml
             existing = canonical.get(path.parent)
             if existing is None or (
-                _filename_priority(path.name) < _filename_priority(existing.name)
+                COMPOSE_FILENAMES.index(path.name) < COMPOSE_FILENAMES.index(existing.name)
             ):
                 canonical[path.parent] = path
         elif (
@@ -107,14 +108,8 @@ def discover_projects() -> list[Project]:
     return projects
 
 
-def _filename_priority(name: str) -> int:
-    order = {
-        "docker-compose.yml": 0,
-        "docker-compose.yaml": 1,
-        "compose.yml": 2,
-        "compose.yaml": 3,
-    }
-    return order.get(name, 99)
+def find_project(project_id: str) -> Project | None:
+    return next((p for p in discover_projects() if p.id == project_id), None)
 
 
 def referenced_images() -> list[str]:
@@ -126,3 +121,50 @@ def referenced_images() -> list[str]:
         if service.image
     }
     return sorted(images)
+
+
+def _normalise_name(name: str) -> str:
+    """Match Docker's own project-name mangling (lowercase, punctuation dropped)."""
+    return re.sub(r"[^a-z0-9]", "", name.lower())
+
+
+def _normalise_path(path: str) -> str:
+    return str(Path(path)).replace("\\", "/").lower()
+
+
+def attach_containers(projects: list[Project]) -> list[Project]:
+    """Fill in each project's running containers. Best-effort: a dead daemon
+    just means the stack state is unknown, not that the project list fails."""
+    try:
+        containers = docker_service.list_containers(all_states=True)
+    except docker_service.DockerUnavailable:
+        return projects
+
+    by_file: dict[str, list[Container]] = defaultdict(list)
+    by_name: dict[str, list[Container]] = defaultdict(list)
+    for container in containers:
+        if container.compose_project:
+            by_name[_normalise_name(container.compose_project)].append(container)
+        for raw in (container.compose_config_files or "").split(","):
+            if raw.strip():
+                by_file[_normalise_path(raw.strip())].append(container)
+
+    for project in projects:
+        # The config-files label is exact; a label ending in the repo-relative path
+        # catches stacks brought up from the host checkout (different mount root);
+        # the project name is the last fallback.
+        rel_suffix = "/" + _normalise_path(project.relative_path)
+        project.containers = (
+            by_file.get(_normalise_path(project.compose_path))
+            or [c for path, cs in by_file.items() if path.endswith(rel_suffix) for c in cs]
+            or by_name.get(_normalise_name(project.name), [])
+        )
+    return projects
+
+
+def project_for_container(container_id: str) -> Project | None:
+    """The repo project a container was deployed from, if any."""
+    for project in attach_containers(discover_projects()):
+        if any(c.id == container_id for c in project.containers):
+            return project
+    return None

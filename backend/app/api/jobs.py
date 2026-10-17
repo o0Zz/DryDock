@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.models.job import Job
 from app.schemas.job import JobRead
+from app.services import job_service
 
 router = APIRouter(prefix="/api/jobs", tags=["jobs"])
 
@@ -15,11 +16,9 @@ def list_jobs(
     active: bool = Query(default=False, description="Only jobs that are pending or running"),
     db: Session = Depends(get_db),
 ) -> list[Job]:
-    stmt = select(Job).order_by(Job.created_at.desc()).limit(limit)
-    if active:
-        stmt = select(Job).where(Job.status.in_(("pending", "running"))).order_by(
-            Job.created_at.desc()
-        )
+    stmt = select(Job).order_by(Job.created_at.desc())
+    # Active jobs are few, so they come back in full regardless of `limit`.
+    stmt = stmt.where(Job.status.in_(job_service.ACTIVE_STATUSES)) if active else stmt.limit(limit)
     return list(db.scalars(stmt))
 
 

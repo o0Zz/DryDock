@@ -1,13 +1,9 @@
-from datetime import UTC, datetime
+from datetime import datetime
 
 from sqlalchemy import DateTime, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.core.database import Base
-
-
-def _utcnow() -> datetime:
-    return datetime.now(UTC)
+from app.core.database import Base, utcnow
 
 
 class JobStatus:
@@ -51,6 +47,6 @@ class Job(Base):
     output: Mapped[str | None] = mapped_column(Text, nullable=True)
     # Set for scheduler-triggered runs so the UI can tell them apart.
     trigger: Mapped[str] = mapped_column(String, default="manual", nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
     started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)

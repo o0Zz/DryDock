@@ -1,13 +1,9 @@
-from datetime import UTC, datetime
+from datetime import datetime
 
 from sqlalchemy import DateTime, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.core.database import Base
-
-
-def _utcnow() -> datetime:
-    return datetime.now(UTC)
+from app.core.database import Base, utcnow
 
 
 class Scan(Base):
@@ -20,7 +16,7 @@ class Scan(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     image: Mapped[str] = mapped_column(String, index=True, nullable=False)
-    scanned_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, nullable=False)
+    scanned_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
     critical: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     high: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     medium: Mapped[int] = mapped_column(Integer, default=0, nullable=False)

@@ -3,13 +3,12 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
-from datetime import UTC, datetime
 from uuid import uuid4
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.core.database import SessionLocal
+from app.core.database import SessionLocal, utcnow
 from app.models.job import Job, JobStatus
 
 logger = logging.getLogger(__name__)
@@ -25,10 +24,6 @@ ACTIVE_STATUSES = (JobStatus.PENDING, JobStatus.RUNNING)
 
 # Only the tail of command output is kept: the end is where errors are.
 MAX_OUTPUT = 20_000
-
-
-def _utcnow() -> datetime:
-    return datetime.now(UTC)
 
 
 class JobContext:
@@ -112,7 +107,7 @@ def _run(job_id: str, runner: JobRunner) -> None:
             logger.warning("Job %s vanished before it started", job_id)
             return
         job.status = JobStatus.RUNNING
-        job.started_at = _utcnow()
+        job.started_at = utcnow()
         db.commit()
 
         try:
@@ -124,12 +119,12 @@ def _run(job_id: str, runner: JobRunner) -> None:
             if job is not None:
                 job.status = JobStatus.ERROR
                 job.error = str(exc)[:1000]
-                job.finished_at = _utcnow()
+                job.finished_at = utcnow()
                 db.commit()
             return
 
         job.status = JobStatus.SUCCESS
-        job.finished_at = _utcnow()
+        job.finished_at = utcnow()
         db.commit()
 
 

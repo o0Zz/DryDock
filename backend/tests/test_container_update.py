@@ -9,13 +9,12 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.api import containers as containers_api
-from app.api import projects as projects_api
 from app.core.security import get_current_user
 from app.main import app
 from app.models.job import JobKind
 from app.schemas.container import Container
 from app.schemas.project import Project
-from app.services import compose_service, docker_service, tasks
+from app.services import compose_service, docker_service, repo_service, tasks
 
 COMPOSE = Path("/repo/web/docker-compose.yml")
 NOW = datetime(2026, 1, 1, tzinfo=UTC)
@@ -202,28 +201,28 @@ def test_runner_stops_when_pull_fails(steps, monkeypatch):
 
 def test_project_for_container_matches_by_config_file(monkeypatch):
     monkeypatch.setattr(
-        projects_api.repo_service,
+        repo_service,
         "discover_projects",
         lambda: [_project("other", Path("/repo/other/compose.yml")), _project()],
     )
     monkeypatch.setattr(
-        projects_api.docker_service,
+        repo_service.docker_service,
         "list_containers",
         lambda all_states=True: [_container(files=str(COMPOSE))],
     )
 
-    assert projects_api.project_for_container("abc").id == "web"
-    assert projects_api.project_for_container("nope") is None
+    assert repo_service.project_for_container("abc").id == "web"
+    assert repo_service.project_for_container("nope") is None
 
 
 def test_project_for_container_docker_down(monkeypatch):
     def down(all_states=True):
         raise docker_service.DockerUnavailable("down")
 
-    monkeypatch.setattr(projects_api.repo_service, "discover_projects", lambda: [_project()])
-    monkeypatch.setattr(projects_api.docker_service, "list_containers", down)
+    monkeypatch.setattr(repo_service, "discover_projects", lambda: [_project()])
+    monkeypatch.setattr(repo_service.docker_service, "list_containers", down)
 
-    assert projects_api.project_for_container("abc") is None
+    assert repo_service.project_for_container("abc") is None
 
 
 # --- API -------------------------------------------------------------------------
@@ -269,7 +268,7 @@ def test_update_requires_login():
 
 def test_update_queues_job(client, submitted, monkeypatch):
     monkeypatch.setattr(containers_api.docker_service, "get_container", lambda cid: _container())
-    monkeypatch.setattr(containers_api, "project_for_container", lambda cid: _project())
+    monkeypatch.setattr(repo_service, "project_for_container", lambda cid: _project())
     built = {}
     monkeypatch.setattr(
         containers_api.tasks,
@@ -295,7 +294,7 @@ def test_update_queues_job(client, submitted, monkeypatch):
 
 def test_update_unknown_container(client, submitted, monkeypatch):
     def missing(cid):
-        raise docker_service.DockerUnavailable("container x not found")
+        raise docker_service.DockerNotFound("container x not found")
 
     monkeypatch.setattr(containers_api.docker_service, "get_container", missing)
     assert client.post("/api/containers/x/update").status_code == 404
@@ -314,7 +313,7 @@ def test_update_refuses_plain_container(client, submitted, monkeypatch):
 
 def test_update_refuses_compose_container_outside_repo(client, submitted, monkeypatch):
     monkeypatch.setattr(containers_api.docker_service, "get_container", lambda cid: _container())
-    monkeypatch.setattr(containers_api, "project_for_container", lambda cid: None)
+    monkeypatch.setattr(repo_service, "project_for_container", lambda cid: None)
     res = client.post("/api/containers/abc/update")
     assert res.status_code == 409
     assert "No Compose file" in res.json()["detail"]

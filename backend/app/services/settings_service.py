@@ -11,8 +11,8 @@ from app.models.setting import Setting
 
 logger = logging.getLogger(__name__)
 
-# Runtime-editable settings and their defaults. Anything not listed here is
-# rejected by set_many, so the API can accept a partial dict safely.
+# Runtime-editable settings and their defaults. Writes are validated (types,
+# interval bounds, known keys only) by SettingsUpdate in app/schemas/setting.py.
 DEFAULTS: dict[str, Any] = {
     # Scheduled CVE scans of all running images.
     "scan_schedule_enabled": True,
@@ -25,39 +25,6 @@ DEFAULTS: dict[str, Any] = {
     "notify_on_critical": True,
     "notify_on_update": True,
 }
-
-# Interval bounds keep a fat-fingered value from hammering a Pi or a registry.
-_INT_BOUNDS = {
-    "scan_interval_hours": (1, 24 * 30),
-    "update_check_interval_hours": (1, 24 * 30),
-}
-
-
-class SettingsError(ValueError):
-    """Raised when a settings payload is rejected."""
-
-
-def _coerce(key: str, value: Any) -> Any:
-    default = DEFAULTS[key]
-    if isinstance(default, bool):
-        if isinstance(value, bool):
-            return value
-        raise SettingsError(f"{key} must be a boolean")
-    if isinstance(default, int):
-        try:
-            number = int(value)
-        except (TypeError, ValueError) as exc:
-            raise SettingsError(f"{key} must be a whole number") from exc
-        low, high = _INT_BOUNDS.get(key, (None, None))
-        if low is not None and not (low <= number <= high):
-            raise SettingsError(f"{key} must be between {low} and {high}")
-        return number
-    if isinstance(default, str):
-        if not isinstance(value, str):
-            raise SettingsError(f"{key} must be a string")
-        return value.strip()
-    return value
-
 
 def get_all(db: Session) -> dict[str, Any]:
     """Every setting, with stored values layered over the defaults."""
@@ -72,17 +39,13 @@ def get_all(db: Session) -> dict[str, Any]:
     return values
 
 
-def set_many(db: Session, values: dict[str, Any]) -> dict[str, Any]:
-    unknown = sorted(set(values) - set(DEFAULTS))
-    if unknown:
-        raise SettingsError(f"Unknown setting(s): {', '.join(unknown)}")
-
-    for key, raw in values.items():
-        coerced = _coerce(key, raw)
+def set_many(db: Session, values: dict[str, Any]) -> None:
+    for key, value in values.items():
+        if isinstance(value, str):
+            value = value.strip()
         row = db.get(Setting, key)
         if row is None:
-            db.add(Setting(key=key, value=json.dumps(coerced)))
+            db.add(Setting(key=key, value=json.dumps(value)))
         else:
-            row.value = json.dumps(coerced)
+            row.value = json.dumps(value)
     db.commit()
-    return get_all(db)

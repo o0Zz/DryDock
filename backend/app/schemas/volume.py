@@ -28,8 +28,3 @@ class VolumeCreate(BaseModel):
     name: str = Field(min_length=1, max_length=255, pattern=r"^[a-zA-Z0-9][a-zA-Z0-9_.-]*$")
     driver: str = "local"
     labels: dict[str, str] = Field(default_factory=dict)
-
-
-class PruneResult(BaseModel):
-    deleted: list[str] = Field(default_factory=list)
-    space_reclaimed: int = 0

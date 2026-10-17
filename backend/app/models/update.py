@@ -1,13 +1,9 @@
-from datetime import UTC, datetime
+from datetime import datetime
 
 from sqlalchemy import Boolean, DateTime, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.core.database import Base
-
-
-def _utcnow() -> datetime:
-    return datetime.now(UTC)
+from app.core.database import Base, utcnow
 
 
 class UpdateCheck(Base):
@@ -20,7 +16,7 @@ class UpdateCheck(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     image: Mapped[str] = mapped_column(String, index=True, nullable=False)
-    checked_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, nullable=False)
+    checked_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
     local_digest: Mapped[str | None] = mapped_column(String, nullable=True)
     remote_digest: Mapped[str | None] = mapped_column(String, nullable=True)
     update_available: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)

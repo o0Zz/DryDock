@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, Query, status
 
 from app.models.job import Job, JobKind
 from app.schemas.image import Image
@@ -10,10 +10,7 @@ router = APIRouter(prefix="/api/images", tags=["images"])
 
 @router.get("", response_model=list[Image])
 def list_images() -> list[Image]:
-    try:
-        return docker_service.list_images()
-    except docker_service.DockerUnavailable as exc:
-        raise HTTPException(status_code=503, detail=f"Docker unavailable: {exc}") from exc
+    return docker_service.list_images()
 
 
 @router.post("/prune", response_model=JobRead, status_code=status.HTTP_202_ACCEPTED)
@@ -36,11 +33,4 @@ def delete_image(
     image: str = Query(min_length=1, description="Tag or ID of the image to remove"),
     force: bool = Query(default=False),
 ) -> None:
-    try:
-        docker_service.remove_image(image, force=force)
-    except docker_service.ImageNotFound as exc:
-        raise HTTPException(status_code=404, detail=f"image {exc} not found") from exc
-    except docker_service.ImageInUse as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
-    except docker_service.DockerUnavailable as exc:
-        raise HTTPException(status_code=503, detail=f"Docker unavailable: {exc}") from exc
+    docker_service.remove_image(image, force=force)

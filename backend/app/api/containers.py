@@ -2,60 +2,42 @@ from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from app.api.projects import project_for_container
 from app.core.security import get_current_user
 from app.models.job import Job, JobKind
 from app.models.user import User
 from app.schemas.container import Container, ContainerDetail, ContainerStats
 from app.schemas.job import JobRead
-from app.services import docker_service, job_service, tasks
+from app.services import docker_service, job_service, repo_service, tasks
 
 router = APIRouter(prefix="/api/containers", tags=["containers"])
 
 
 @router.get("", response_model=list[Container])
 def list_containers() -> list[Container]:
-    try:
-        return docker_service.list_containers()
-    except docker_service.DockerUnavailable as exc:
-        raise HTTPException(status_code=503, detail=f"Docker unavailable: {exc}") from exc
+    return docker_service.list_containers()
 
 
 # Declared before /{container_id} so "stats" is not taken as a container id.
 @router.get("/stats", response_model=list[ContainerStats])
 def container_stats() -> list[ContainerStats]:
-    try:
-        return docker_service.running_stats()
-    except docker_service.DockerUnavailable as exc:
-        raise HTTPException(status_code=503, detail=f"Docker unavailable: {exc}") from exc
+    return docker_service.running_stats()
 
 
 @router.get("/{container_id}", response_model=Container)
 def get_container(container_id: str) -> Container:
-    try:
-        return docker_service.get_container(container_id)
-    except docker_service.DockerUnavailable as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return docker_service.get_container(container_id)
 
 
 @router.get("/{container_id}/inspect", response_model=ContainerDetail)
 def inspect_container(
     container_id: str, user: User = Depends(get_current_user)
 ) -> ContainerDetail:
-    try:
-        return docker_service.get_container_detail(container_id, privileged=user.is_admin)
-    except docker_service.DockerUnavailable as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return docker_service.get_container_detail(container_id, privileged=user.is_admin)
 
 
 @router.delete("/{container_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_container(container_id: str) -> None:
-    try:
-        docker_service.remove_container(container_id)
-    except docker_service.ContainerRunning as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
-    except docker_service.DockerUnavailable as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    docker_service.remove_container(container_id)
 
 
 # Declared before /{container_id}/{action} so "update" is not taken as an action.
@@ -68,15 +50,12 @@ def update_container(container_id: str) -> Job:
     Only for containers deployed from a Compose file in the repo: anything else
     would have to be recreated by hand with its original `docker run` options.
     """
-    try:
-        container = docker_service.get_container(container_id)
-    except docker_service.DockerUnavailable as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    container = docker_service.get_container(container_id)
     if not container.compose_service:
         raise HTTPException(
             status_code=409, detail=f"{container.name} is not managed by Docker Compose"
         )
-    project = project_for_container(container.id)
+    project = repo_service.project_for_container(container.id)
     if project is None:
         raise HTTPException(
             status_code=409,
@@ -100,6 +79,4 @@ def container_action(container_id: str, action: str) -> dict[str, str]:
         docker_service.perform_action(container_id, action)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except docker_service.DockerUnavailable as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
     return {"status": "ok", "action": action}

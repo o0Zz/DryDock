@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.database import get_db
@@ -9,22 +9,9 @@ from app.models.job import Job, JobKind
 from app.models.scan import Scan
 from app.schemas.job import JobRead
 from app.schemas.scan import ScanDetail, ScanRequest, ScanSummary
-from app.services import job_service, tasks, trivy_service
+from app.services import history_service, job_service, tasks, trivy_service
 
 router = APIRouter(prefix="/api/scans", tags=["scans"])
-
-
-def _latest_per_image(db: Session) -> list[Scan]:
-    """One row per image: the most recent scan, newest first."""
-    newest = (
-        select(Scan.image, func.max(Scan.id).label("scan_id")).group_by(Scan.image).subquery()
-    )
-    stmt = (
-        select(Scan)
-        .join(newest, Scan.id == newest.c.scan_id)
-        .order_by(Scan.scanned_at.desc())
-    )
-    return list(db.scalars(stmt))
 
 
 @router.get("", response_model=list[ScanSummary])
@@ -32,11 +19,7 @@ def list_scans(
     image: str | None = Query(default=None, description="Full scan history for one image"),
     db: Session = Depends(get_db),
 ) -> list[Scan]:
-    if image:
-        return list(
-            db.scalars(select(Scan).where(Scan.image == image).order_by(Scan.scanned_at.desc()))
-        )
-    return _latest_per_image(db)
+    return history_service.scans(db, image)
 
 
 @router.post("/image", response_model=JobRead, status_code=status.HTTP_202_ACCEPTED)

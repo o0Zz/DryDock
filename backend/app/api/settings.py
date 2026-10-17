@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from app.core.config import settings as env_settings
@@ -31,10 +31,7 @@ def read_settings(db: Session = Depends(get_db)) -> SettingsRead:
 def write_settings(body: SettingsUpdate, db: Session = Depends(get_db)) -> SettingsRead:
     payload = body.model_dump(exclude_unset=True, exclude_none=True)
     if payload:
-        try:
-            settings_service.set_many(db, payload)
-        except settings_service.SettingsError as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        settings_service.set_many(db, payload)
         # Intervals and on/off switches only take effect once the scheduler
         # re-reads them.
         scheduler_service.reconfigure()

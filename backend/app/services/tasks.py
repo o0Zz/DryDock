@@ -8,7 +8,9 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable, Sequence
+from dataclasses import asdict
 from pathlib import Path
+from typing import TypeVar
 
 from sqlalchemy.orm import Session
 
@@ -28,6 +30,7 @@ from app.services.job_service import JobContext
 logger = logging.getLogger(__name__)
 
 ImageResolver = Callable[[], list[str]]
+T = TypeVar("T")
 
 
 # --- Persistence -------------------------------------------------------------
@@ -46,19 +49,7 @@ def store_scan(db: Session, image: str) -> Scan:
         return scan
 
     scan = Scan(image=image, **result.counts)
-    scan.findings = [
-        ScanFinding(
-            vulnerability_id=f.vulnerability_id,
-            severity=f.severity,
-            package_name=f.package_name,
-            installed_version=f.installed_version,
-            fixed_version=f.fixed_version,
-            title=f.title,
-            primary_url=f.primary_url,
-            target=f.target,
-        )
-        for f in result.findings
-    ]
+    scan.findings = [ScanFinding(**asdict(f)) for f in result.findings]
     db.add(scan)
     db.commit()
     db.refresh(scan)
@@ -154,20 +145,40 @@ def _maybe_notify_updates(db: Session, checks: Sequence[UpdateCheck]) -> None:
     )
 
 
+def _each_image(
+    ctx: JobContext,
+    resolve: ImageResolver,
+    store: Callable[[Session, str], T],
+    *,
+    progress: str,
+    empty: str,
+) -> list[T]:
+    """Run `store` on every image `resolve` returns, reporting progress as it goes.
+
+    The frontend reads the "Scanning <image>" message to tell which image is busy.
+    """
+    images = resolve()
+    ctx.set_total(len(images), f"{len(images)} image(s) queued")
+    if not images:
+        ctx.note(empty)
+        return []
+    rows: list[T] = []
+    for image in images:
+        ctx.note(f"{progress} {image}")
+        rows.append(store(ctx.db, image))
+        ctx.advance()
+    return rows
+
+
 def scan_runner(resolve: ImageResolver, *, notify: bool = False):
     """Build a job body that scans whatever `resolve` returns at run time."""
 
     def run(ctx: JobContext) -> None:
-        images = resolve()
-        ctx.set_total(len(images), f"{len(images)} image(s) queued")
-        if not images:
-            ctx.note("No images to scan")
+        scans = _each_image(
+            ctx, resolve, store_scan, progress="Scanning", empty="No images to scan"
+        )
+        if not scans:
             return
-        scans: list[Scan] = []
-        for image in images:
-            ctx.note(f"Scanning {image}")
-            scans.append(store_scan(ctx.db, image))
-            ctx.advance()
         ctx.note(_summarise_scans(scans))
         if notify:
             _maybe_notify_scans(ctx.db, scans)
@@ -179,16 +190,11 @@ def update_check_runner(resolve: ImageResolver, *, notify: bool = False):
     """Build a job body that compares local vs registry digests."""
 
     def run(ctx: JobContext) -> None:
-        images = resolve()
-        ctx.set_total(len(images), f"{len(images)} image(s) queued")
-        if not images:
-            ctx.note("No images to check")
+        checks = _each_image(
+            ctx, resolve, store_update_check, progress="Checking", empty="No images to check"
+        )
+        if not checks:
             return
-        checks: list[UpdateCheck] = []
-        for image in images:
-            ctx.note(f"Checking {image}")
-            checks.append(store_update_check(ctx.db, image))
-            ctx.advance()
         outdated = sum(1 for c in checks if c.has_update)
         failed = sum(1 for c in checks if c.error)
         message = f"{len(checks)} image(s) checked, {outdated} with updates"

@@ -94,11 +94,9 @@ def _apply(job_id: str, *, enabled: bool, hours: int, func, name: str) -> None: 
 
 def next_run_times() -> dict[str, datetime | None]:
     """Next fire time per schedule, for display in the settings UI."""
-    if _scheduler is None:
-        return {SCAN_JOB_ID: None, UPDATE_JOB_ID: None}
     result: dict[str, datetime | None] = {}
     for job_id in (SCAN_JOB_ID, UPDATE_JOB_ID):
-        job = _scheduler.get_job(job_id)
+        job = _scheduler.get_job(job_id) if _scheduler else None
         result[job_id] = job.next_run_time if job else None
     return result
 

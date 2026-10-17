@@ -13,8 +13,8 @@ from app.api import volumes as volumes_api
 from app.core.security import get_current_user
 from app.main import app
 from app.models.job import JobKind
+from app.schemas.common import PruneResult
 from app.schemas.project import Project
-from app.schemas.volume import PruneResult
 from app.services import compose_service, docker_service, tasks
 
 COMPOSE = Path("/repo/web/docker-compose.yml")

@@ -1,7 +1,7 @@
 from datetime import UTC, datetime
 from typing import Annotated
 
-from pydantic import AfterValidator
+from pydantic import AfterValidator, BaseModel, Field
 
 
 def _stamp_utc(value: datetime) -> datetime:
@@ -17,3 +17,8 @@ def _stamp_utc(value: datetime) -> datetime:
 
 
 UtcDatetime = Annotated[datetime, AfterValidator(_stamp_utc)]
+
+
+class PruneResult(BaseModel):
+    deleted: list[str] = Field(default_factory=list)
+    space_reclaimed: int = 0

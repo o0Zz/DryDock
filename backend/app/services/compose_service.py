@@ -72,6 +72,13 @@ def create_compose(name: str, content: str) -> Path:
     return compose_path
 
 
+def _command(compose_path: Path, args: list[str], project_name: str | None = None) -> list[str]:
+    cmd = ["docker", "compose", "-f", str(compose_path)]
+    if project_name:
+        cmd += ["-p", project_name]
+    return cmd + args
+
+
 def _compose(
     compose_path: Path,
     args: list[str],
@@ -81,11 +88,7 @@ def _compose(
 ) -> subprocess.CompletedProcess[str]:
     # Through the host-path alias, so relative bind mounts resolve on the host.
     compose_path = host_path_service.to_host(compose_path)
-    cmd = ["docker", "compose", "-f", str(compose_path)]
-    if project_name:
-        cmd += ["-p", project_name]
-    cmd += args
-
+    cmd = _command(compose_path, args, project_name)
     logger.info("Running: %s", " ".join(cmd))
     try:
         return subprocess.run(  # noqa: S603 — args list, no shell
@@ -155,17 +158,7 @@ def stream_logs(compose_path: Path, *, tail: int = 200) -> subprocess.Popen[byte
     the client goes away.
     """
     compose_path = host_path_service.to_host(compose_path)
-    cmd = [
-        "docker",
-        "compose",
-        "-f",
-        str(compose_path),
-        "logs",
-        "--follow",
-        "--no-color",
-        "--tail",
-        str(tail),
-    ]
+    cmd = _command(compose_path, ["logs", "--follow", "--no-color", "--tail", str(tail)])
     logger.info("Streaming: %s", " ".join(cmd))
     try:
         return subprocess.Popen(  # noqa: S603 - args list, no shell

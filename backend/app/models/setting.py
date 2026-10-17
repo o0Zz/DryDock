@@ -1,13 +1,9 @@
-from datetime import UTC, datetime
+from datetime import datetime
 
 from sqlalchemy import DateTime, String
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.core.database import Base
-
-
-def _utcnow() -> datetime:
-    return datetime.now(UTC)
+from app.core.database import Base, utcnow
 
 
 class Setting(Base):
@@ -22,5 +18,5 @@ class Setting(Base):
     key: Mapped[str] = mapped_column(String, primary_key=True)
     value: Mapped[str] = mapped_column(String, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime, default=_utcnow, onupdate=_utcnow, nullable=False
+        DateTime, default=utcnow, onupdate=utcnow, nullable=False
     )

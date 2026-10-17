@@ -3,11 +3,9 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
-from app.api.scans import _latest_per_image as latest_scans
-from app.api.updates import _latest_per_image as latest_updates
 from app.core.database import get_db
 from app.schemas.dashboard import DashboardStats
-from app.services import docker_service, repo_service, tasks
+from app.services import docker_service, history_service, repo_service, tasks
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 
@@ -30,7 +28,7 @@ def dashboard(db: Session = Depends(get_db)) -> DashboardStats:
 
     stats.images_tracked = len(tasks.all_known_images())
 
-    scans = latest_scans(db)
+    scans = history_service.scans(db)
     stats.images_scanned = len(scans)
     stats.images_critical = sum(1 for s in scans if s.critical > 0)
     stats.images_high = sum(1 for s in scans if s.high > 0)
@@ -39,7 +37,7 @@ def dashboard(db: Session = Depends(get_db)) -> DashboardStats:
     if scans:
         stats.last_scan_at = max(s.scanned_at for s in scans)
 
-    checks = latest_updates(db)
+    checks = history_service.update_checks(db)
     stats.updates_available = sum(1 for c in checks if c.has_update)
     if checks:
         stats.last_update_check_at = max(c.checked_at for c in checks)

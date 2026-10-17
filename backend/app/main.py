@@ -2,9 +2,9 @@ import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import select
 from starlette.middleware.sessions import SessionMiddleware
@@ -29,7 +29,13 @@ from app.core.config import settings
 from app.core.database import SessionLocal, init_db
 from app.core.security import get_current_user, hash_password
 from app.models.user import User
-from app.services import host_path_service, job_service, scheduler_service
+from app.services import (
+    compose_service,
+    docker_service,
+    host_path_service,
+    job_service,
+    scheduler_service,
+)
 
 logging.basicConfig(level=logging.INFO, format=log_buffer.LOG_FORMAT)
 log_buffer.install()
@@ -92,6 +98,30 @@ app.add_middleware(
     same_site="lax",
     https_only=settings.session_https_only,
 )
+
+# Service errors that map straight to an HTTP status, so routes need no try/except.
+# Matched along the exception's MRO, so DockerNotFound wins over its base class.
+_ERROR_STATUS: dict[type[Exception], tuple[int, str]] = {
+    docker_service.DockerUnavailable: (503, "Docker unavailable: {}"),
+    docker_service.DockerNotFound: (404, "{}"),
+    docker_service.ImageNotFound: (404, "image {} not found"),
+    docker_service.ImageInUse: (409, "{}"),
+    docker_service.VolumeInUse: (409, "{}"),
+    docker_service.ContainerRunning: (409, "{}"),
+    compose_service.ComposeError: (400, "{}"),
+    compose_service.ComposeExists: (409, "{}"),
+}
+
+
+async def _service_error(request: Request, exc: Exception) -> JSONResponse:
+    status_code, template = next(
+        _ERROR_STATUS[cls] for cls in type(exc).__mro__ if cls in _ERROR_STATUS
+    )
+    return JSONResponse({"detail": template.format(exc)}, status_code=status_code)
+
+
+for _exc_type in _ERROR_STATUS:
+    app.add_exception_handler(_exc_type, _service_error)
 
 # Public: login/logout/me
 app.include_router(auth.router)
