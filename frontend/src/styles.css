@@ -343,6 +343,13 @@ button.badge.scan-badge { text-transform: none; cursor: pointer; }
 button.linklike.danger { color: #cf222e; }
 button.linklike.danger svg { color: #cf222e; }
 
+.log-panel.inline {
+  position: static;
+  width: 100%;
+  height: calc(100vh - 12rem);
+  box-shadow: none;
+}
+
 .log-panel {
   position: fixed;
   right: 1rem;
@@ -402,6 +409,7 @@ button.linklike.danger svg { color: #cf222e; }
 
 input[type="text"],
 input[type="password"],
+input[type="search"],
 .login-card input,
 .button-row input {
   background: var(--bg);
@@ -580,3 +588,38 @@ input:focus {
 
 /* Action clusters inside table rows sit flush with the row. */
 .button-row.inline { margin-top: 0; }
+
+/* Container console: wider than the log panel, terminal fills the body */
+.log-panel.console-panel {
+  width: min(960px, 95vw);
+  height: min(600px, 80vh);
+}
+.console-body {
+  flex: 1;
+  min-height: 0;
+  padding: 0.35rem;
+  background: #0d1117;
+  border-radius: 0 0 8px 8px;
+}
+
+/* Inline usage bar for container CPU / memory */
+.meter {
+  height: 4px;
+  width: 80px;
+  background: var(--border);
+  border-radius: 2px;
+  overflow: hidden;
+  margin-top: 0.2rem;
+}
+.meter > span {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+}
+.meter.hot > span { background: #cf222e; }
+
+.new-stack-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}

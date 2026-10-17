@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import contextlib
 import logging
 from collections.abc import Iterator
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 from functools import lru_cache
 
@@ -11,7 +13,7 @@ from docker.errors import ImageNotFound as DockerImageNotFound
 from docker.models.containers import Container as DockerContainer
 from docker.models.volumes import Volume as DockerVolume
 
-from app.schemas.container import Container, ContainerPort
+from app.schemas.container import Container, ContainerPort, ContainerStats
 from app.schemas.volume import PruneResult, Volume
 
 logger = logging.getLogger(__name__)
@@ -152,6 +154,133 @@ def stream_logs(container_id: str, *, tail: int = 200) -> Iterator[bytes]:
         raise DockerUnavailable(str(exc)) from exc
 
     return c.logs(stream=True, follow=True, tail=tail, timestamps=False)
+
+
+# --- Stats -------------------------------------------------------------------
+
+# Each stats call blocks ~1s while the daemon takes two CPU samples, so fetch
+# them concurrently; capped to keep a Pi responsive.
+STATS_WORKERS = 8
+
+
+def _stats_to_schema(c: DockerContainer, raw: dict) -> ContainerStats:
+    cpu = raw.get("cpu_stats") or {}
+    precpu = raw.get("precpu_stats") or {}
+    usage = cpu.get("cpu_usage") or {}
+    cpu_delta = usage.get("total_usage", 0) - (precpu.get("cpu_usage") or {}).get("total_usage", 0)
+    system_delta = cpu.get("system_cpu_usage", 0) - precpu.get("system_cpu_usage", 0)
+    online = cpu.get("online_cpus") or len(usage.get("percpu_usage") or []) or 1
+    cpu_percent = 0.0
+    if cpu_delta > 0 and system_delta > 0:
+        cpu_percent = cpu_delta / system_delta * online * 100
+
+    mem = raw.get("memory_stats") or {}
+    mem_detail = mem.get("stats") or {}
+    # Same as `docker stats`: page cache is reclaimable, so it is not "used".
+    cache = mem_detail.get("inactive_file", mem_detail.get("total_inactive_file", 0))
+    mem_usage = max(mem.get("usage", 0) - cache, 0)
+    mem_limit = mem.get("limit", 0)
+
+    networks = (raw.get("networks") or {}).values()
+    blkio = (raw.get("blkio_stats") or {}).get("io_service_bytes_recursive") or []
+
+    def _blk(op: str) -> int:
+        return sum(e.get("value", 0) for e in blkio if str(e.get("op", "")).lower() == op)
+
+    return ContainerStats(
+        id=c.id or "",
+        name=c.name or "",
+        cpu_percent=round(cpu_percent, 2),
+        memory_usage=mem_usage,
+        memory_limit=mem_limit,
+        memory_percent=round(mem_usage / mem_limit * 100, 2) if mem_limit else 0.0,
+        network_rx=sum(n.get("rx_bytes", 0) for n in networks),
+        network_tx=sum(n.get("tx_bytes", 0) for n in networks),
+        block_read=_blk("read"),
+        block_write=_blk("write"),
+        pids=(raw.get("pids_stats") or {}).get("current"),
+    )
+
+
+def _one_stats(c: DockerContainer) -> ContainerStats | None:
+    try:
+        return _stats_to_schema(c, c.stats(stream=False))
+    except DockerException as exc:
+        # A container stopping mid-poll is normal; skip it rather than fail the batch.
+        logger.debug("Stats unavailable for %s: %s", c.name, exc)
+        return None
+
+
+def running_stats() -> list[ContainerStats]:
+    """CPU / memory / IO snapshot of every running container."""
+    try:
+        containers = _client().containers.list()
+    except DockerException as exc:
+        raise DockerUnavailable(str(exc)) from exc
+    if not containers:
+        return []
+    with ThreadPoolExecutor(max_workers=min(STATS_WORKERS, len(containers))) as pool:
+        results = pool.map(_one_stats, containers)
+    return [r for r in results if r is not None]
+
+
+# --- Exec console ------------------------------------------------------------
+
+# Prefer bash when the image has it; most minimal images only ship sh.
+CONSOLE_CMD = ["/bin/sh", "-c", "command -v bash >/dev/null 2>&1 && exec bash || exec sh"]
+
+
+class ExecSession:
+    """An interactive TTY exec in a container, over Docker's hijacked socket."""
+
+    def __init__(self, exec_id: str, sock) -> None:
+        self.exec_id = exec_id
+        # Unix sockets come back wrapped in SocketIO; the Windows npipe socket
+        # is used as-is. Both expose recv/sendall.
+        self._sock = getattr(sock, "_sock", sock)
+
+    def read(self, size: int = 4096) -> bytes:
+        try:
+            return self._sock.recv(size)
+        except OSError:
+            return b""
+
+    def write(self, data: bytes) -> None:
+        self._sock.sendall(data)
+
+    def resize(self, cols: int, rows: int) -> None:
+        with contextlib.suppress(DockerException):
+            _client().api.exec_resize(self.exec_id, height=rows, width=cols)
+
+    def close(self) -> None:
+        # shutdown() unblocks a recv() waiting in another thread; close() alone may not.
+        with contextlib.suppress(Exception):
+            self._sock.shutdown(2)
+        with contextlib.suppress(Exception):
+            self._sock.close()
+
+
+def open_exec(container_id: str, *, cols: int = 80, rows: int = 24) -> ExecSession:
+    api = _client().api
+    try:
+        exec_id = api.exec_create(
+            container_id,
+            CONSOLE_CMD,
+            stdin=True,
+            tty=True,
+            environment={"TERM": "xterm-256color"},
+        )["Id"]
+        sock = api.exec_start(exec_id, tty=True, socket=True)
+    except NotFound as exc:
+        raise DockerUnavailable(f"container {container_id} not found") from exc
+    except APIError as exc:
+        # 409 Conflict: container is not running.
+        raise DockerUnavailable(exc.explanation or str(exc)) from exc
+    except DockerException as exc:
+        raise DockerUnavailable(str(exc)) from exc
+    session = ExecSession(exec_id, sock)
+    session.resize(cols, rows)
+    return session
 
 
 # --- Volumes -----------------------------------------------------------------

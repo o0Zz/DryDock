@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException
 
-from app.schemas.container import Container
+from app.schemas.container import Container, ContainerStats
 from app.services import docker_service
 
 router = APIRouter(prefix="/api/containers", tags=["containers"])
@@ -10,6 +10,15 @@ router = APIRouter(prefix="/api/containers", tags=["containers"])
 def list_containers() -> list[Container]:
     try:
         return docker_service.list_containers()
+    except docker_service.DockerUnavailable as exc:
+        raise HTTPException(status_code=503, detail=f"Docker unavailable: {exc}") from exc
+
+
+# Declared before /{container_id} so "stats" is not taken as a container id.
+@router.get("/stats", response_model=list[ContainerStats])
+def container_stats() -> list[ContainerStats]:
+    try:
+        return docker_service.running_stats()
     except docker_service.DockerUnavailable as exc:
         raise HTTPException(status_code=503, detail=f"Docker unavailable: {exc}") from exc
 

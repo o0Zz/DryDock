@@ -3,6 +3,7 @@ import type {
   AppSettings,
   ComposeContent,
   Container,
+  ContainerStats,
   DashboardStats,
   Job,
   Project,
@@ -93,6 +94,11 @@ export const api = {
 
   // projects / containers
   listProjects: () => request<Project[]>("/api/projects"),
+  createProject: (name: string, content: string) =>
+    request<Project>("/api/projects", {
+      method: "POST",
+      body: JSON.stringify({ name, content }),
+    }),
   getProject: (id: string) => request<Project>(`/api/projects/${id}`),
   getCompose: (id: string) => request<ComposeContent>(`/api/projects/${id}/compose`),
   putCompose: (id: string, content: string) =>
@@ -103,6 +109,7 @@ export const api = {
   runAction: (id: string, action: "up" | "down" | "pull" | "restart" | "stop") =>
     request<ActionResult>(`/api/projects/${id}/${action}`, { method: "POST" }),
   listContainers: () => request<Container[]>("/api/containers"),
+  containerStats: () => request<ContainerStats[]>("/api/containers/stats"),
   containerAction: (id: string, action: "start" | "stop" | "restart") =>
     request<{ status: string; action: string }>(`/api/containers/${id}/${action}`, {
       method: "POST",

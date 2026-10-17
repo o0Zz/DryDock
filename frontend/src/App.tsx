@@ -5,6 +5,7 @@ import {
   LayoutDashboard,
   LogOut,
   Boxes,
+  ScrollText,
   Settings as SettingsIcon,
   ShieldAlert,
   Users as UsersIcon,
@@ -14,6 +15,8 @@ import { useAuth } from "./auth";
 import Containers from "./pages/Containers";
 import Dashboard from "./pages/Dashboard";
 import Login from "./pages/Login";
+import Logs from "./pages/Logs";
+import NewProject from "./pages/NewProject";
 import ProjectDetail from "./pages/ProjectDetail";
 import Projects from "./pages/Projects";
 import Scans from "./pages/Scans";
@@ -70,6 +73,11 @@ export default function App() {
             <SettingsIcon size={18} /> Settings
           </NavLink>
           {user.is_admin && (
+            <NavLink to="/logs">
+              <ScrollText size={18} /> Logs
+            </NavLink>
+          )}
+          {user.is_admin && (
             <NavLink to="/users">
               <UsersIcon size={18} /> Users
             </NavLink>
@@ -80,11 +88,13 @@ export default function App() {
         <Routes>
           <Route path="/" element={<Dashboard />} />
           <Route path="/projects" element={<Projects />} />
+          <Route path="/projects/new" element={<NewProject />} />
           <Route path="/projects/:id" element={<ProjectDetail />} />
           <Route path="/containers" element={<Containers />} />
           <Route path="/volumes" element={<Volumes />} />
           <Route path="/scans" element={<Scans />} />
           <Route path="/settings" element={<Settings />} />
+          {user.is_admin && <Route path="/logs" element={<Logs />} />}
           {user.is_admin && <Route path="/users" element={<Users />} />}
         </Routes>
       </main>

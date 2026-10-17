@@ -23,3 +23,17 @@ class Container(BaseModel):
     # Compose file(s) this container was deployed from, per Docker's label.
     compose_config_files: str | None = None
     restart_policy: str | None = None
+
+
+class ContainerStats(BaseModel):
+    id: str
+    name: str
+    cpu_percent: float
+    memory_usage: int
+    memory_limit: int
+    memory_percent: float
+    network_rx: int
+    network_tx: int
+    block_read: int
+    block_write: int
+    pids: int | None = None

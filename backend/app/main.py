@@ -11,6 +11,7 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from app.api import (
     auth,
+    console,
     containers,
     dashboard,
     jobs,
@@ -22,13 +23,15 @@ from app.api import (
     volumes,
 )
 from app.api import settings as settings_api
+from app.core import log_buffer
 from app.core.config import settings
 from app.core.database import SessionLocal, init_db
 from app.core.security import get_current_user, hash_password
 from app.models.user import User
 from app.services import job_service, scheduler_service
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
+logging.basicConfig(level=logging.INFO, format=log_buffer.LOG_FORMAT)
+log_buffer.install()
 logger = logging.getLogger(__name__)
 
 
@@ -103,6 +106,7 @@ app.include_router(jobs.router, dependencies=_auth)
 app.include_router(settings_api.router, dependencies=_auth)
 app.include_router(logs.router, dependencies=_auth)
 app.include_router(users.router)  # already guarded by require_admin
+app.include_router(console.router)  # WebSocket; checks the session itself
 
 
 @app.get("/api/health")

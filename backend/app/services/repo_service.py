@@ -72,6 +72,10 @@ def _project_from_compose(compose_path: Path, repo_root: Path) -> Project:
     )
 
 
+def project_from_path(compose_path: Path) -> Project:
+    return _project_from_compose(compose_path, settings.repo_path.resolve())
+
+
 def discover_projects(repo_root: Path | None = None) -> list[Project]:
     root = (repo_root or settings.repo_path).resolve()
     if not root.exists() or not root.is_dir():

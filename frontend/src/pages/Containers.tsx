@@ -7,15 +7,17 @@ import {
   ScrollText,
   ShieldCheck,
   Square,
+  SquareTerminal,
   type LucideIcon,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "../api";
+import { useAuth } from "../auth";
 import JobList from "../components/JobList";
 import LogPanel from "../components/LogPanel";
 import ScanBadge from "../components/ScanBadge";
 import { useJobs } from "../hooks/useJobs";
-import type { Container, Job, ScanSummary } from "../types";
+import type { Container, ContainerStats, Job, ScanSummary } from "../types";
 
 type Action = "start" | "stop" | "restart";
 const ACTIONS: Action[] = ["start", "stop", "restart"];
@@ -25,11 +27,62 @@ const ACTION_ICONS: Record<Action, LucideIcon> = {
   restart: RotateCw,
 };
 
+// xterm.js is heavy; only load it when a console is opened.
+const ContainerConsole = lazy(() => import("../components/ContainerConsole"));
+
+const STATS_INTERVAL_MS = 5000;
+
+function formatBytes(bytes: number): string {
+  if (!bytes) return "0 B";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  const i = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+  return `${(bytes / 1024 ** i).toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
+}
+
+function Meter({ percent }: { percent: number }) {
+  const clamped = Math.max(0, Math.min(100, percent));
+  return (
+    <div className={clamped >= 80 ? "meter hot" : "meter"}>
+      <span style={{ width: `${clamped}%` }} />
+    </div>
+  );
+}
+
+/** Polls /api/containers/stats while mounted; each call takes ~1s server-side,
+ * so the next poll is scheduled only after the previous one returns. */
+function useContainerStats(): Record<string, ContainerStats> {
+  const [stats, setStats] = useState<Record<string, ContainerStats>>({});
+  useEffect(() => {
+    let timer: number | undefined;
+    let cancelled = false;
+    const poll = () => {
+      api
+        .containerStats()
+        .then((list) => {
+          if (!cancelled) setStats(Object.fromEntries(list.map((s) => [s.id, s])));
+        })
+        .catch(() => undefined) // stats are best-effort; the table still works without them
+        .finally(() => {
+          if (!cancelled) timer = window.setTimeout(poll, STATS_INTERVAL_MS);
+        });
+    };
+    poll();
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, []);
+  return stats;
+}
+
 export default function Containers() {
   const [containers, setContainers] = useState<Container[] | null>(null);
   const [scans, setScans] = useState<Record<string, ScanSummary>>({});
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<Container | null>(null);
+  const [consoleFor, setConsoleFor] = useState<Container | null>(null);
+  const { user } = useAuth();
+  const stats = useContainerStats();
   const [busy, setBusy] = useState<string | null>(null);
 
   const refresh = useCallback(() => {
@@ -144,6 +197,8 @@ export default function Containers() {
               <th>Image</th>
               <th>CVEs</th>
               <th>Status</th>
+              <th>CPU</th>
+              <th>Memory</th>
               <th>Ports</th>
               <th>Compose</th>
               <th></th>
@@ -179,6 +234,7 @@ export default function Containers() {
                   </span>
                   <div className="muted">restart: {c.restart_policy || "no"}</div>
                 </td>
+                <StatsCells stats={stats[c.id]} />
                 <td>
                   {c.ports
                     .filter((p) => p.public_port)
@@ -206,6 +262,16 @@ export default function Containers() {
                         </button>
                       );
                     })}
+                    {user?.is_admin && c.state === "running" && (
+                      <button
+                        type="button"
+                        className="secondary small"
+                        title="Open a shell in this container"
+                        onClick={() => setConsoleFor(c)}
+                      >
+                        <SquareTerminal size={14} /> console
+                      </button>
+                    )}
                   </div>
                 </td>
               </tr>
@@ -221,6 +287,44 @@ export default function Containers() {
           onClose={() => setSelected(null)}
         />
       )}
+      {consoleFor && (
+        <Suspense fallback={null}>
+          <ContainerConsole
+            key={consoleFor.id}
+            containerId={consoleFor.id}
+            title={consoleFor.name}
+            onClose={() => setConsoleFor(null)}
+          />
+        </Suspense>
+      )}
     </div>
+  );
+}
+
+function StatsCells({ stats }: { stats?: ContainerStats }) {
+  if (!stats) {
+    return (
+      <>
+        <td className="muted">—</td>
+        <td className="muted">—</td>
+      </>
+    );
+  }
+  return (
+    <>
+      <td
+        title={`PIDs: ${stats.pids ?? "?"} · disk read ${formatBytes(stats.block_read)} / write ${formatBytes(stats.block_write)}`}
+      >
+        {stats.cpu_percent.toFixed(1)}%
+        <Meter percent={stats.cpu_percent} />
+      </td>
+      <td
+        title={`Network rx ${formatBytes(stats.network_rx)} / tx ${formatBytes(stats.network_tx)}`}
+      >
+        {formatBytes(stats.memory_usage)}
+        <span className="muted"> / {formatBytes(stats.memory_limit)}</span>
+        <Meter percent={stats.memory_percent} />
+      </td>
+    </>
   );
 }

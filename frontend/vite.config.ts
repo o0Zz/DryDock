@@ -13,6 +13,8 @@ export default defineConfig({
       "/api": {
         target: "http://localhost:8080",
         changeOrigin: true,
+        // Container console runs over a WebSocket under /api.
+        ws: true,
       },
     },
   },

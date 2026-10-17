@@ -9,6 +9,7 @@ from pathlib import Path
 import yaml
 
 from app.core.config import settings
+from app.services.repo_service import COMPOSE_FILENAMES
 
 logger = logging.getLogger(__name__)
 
@@ -17,6 +18,10 @@ ALLOWED_ACTIONS = {"up", "down", "pull", "restart", "stop"}
 
 class ComposeError(Exception):
     """Raised for compose-service errors that map cleanly to HTTP failures."""
+
+
+class ComposeExists(ComposeError):
+    """Raised when creating a stack in a folder that already has one."""
 
 
 def read_compose(compose_path: Path) -> str:
@@ -50,6 +55,20 @@ def write_compose(project_id: str, compose_path: Path, content: str) -> Path:
     backup = backup_compose(project_id, compose_path)
     compose_path.write_text(content, encoding="utf-8")
     return backup
+
+
+def create_compose(name: str, content: str) -> Path:
+    """Create `<repo>/<name>/docker-compose.yml`. `name` must already be a safe
+    single path segment (the API schema enforces it)."""
+    validate_yaml(content)
+    project_dir = settings.repo_path / name
+    if any((project_dir / f).exists() for f in COMPOSE_FILENAMES):
+        raise ComposeExists(f"A compose file already exists in '{name}/'")
+    project_dir.mkdir(parents=True, exist_ok=True)
+    compose_path = project_dir / "docker-compose.yml"
+    compose_path.write_text(content, encoding="utf-8")
+    logger.info("Created new stack %s", compose_path)
+    return compose_path
 
 
 def run_action(compose_path: Path, action: str, *, detached: bool = True) -> dict:

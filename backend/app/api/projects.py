@@ -2,11 +2,11 @@ import re
 from collections import defaultdict
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, status
 
 from app.schemas.compose import ActionResult, ComposeContent, ComposeWriteResponse
 from app.schemas.container import Container
-from app.schemas.project import Project
+from app.schemas.project import Project, ProjectCreate
 from app.services import compose_service, docker_service, repo_service
 
 router = APIRouter(prefix="/api/projects", tags=["projects"])
@@ -61,6 +61,17 @@ def _find_project(project_id: str) -> Project:
 @router.get("", response_model=list[Project])
 def list_projects() -> list[Project]:
     return _attach_containers(repo_service.discover_projects())
+
+
+@router.post("", response_model=Project, status_code=status.HTTP_201_CREATED)
+def create_project(body: ProjectCreate) -> Project:
+    try:
+        compose_path = compose_service.create_compose(body.name, body.content)
+    except compose_service.ComposeExists as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except compose_service.ComposeError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return repo_service.project_from_path(compose_path.resolve())
 
 
 @router.get("/{project_id}", response_model=Project)

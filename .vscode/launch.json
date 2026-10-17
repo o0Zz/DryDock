@@ -40,5 +40,12 @@
         "webRoot": "${workspaceFolder}/frontend/src"
       }
     }
+  ],
+  "compounds": [
+    {
+      "name": "Full stack (backend + frontend)",
+      "configurations": ["Backend: FastAPI", "Frontend: Vite + Chrome"],
+      "stopAll": true
+    }
   ]
 }

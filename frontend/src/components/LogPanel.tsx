@@ -3,15 +3,21 @@ import { useEffect, useRef, useState } from "react";
 
 type Status = "connecting" | "open" | "closed" | "error";
 
-/** Live log viewer backed by a Server-Sent Events endpoint. */
+/** Live log viewer backed by a Server-Sent Events endpoint. Floats over the
+ * page by default; `inline` renders it in the page flow instead. */
 export default function LogPanel({
   title,
   url,
   onClose,
+  inline = false,
+  filter = "",
 }: {
   title: string;
   url: string;
-  onClose: () => void;
+  onClose?: () => void;
+  inline?: boolean;
+  /** Case-insensitive substring; only matching lines are shown. */
+  filter?: string;
 }) {
   const [lines, setLines] = useState<string[]>([]);
   const [status, setStatus] = useState<Status>("connecting");
@@ -34,23 +40,28 @@ export default function LogPanel({
     return () => src.close();
   }, [url]);
 
+  const needle = filter.trim().toLowerCase();
+  const shown = needle ? lines.filter((l) => l.toLowerCase().includes(needle)) : lines;
+
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ block: "end" });
-  }, [lines]);
+  }, [shown.length]);
 
   return (
-    <div className="log-panel">
+    <div className={inline ? "log-panel inline" : "log-panel"}>
       <div className="log-header">
         <div>
           <ScrollText size={15} /> <strong>{title}</strong>{" "}
           <span className="muted">— {status}</span>
         </div>
-        <button type="button" className="secondary small" onClick={onClose}>
-          <X size={15} /> Close
-        </button>
+        {onClose && (
+          <button type="button" className="secondary small" onClick={onClose}>
+            <X size={15} /> Close
+          </button>
+        )}
       </div>
       <pre className="log-body">
-        {lines.join("\n")}
+        {shown.join("\n")}
         <div ref={bottomRef} />
       </pre>
     </div>
