@@ -11,6 +11,7 @@ import type {
   ContainerDetail,
   ContainerStats,
   DashboardStats,
+  DockerNetwork,
   EnvContent,
   EnvSaveResult,
   HostUsage,
@@ -196,6 +197,12 @@ export const api = {
     request<void>(`/api/registries?registry=${encodeURIComponent(registry)}`, {
       method: "DELETE",
     }),
+
+  // networks
+  listNetworks: () => request<DockerNetwork[]>("/api/networks"),
+  deleteNetwork: (id: string) =>
+    request<void>(`/api/networks/${encodeURIComponent(id)}`, { method: "DELETE" }),
+  pruneNetworks: () => request<Job>("/api/networks/prune", { method: "POST" }),
 
   // volumes
   listVolumes: () => request<Volume[]>("/api/volumes"),

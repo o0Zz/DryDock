@@ -21,7 +21,7 @@ backend/
   app/
     main.py            app setup, router mounting, SPA fallback, logging
     api/               one router per area (projects, containers, console, images,
-                       volumes, scans, updates, jobs, logs, settings, users, auth, dashboard)
+                       volumes, networks, scans, updates, jobs, logs, settings, users, auth, dashboard)
     core/              config (env), database, migrations (Alembic runner), security
                        (sessions, bcrypt), log_buffer (in-memory app log)
     models/            SQLAlchemy models
@@ -59,6 +59,7 @@ Dockerfile             3-stage build (frontend, backend venv, runtime with docke
   - Digest: the same tag was rebuilt (`latest`, `stable`).
   - Running version: `Container.image_version` comes from the `org.opencontainers.image.version` label (container labels include image labels, so no extra inspect). It is dropped when `ref.name` names another image, such as a version inherited from an ubuntu base. Many official Docker Hub images do not set it.
   - Newer tag: `registry_service` lists the registry's tags over the v2 API with a bearer token (anonymous, or logged in with the stored credentials). Only tags of the same shape count (same prefix, same number of parts, same suffix), so prereleases and other variants are ignored. It reports the newest tag and the newest within the current major, and skips outlier majors (a jump of more than 3).
+- **Networks** (`docker_service`): a network's inspect only lists running containers, and `docker network prune` goes by that, so it would remove the networks of stopped stacks. DryDock builds usage from every container's `NetworkSettings.Networks`, keyed by network name (a container that never started has no `NetworkID` yet). Remove and prune refuse used networks and Docker's own (`bridge`, `host`, `none`); prune is a job that removes the free ones one by one.
 - **Live data:** logs use SSE (`/api/logs/...`). Container stats are polled every 5s. The console is a WebSocket (`/api/containers/{id}/exec`).
 - **Dashboard:** `/api/dashboard` returns counts and the "needs attention" lists in one call. CVE and update counts only include tracked images (running or named in a Compose file), so replaced tags stop counting. Host facts come from `docker info`.
   - Host load (`/api/dashboard/host`, polled every 5s) comes from `host_service`. It reads `/proc` and `/sys/class/thermal`. These are not namespaced, so inside the container they describe the host. Each value is `null` where missing (Windows dev, VMs without a sensor).

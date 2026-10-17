@@ -113,6 +113,15 @@ def test_volume_prune_runner_summary(monkeypatch: pytest.MonkeyPatch) -> None:
     assert ctx.messages == ["Pruned 0 volume(s), reclaimed 0 B"]
 
 
+def test_network_prune_runner_summary(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(docker_service, "prune_networks", lambda: ["old_default", "tmp"])
+    ctx = FakeJobContext()
+
+    tasks.network_prune_runner()(ctx)
+
+    assert ctx.messages == ["Pruned 2 network(s): old_default, tmp"]
+
+
 def test_prune_runner_propagates_docker_down(monkeypatch: pytest.MonkeyPatch) -> None:
     def down(**kwargs: Any) -> NoReturn:
         raise docker_service.DockerUnavailable("down")
@@ -180,6 +189,7 @@ def test_routes_require_login() -> None:
     anonymous = TestClient(app)
     assert anonymous.post("/api/projects/web/up").status_code == 401
     assert anonymous.post("/api/volumes/prune").status_code == 401
+    assert anonymous.post("/api/networks/prune").status_code == 401
 
 
 @pytest.mark.parametrize("action", sorted(compose_service.ALLOWED_ACTIONS))
@@ -225,3 +235,10 @@ def test_volume_prune_queues_job(client: TestClient, submitted: list[tuple[str, 
 
     assert response.status_code == 202
     assert submitted == [(JobKind.VOLUME_PRUNE, "Prune unused volumes")]
+
+
+def test_network_prune_queues_job(client: TestClient, submitted: list[tuple[str, str]]) -> None:
+    response = client.post("/api/networks/prune")
+
+    assert response.status_code == 202
+    assert submitted == [(JobKind.NETWORK_PRUNE, "Prune unused networks")]

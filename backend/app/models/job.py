@@ -22,6 +22,7 @@ class JobKind:
     PROJECT_ACTION = "project_action"
     IMAGE_PRUNE = "image_prune"
     VOLUME_PRUNE = "volume_prune"
+    NETWORK_PRUNE = "network_prune"
 
 
 class Job(Base):

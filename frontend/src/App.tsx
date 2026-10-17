@@ -5,6 +5,7 @@ import {
   Layers,
   LayoutDashboard,
   LogOut,
+  Network,
   Boxes,
   ScrollText,
   Settings as SettingsIcon,
@@ -20,6 +21,7 @@ import Images from "./pages/Images";
 import Login from "./pages/Login";
 import Logs from "./pages/Logs";
 import NewProject from "./pages/NewProject";
+import Networks from "./pages/Networks";
 import ProjectDetail from "./pages/ProjectDetail";
 import Projects from "./pages/Projects";
 import Settings from "./pages/Settings";
@@ -70,6 +72,9 @@ export default function App() {
           <NavLink to="/volumes">
             <HardDrive size={18} /> Volumes
           </NavLink>
+          <NavLink to="/networks">
+            <Network size={18} /> Networks
+          </NavLink>
           <NavLink to="/images">
             <Layers size={18} /> Images
           </NavLink>
@@ -98,6 +103,7 @@ export default function App() {
           <Route path="/containers/:id" element={<ContainerDetail />} />
           <Route path="/volumes" element={<Volumes />} />
           {user.is_admin && <Route path="/volumes/:name" element={<VolumeFiles />} />}
+          <Route path="/networks" element={<Networks />} />
           <Route path="/images" element={<Images />} />
           <Route path="/scans" element={<Navigate to="/images" replace />} />
           <Route path="/settings" element={<Settings />} />

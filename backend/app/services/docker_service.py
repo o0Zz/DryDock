@@ -18,6 +18,7 @@ from docker.errors import APIError, ContainerError, DockerException, NotFound
 from docker.errors import ImageNotFound as DockerImageNotFound
 from docker.models.containers import Container as DockerContainer
 from docker.models.images import Image as DockerImage
+from docker.models.networks import Network as DockerNetwork
 from docker.models.volumes import Volume as DockerVolume
 from docker.types import LogConfig
 
@@ -33,6 +34,7 @@ from app.schemas.container import (
 )
 from app.schemas.dashboard import HostInfo
 from app.schemas.image import ContainerRef, Image
+from app.schemas.network import Network, NetworkUser
 from app.schemas.volume import Volume, VolumeEntry, VolumeUser
 
 logger = logging.getLogger(__name__)
@@ -52,6 +54,10 @@ class DockerNotFound(DockerUnavailable):
 
 class VolumeInUse(Exception):
     """Raised when trying to remove a volume that is attached to a container."""
+
+
+class NetworkInUse(Exception):
+    """Raised when removing a network that a container uses, or one of Docker's own."""
 
 
 class NotAFile(Exception):
@@ -583,6 +589,112 @@ def prune_volumes() -> PruneResult:
         deleted=result.get("VolumesDeleted") or [],
         space_reclaimed=result.get("SpaceReclaimed") or 0,
     )
+
+
+# --- Networks ----------------------------------------------------------------
+
+PREDEFINED_NETWORKS = {"bridge", "host", "none"}
+
+
+def _network_usage() -> dict[str, list[NetworkUser]]:
+    """Map each network name to the containers attached to it, in any state.
+
+    A network's own inspect only lists running containers, and Docker's prune
+    goes by that, so it removes networks that stopped stacks still need. The
+    containers' settings name their networks in every state; the network ID is
+    only filled in once a container has started, so the name is the key.
+    """
+    usage: dict[str, list[NetworkUser]] = {}
+    for container in _client().containers.list(all=True):
+        network_settings = (container.attrs or {}).get("NetworkSettings") or {}
+        for name, network in (network_settings.get("Networks") or {}).items():
+            usage.setdefault(name, []).append(
+                NetworkUser(
+                    id=container.id or "",
+                    name=container.name or "",
+                    running=container.status == "running",
+                    ip_address=(network or {}).get("IPAddress") or None,
+                )
+            )
+    return usage
+
+
+def _network_to_schema(network: DockerNetwork, usage: dict[str, list[NetworkUser]]) -> Network:
+    attrs = network.attrs or {}
+    labels = attrs.get("Labels") or {}
+    ipam = (attrs.get("IPAM") or {}).get("Config") or []
+    created_raw = attrs.get("Created")
+    name = network.name or ""
+    return Network(
+        id=network.id or "",
+        name=name,
+        driver=attrs.get("Driver") or "",
+        scope=attrs.get("Scope"),
+        subnets=[entry["Subnet"] for entry in ipam if entry.get("Subnet")],
+        gateways=[entry["Gateway"] for entry in ipam if entry.get("Gateway")],
+        internal=bool(attrs.get("Internal")),
+        created_at=_parse_created(created_raw) if created_raw else None,
+        labels=labels,
+        compose_project=labels.get("com.docker.compose.project"),
+        predefined=name in PREDEFINED_NETWORKS,
+        used_by=usage.get(name, []),
+    )
+
+
+def list_networks() -> list[Network]:
+    try:
+        # greedy: one inspect per network, for IPAM and creation time.
+        networks = _client().networks.list(greedy=True)
+        usage = _network_usage()
+    except DockerException as exc:
+        raise DockerUnavailable(str(exc)) from exc
+    return sorted(
+        (_network_to_schema(network, usage) for network in networks),
+        key=lambda network: network.name.lower(),
+    )
+
+
+def remove_network(network_id: str) -> None:
+    try:
+        network = _client().networks.get(network_id)
+    except NotFound as exc:
+        raise DockerNotFound(f"network {network_id} not found") from exc
+    except DockerException as exc:
+        raise DockerUnavailable(str(exc)) from exc
+    if network.name in PREDEFINED_NETWORKS:
+        raise NetworkInUse(f"{network.name} is one of Docker's own networks")
+    try:
+        users = _network_usage().get(network.name or "", [])
+        if users:
+            names = ", ".join(sorted(user.name for user in users))
+            raise NetworkInUse(f"network {network.name} is used by {names}")
+        network.remove()
+    except APIError as exc:
+        # 403 or 409 when a container is attached after all.
+        if exc.response is not None and exc.response.status_code in (403, 409):
+            raise NetworkInUse(f"cannot remove {network.name}: {exc.explanation}") from exc
+        raise DockerUnavailable(str(exc)) from exc
+    except DockerException as exc:
+        raise DockerUnavailable(str(exc)) from exc
+
+
+def prune_networks() -> list[str]:
+    """Remove every custom network no container uses, running or not. Returns their names.
+
+    Not `docker network prune`: that only counts running containers.
+    """
+    deleted: list[str] = []
+    for network in list_networks():
+        if network.predefined or network.used_by:
+            continue
+        try:
+            remove_network(network.id)
+        except (NetworkInUse, DockerNotFound) as exc:
+            # Attached or removed meanwhile; prune what is still free.
+            logger.info("Skipped network %s: %s", network.name, exc)
+            continue
+        deleted.append(network.name)
+    return deleted
 
 
 # --- Volume files ------------------------------------------------------------

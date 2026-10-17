@@ -18,6 +18,7 @@ from app.api import (
     images,
     jobs,
     logs,
+    networks,
     projects,
     registries,
     scans,
@@ -110,6 +111,7 @@ _ERROR_STATUS: dict[type[Exception], tuple[int, str]] = {
     docker_service.ImageNotFound: (404, "image {} not found"),
     docker_service.ImageInUse: (409, "{}"),
     docker_service.VolumeInUse: (409, "{}"),
+    docker_service.NetworkInUse: (409, "{}"),
     docker_service.NotAFile: (400, "{}"),
     docker_service.RegistryLoginFailed: (400, "{}"),
     docker_service.ContainerRunning: (409, "{}"),
@@ -138,6 +140,7 @@ app.include_router(dashboard.router, dependencies=_auth)
 app.include_router(projects.router, dependencies=_auth)
 app.include_router(containers.router, dependencies=_auth)
 app.include_router(volumes.router, dependencies=_auth)
+app.include_router(networks.router, dependencies=_auth)
 app.include_router(images.router, dependencies=_auth)
 app.include_router(scans.router, dependencies=_auth)
 app.include_router(updates.router, dependencies=_auth)

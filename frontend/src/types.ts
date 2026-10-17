@@ -89,6 +89,30 @@ export interface LocalImage {
   used_by: ImageUser[];
 }
 
+export interface NetworkUser {
+  id: string;
+  name: string;
+  running: boolean;
+  ip_address: string | null;
+}
+
+export interface DockerNetwork {
+  id: string;
+  name: string;
+  driver: string;
+  scope: string | null;
+  subnets: string[];
+  gateways: string[];
+  internal: boolean;
+  created_at: string | null;
+  labels: Record<string, string>;
+  compose_project: string | null;
+  /** bridge, host and none: Docker's own networks, which cannot be removed. */
+  predefined: boolean;
+  /** Containers in any state, so a stopped stack's network counts as used. */
+  used_by: NetworkUser[];
+}
+
 export interface VolumeUser {
   id: string;
   name: string;

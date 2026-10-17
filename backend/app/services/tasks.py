@@ -274,6 +274,18 @@ def image_prune_runner(*, all_unused: bool) -> JobRunner:
     return run
 
 
+def network_prune_runner() -> JobRunner:
+    """Build a job body that removes every custom network no container uses."""
+
+    def run(ctx: JobContext) -> None:
+        deleted = docker_service.prune_networks()
+        ctx.note(
+            f"Pruned {len(deleted)} network(s)" + (f": {', '.join(deleted)}" if deleted else "")
+        )
+
+    return run
+
+
 def volume_prune_runner() -> JobRunner:
     """Build a job body that removes every volume no container uses."""
 
