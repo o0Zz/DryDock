@@ -24,6 +24,7 @@ import ProjectDetail from "./pages/ProjectDetail";
 import Projects from "./pages/Projects";
 import Settings from "./pages/Settings";
 import Users from "./pages/Users";
+import VolumeFiles from "./pages/VolumeFiles";
 import Volumes from "./pages/Volumes";
 
 export default function App() {
@@ -96,6 +97,7 @@ export default function App() {
           <Route path="/containers" element={<Containers />} />
           <Route path="/containers/:id" element={<ContainerDetail />} />
           <Route path="/volumes" element={<Volumes />} />
+          {user.is_admin && <Route path="/volumes/:name" element={<VolumeFiles />} />}
           <Route path="/images" element={<Images />} />
           <Route path="/scans" element={<Navigate to="/images" replace />} />
           <Route path="/settings" element={<Settings />} />

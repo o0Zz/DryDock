@@ -210,7 +210,8 @@ h1 {
   margin-top: 0.5rem;
 }
 
-button {
+button,
+a.button {
   background: var(--accent);
   color: #ffffff;
   border: none;
@@ -225,11 +226,16 @@ button {
   gap: 0.4rem;
 }
 
-button svg {
+button svg,
+a.button svg {
   flex-shrink: 0;
 }
 
-button.secondary {
+/* A download link that looks like a button. */
+a.button { text-decoration: none; font-size: 0.875rem; }
+
+button.secondary,
+a.button.secondary {
   background: transparent;
   color: var(--text);
   border: 1px solid var(--border);
@@ -299,7 +305,8 @@ button:disabled {
   justify-content: space-between;
 }
 
-button.small { padding: 0.25rem 0.5rem; font-size: 0.8rem; }
+button.small,
+a.button.small { padding: 0.25rem 0.5rem; font-size: 0.8rem; }
 button.linklike {
   background: none;
   color: var(--accent);

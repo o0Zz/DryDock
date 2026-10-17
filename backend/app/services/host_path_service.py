@@ -33,7 +33,7 @@ MOUNTINFO = Path("/proc/self/mountinfo")
 _alias: Path | None = None
 
 
-def _own_container_id() -> str | None:
+def own_container_id() -> str | None:
     try:
         text = MOUNTINFO.read_text(encoding="utf-8")
     except OSError:
@@ -47,7 +47,7 @@ def detect_host_path() -> Path | None:
     """Host path of the repo mount, or None when it cannot be told."""
     if settings.repo_host_path:
         return settings.repo_host_path
-    container_id = _own_container_id()
+    container_id = own_container_id()
     if not container_id:
         return None
     source = docker_service.mount_source(container_id, settings.repo_path.as_posix())

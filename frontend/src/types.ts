@@ -50,6 +50,21 @@ export interface Volume {
   used_by: VolumeUser[];
 }
 
+export interface VolumeEntry {
+  name: string;
+  type: "dir" | "file" | "link" | "other";
+  size: number;
+  modified_at: string | null;
+}
+
+export interface VolumeListing {
+  /** Absolute path inside the volume, `/` for its root. */
+  path: string;
+  entries: VolumeEntry[];
+  /** The folder holds more entries than were returned. */
+  truncated: boolean;
+}
+
 export interface ImageUser {
   name: string;
   running: boolean;

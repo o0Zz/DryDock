@@ -26,6 +26,9 @@ class Settings(BaseSettings):
     # when unset; only needed if detection fails (e.g. a custom container hostname).
     repo_host_path: Path | None = None
     data_path: Path = Field(default=Path("/data"))
+    # Image for the helper containers that read volume files. DryDock uses its
+    # own image when it runs in a container; this is the fallback (dev).
+    helper_image: str = "busybox:stable"
     cors_origins: list[str] = Field(default_factory=lambda: ["http://localhost:5173"])
     # Set when served under a sub-path by a reverse proxy, e.g. "/drydock".
     root_path: str = ""

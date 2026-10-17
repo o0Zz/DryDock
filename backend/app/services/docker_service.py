@@ -1,19 +1,25 @@
 from __future__ import annotations
 
 import contextlib
+import io
 import logging
+import posixpath
+import stat
+import tarfile
 from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from functools import lru_cache
 from typing import Any
 
 import docker
-from docker.errors import APIError, DockerException, NotFound
+from docker.errors import APIError, ContainerError, DockerException, NotFound
 from docker.errors import ImageNotFound as DockerImageNotFound
 from docker.models.containers import Container as DockerContainer
 from docker.models.images import Image as DockerImage
 from docker.models.volumes import Volume as DockerVolume
+from docker.types import LogConfig
 
 from app.schemas.common import PruneResult
 from app.schemas.container import (
@@ -27,7 +33,7 @@ from app.schemas.container import (
 )
 from app.schemas.dashboard import HostInfo
 from app.schemas.image import ContainerRef, Image
-from app.schemas.volume import Volume, VolumeUser
+from app.schemas.volume import Volume, VolumeEntry, VolumeUser
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +52,10 @@ class DockerNotFound(DockerUnavailable):
 
 class VolumeInUse(Exception):
     """Raised when trying to remove a volume that is attached to a container."""
+
+
+class NotAFile(Exception):
+    """Raised when a volume path to download is a folder, link or device."""
 
 
 class ContainerRunning(Exception):
@@ -444,6 +454,15 @@ def open_exec(container_id: str, *, cols: int = 80, rows: int = 24) -> ExecSessi
     return session
 
 
+def container_image(container_id: str) -> str | None:
+    """Image ID a container was created from, or None when there is no such container."""
+    try:
+        container = _get_container(container_id)
+    except DockerNotFound:
+        return None
+    return (container.attrs or {}).get("Image") or None
+
+
 def mount_source(container_id: str, destination: str) -> str | None:
     """Host path (or volume path) mounted at `destination` in a container."""
     try:
@@ -544,6 +563,169 @@ def prune_volumes() -> PruneResult:
     return PruneResult(
         deleted=result.get("VolumesDeleted") or [],
         space_reclaimed=result.get("SpaceReclaimed") or 0,
+    )
+
+
+# --- Volume files ------------------------------------------------------------
+
+# Where helper containers mount the volume they read.
+VOLUME_ROOT = "/volume"
+_CHUNK_SIZE = 64 * 1024
+# find arguments after the folder: one `stat` line per direct child.
+_LIST_ARGS = ["-mindepth", "1", "-maxdepth", "1", "-exec", "stat", "-c", "%f %s %Y %n", "{}", "+"]
+# Type bits of Go's os.FileMode (dir, symlink, device, pipe, socket, char device,
+# irregular), as sent in Docker's archive stat header. A regular file has none.
+_GO_MODE_TYPE = (1 << 31) | (1 << 27) | (1 << 26) | (1 << 25) | (1 << 24) | (1 << 21) | (1 << 19)
+
+
+@dataclass
+class VolumeFile:
+    name: str
+    size: int
+    chunks: Iterator[bytes]
+
+
+class _ChunkReader(io.RawIOBase):
+    """File-like view over an iterator of byte chunks, for tarfile's stream mode."""
+
+    def __init__(self, chunks: Iterator[bytes]) -> None:
+        self._chunks = chunks
+        self._pending = b""
+
+    def readable(self) -> bool:
+        return True
+
+    def readinto(self, buffer: Any) -> int:
+        while not self._pending:
+            try:
+                self._pending = next(self._chunks)
+            except StopIteration:
+                return 0
+        size = min(len(buffer), len(self._pending))
+        buffer[:size] = self._pending[:size]
+        self._pending = self._pending[size:]
+        return size
+
+
+def _helper_options(volume: str, image: str) -> dict[str, Any]:
+    return {
+        "image": image,
+        "volumes": {volume: {"bind": VOLUME_ROOT, "mode": "ro"}},
+        "network_mode": "none",
+        "labels": {"drydock.helper": "volume-files"},
+    }
+
+
+def _remove_quietly(container: DockerContainer) -> None:
+    with contextlib.suppress(DockerException):
+        container.remove(force=True)
+
+
+def ensure_image(reference: str) -> None:
+    """Pull `reference` unless it is already present."""
+    try:
+        try:
+            _client().images.get(reference)
+        except NotFound:
+            _client().images.pull(reference)
+    except DockerException as exc:
+        raise DockerUnavailable(str(exc)) from exc
+
+
+def _entry_type(mode: int) -> str:
+    if stat.S_ISDIR(mode):
+        return "dir"
+    if stat.S_ISREG(mode):
+        return "file"
+    if stat.S_ISLNK(mode):
+        return "link"
+    return "other"
+
+
+def _parse_entries(output: bytes) -> list[VolumeEntry]:
+    """Parse `stat -c '%f %s %Y %n'` lines. The name comes last, so spaces in it are fine."""
+    entries: list[VolumeEntry] = []
+    for line in output.decode("utf-8", errors="replace").splitlines():
+        parts = line.split(" ", 3)
+        if len(parts) != 4:
+            continue  # the tail of a file name that holds a newline
+        raw_mode, size, mtime, path = parts
+        try:
+            entries.append(
+                VolumeEntry(
+                    name=posixpath.basename(path),
+                    type=_entry_type(int(raw_mode, 16)),
+                    size=int(size),
+                    modified_at=datetime.fromtimestamp(int(mtime), tz=UTC),
+                )
+            )
+        except ValueError:
+            continue
+    return entries
+
+
+def list_volume_dir(name: str, path: str, *, image: str) -> list[VolumeEntry]:
+    """Entries of the folder `path` (absolute, normalised) in a volume, unsorted."""
+    _get_volume(name)
+    # The trailing slash makes find fail on a file, not only on a missing path.
+    target = (VOLUME_ROOT + path).rstrip("/") + "/"
+    try:
+        output = _client().containers.run(
+            entrypoint=["find"],
+            command=[target, *_LIST_ARGS],
+            remove=True,
+            # run() only returns the output for log drivers it can read back.
+            log_config=LogConfig(type=LogConfig.types.JSON),
+            **_helper_options(name, image),
+        )
+    except ContainerError as exc:
+        raise DockerNotFound(f"no folder {path} in volume {name}") from exc
+    except DockerException as exc:
+        raise DockerUnavailable(str(exc)) from exc
+    return _parse_entries(output or b"")
+
+
+def open_volume_file(name: str, path: str, *, image: str) -> VolumeFile:
+    """Open a regular file in a volume for streaming.
+
+    The helper container is only created, never started: Docker mounts its
+    volumes for the copy. It is removed once the stream ends.
+    """
+    _get_volume(name)
+    try:
+        container = _client().containers.create(**_helper_options(name, image))
+    except DockerException as exc:
+        raise DockerUnavailable(str(exc)) from exc
+    try:
+        raw, file_stat = container.get_archive(VOLUME_ROOT + path, chunk_size=_CHUNK_SIZE)
+        if file_stat.get("mode", 0) & _GO_MODE_TYPE:
+            raise NotAFile(f"{path} is not a regular file")
+        # Closed by chunks() below, once the response has streamed the file.
+        tar = tarfile.open(fileobj=io.BufferedReader(_ChunkReader(raw)), mode="r|")  # noqa: SIM115
+        member = tar.next()
+        source = tar.extractfile(member) if member else None
+        if source is None:
+            raise NotAFile(f"{path} is not a regular file")
+    except NotFound as exc:
+        _remove_quietly(container)
+        raise DockerNotFound(f"no file {path} in volume {name}") from exc
+    except DockerException as exc:
+        _remove_quietly(container)
+        raise DockerUnavailable(str(exc)) from exc
+    except BaseException:
+        _remove_quietly(container)
+        raise
+
+    def chunks() -> Iterator[bytes]:
+        try:
+            while block := source.read(_CHUNK_SIZE):
+                yield block
+        finally:
+            tar.close()
+            _remove_quietly(container)
+
+    return VolumeFile(
+        name=posixpath.basename(path), size=int(file_stat.get("size", 0)), chunks=chunks()
     )
 
 

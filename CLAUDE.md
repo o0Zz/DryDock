@@ -28,7 +28,8 @@ backend/
     schemas/           Pydantic API models
     services/          logic: docker_service, compose_service, repo_service, trivy_service,
                        registry_service, update_service, job_service, tasks, scheduler_service,
-                       settings_service, notify_service, history_service, host_service
+                       settings_service, notify_service, history_service, host_service,
+                       volume_files_service
   migrations/versions/ Alembic revisions
   tests/               pytest
 frontend/src/
@@ -60,8 +61,12 @@ Dockerfile             3-stage build (frontend, backend venv, runtime with docke
 - **Live data:** logs use SSE (`/api/logs/...`). Container stats are polled every 5s. The console is a WebSocket (`/api/containers/{id}/exec`).
 - **Dashboard:** `/api/dashboard` returns counts and the "needs attention" lists in one call. CVE and update counts only include tracked images (running or named in a Compose file), so replaced tags stop counting. Host facts come from `docker info`.
   - Host load (`/api/dashboard/host`, polled every 5s) comes from `host_service`. It reads `/proc` and `/sys/class/thermal`. These are not namespaced, so inside the container they describe the host. Each value is `null` where missing (Windows dev, VMs without a sensor).
+- **Volume files** (`volume_files_service`): volume data lives under the Docker root on the host, which DryDock cannot see. Each request uses a throwaway helper container with the volume mounted read-only at `/volume` and no network.
+  - Listing runs `find <dir>/ -mindepth 1 -maxdepth 1 -exec stat -c '%f %s %Y %n' {} +`. It works with GNU and busybox tools. Folders over 2000 entries are cut and flagged `truncated`.
+  - Download creates the helper without starting it and streams the file out with `get_archive` (`docker cp`). Only regular files download. The helper is removed when the stream ends.
+  - The helper uses DryDock's own image, so nothing is pulled. Outside a container (dev) it falls back to `DRYDOCK_HELPER_IMAGE`, pulled on first use.
 - **Auth:** signed session cookie (Starlette `SessionMiddleware`), users table with an `is_admin` flag. A bootstrap admin is created on first start.
-  - Admin only: settings writes, users, app logs, console, unmasked env values.
+  - Admin only: settings writes, users, app logs, console, unmasked env values, volume files.
   - The console WebSocket is outside the HTTP auth dependency. It checks the session and the `Origin` header itself. Keep that check: other apps on the same host are same-site, so the browser sends them the cookie too.
 - **Trivy** runs with `--cache-dir <data>/trivy-cache`, so its DB survives the container being recreated.
 - **Database:** Alembic owns the schema. Startup upgrades to head and snapshots the database to `<data>/backups/db/` first (keeps 5). Never use `create_all`. See "Database migrations" below.
@@ -136,5 +141,6 @@ Kubernetes, Swarm, multi-host, RBAC beyond admin/user, plugins, an auto-update e
 ## Known gaps
 
 - No registry credentials: private registries fail both update checks.
+- Volume files are read-only: no upload, edit or delete.
 - YAML backups cannot be browsed or restored from the UI yet.
 - `todo.txt`: multilanguage UI.

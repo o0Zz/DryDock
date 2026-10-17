@@ -108,6 +108,7 @@ _ERROR_STATUS: dict[type[Exception], tuple[int, str]] = {
     docker_service.ImageNotFound: (404, "image {} not found"),
     docker_service.ImageInUse: (409, "{}"),
     docker_service.VolumeInUse: (409, "{}"),
+    docker_service.NotAFile: (400, "{}"),
     docker_service.ContainerRunning: (409, "{}"),
     docker_service.ContainerConflict: (409, "{}"),
     compose_service.ComposeError: (400, "{}"),

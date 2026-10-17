@@ -2,6 +2,7 @@ import { Circle, HardDrive, RefreshCw, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api";
+import { useAuth } from "../auth";
 import { useConfirm } from "../components/ConfirmDialog";
 import JobList from "../components/JobList";
 import { formatDate } from "../format";
@@ -10,6 +11,7 @@ import type { Volume } from "../types";
 
 export default function Volumes() {
   const confirm = useConfirm();
+  const { user } = useAuth();
   const [volumes, setVolumes] = useState<Volume[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -135,9 +137,19 @@ export default function Volumes() {
               return (
                 <tr key={volume.name}>
                   <td>
-                    <span className="icon-link">
-                      <HardDrive size={15} /> {volume.name}
-                    </span>
+                    {user?.is_admin ? (
+                      <Link
+                        className="icon-link"
+                        to={`/volumes/${encodeURIComponent(volume.name)}`}
+                        title="Browse files"
+                      >
+                        <HardDrive size={15} /> {volume.name}
+                      </Link>
+                    ) : (
+                      <span className="icon-link">
+                        <HardDrive size={15} /> {volume.name}
+                      </span>
+                    )}
                     <div className="muted">
                       <code>{volume.mountpoint}</code>
                     </div>

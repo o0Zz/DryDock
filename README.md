@@ -8,7 +8,7 @@ DryDock is designed to help you keep your containers secure over time:
 - **Get alerted:** scheduled scans and update checks can call a webhook when something needs attention.
 - **Change safely:** Compose edits are validated and backed up first, and nothing updates automatically.
 - **See it at a glance:** the dashboard shows running containers, open CVEs, what needs attention, and host CPU, memory and temperature.
-- **Control access:** login is required, and only admins can open a container shell or see secret values.
+- **Control access:** login is required, and only admins can open a container shell, see secret values or read volume files.
 
 It runs as a single Docker image with a SQLite database. No cloud, no Kubernetes.
 
@@ -50,7 +50,7 @@ Works on `amd64` and `arm64` (Raspberry Pi 3, 4 and 5 with 64-bit OS).
 - **Updates:** finds rebuilt tags (`latest`, `stable`) and newer versions (`2025.10.4` → `2026.10.2`). For `postgres:16.2` you see both the newest `16.x` and the newest overall. For a floating tag like `stable`, the containers list shows the version the image declares (`org.opencontainers.image.version` label), when it has one.
 - **Background jobs:** scans, update checks, stack actions and prunes run in the background. The top bar shows progress from any page.
 - **Schedules and alerts:** run scans and update checks on an interval, and send results to a webhook.
-- **Users and volumes:** several users with an admin flag, and named volume management.
+- **Users and volumes:** several users with an admin flag, and named volume management. Admins can browse the files in a volume (read-only) and download them.
 - **Logs page:** DryDock's own log, to see why a scan or a check failed.
 
 ## Configuration
@@ -67,6 +67,7 @@ Set these environment variables if you need to. Schedules and notifications are 
 | `DRYDOCK_ROOT_PATH`          | *(empty)*    | Set when served under a subpath, e.g. `/drydock` |
 | `DRYDOCK_SESSION_HTTPS_ONLY` | `false`      | Set `true` behind an HTTPS proxy               |
 | `DRYDOCK_SECRET_KEY`         | *(generated)* | Session signing key, saved in `/data` if not set |
+| `DRYDOCK_HELPER_IMAGE`       | `busybox:stable` | Image that reads volume files when DryDock is not in a container (dev) |
 
 Behind a reverse proxy, allow WebSocket upgrades so the container shell works. For nginx:
 

@@ -21,6 +21,7 @@ import type {
   User,
   UserPatch,
   Volume,
+  VolumeListing,
 } from "./types";
 
 export class ApiError extends Error {
@@ -174,6 +175,13 @@ export const api = {
       method: "DELETE",
     }),
   pruneVolumes: () => request<Job>("/api/volumes/prune", { method: "POST" }),
+  listVolumeFiles: (name: string, path: string) =>
+    request<VolumeListing>(
+      `/api/volumes/${encodeURIComponent(name)}/files?path=${encodeURIComponent(path)}`,
+    ),
+  /** A plain link target: the browser downloads it with the session cookie. */
+  volumeFileUrl: (name: string, path: string) =>
+    `/api/volumes/${encodeURIComponent(name)}/files/download?path=${encodeURIComponent(path)}`,
 
   // local images
   listImages: () => request<LocalImage[]>("/api/images"),

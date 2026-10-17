@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -22,6 +23,22 @@ class Volume(BaseModel):
     labels: dict[str, str] = Field(default_factory=dict)
     compose_project: str | None = None
     used_by: list[VolumeUser] = Field(default_factory=list)
+
+
+class VolumeEntry(BaseModel):
+    """One file or folder inside a volume."""
+
+    name: str
+    type: Literal["dir", "file", "link", "other"]
+    size: int
+    modified_at: datetime | None = None
+
+
+class VolumeListing(BaseModel):
+    path: str
+    entries: list[VolumeEntry]
+    # More entries than the listing returns; the rest are left out.
+    truncated: bool = False
 
 
 class VolumeCreate(BaseModel):
