@@ -22,7 +22,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (): Promise<void> => {
     try {
       setUser(await api.me());
     } catch {
@@ -38,16 +38,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // Any API call that returns 401 kicks us back to the login screen.
   useEffect(() => {
-    const onUnauthorized = () => setUser(null);
+    const onUnauthorized = (): void => setUser(null);
     window.addEventListener("drydock:unauthorized", onUnauthorized);
     return () => window.removeEventListener("drydock:unauthorized", onUnauthorized);
   }, []);
 
-  const login = useCallback(async (username: string, password: string) => {
+  const login = useCallback(async (username: string, password: string): Promise<void> => {
     setUser(await api.login(username, password));
   }, []);
 
-  const logout = useCallback(async () => {
+  const logout = useCallback(async (): Promise<void> => {
     try {
       await api.logout();
     } finally {
@@ -63,7 +63,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 }
 
 export function useAuth(): AuthState {
-  const ctx = useContext(AuthContext);
-  if (!ctx) throw new Error("useAuth must be used within an AuthProvider");
-  return ctx;
+  const context = useContext(AuthContext);
+  if (!context) throw new Error("useAuth must be used within an AuthProvider");
+  return context;
 }

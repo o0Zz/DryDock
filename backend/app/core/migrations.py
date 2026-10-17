@@ -17,8 +17,8 @@ from alembic.config import Config
 from alembic.runtime.migration import MigrationContext
 from alembic.script import ScriptDirectory
 from sqlalchemy import create_engine, event, inspect
-from sqlalchemy.engine import Engine
-from sqlalchemy.pool import NullPool
+from sqlalchemy.engine import Connection, Engine
+from sqlalchemy.pool import ConnectionPoolEntry, NullPool
 
 from app.core.config import settings
 
@@ -42,7 +42,9 @@ def create_migration_engine() -> Engine:
     migration_engine = create_engine(f"sqlite:///{settings.db_path}", poolclass=NullPool)
 
     @event.listens_for(migration_engine, "connect")
-    def _connect(dbapi_connection, connection_record) -> None:  # noqa: ANN001
+    def _connect(
+        dbapi_connection: sqlite3.Connection, connection_record: ConnectionPoolEntry
+    ) -> None:
         # pysqlite commits on its own before DDL, which would leave a failed
         # migration half applied. Take over so each upgrade is one transaction.
         dbapi_connection.isolation_level = None
@@ -56,8 +58,8 @@ def create_migration_engine() -> Engine:
             cursor.close()
 
     @event.listens_for(migration_engine, "begin")
-    def _begin(conn) -> None:  # noqa: ANN001
-        conn.exec_driver_sql("BEGIN IMMEDIATE")
+    def _begin(connection: Connection) -> None:
+        connection.exec_driver_sql("BEGIN IMMEDIATE")
 
     return migration_engine
 
@@ -71,13 +73,14 @@ def upgrade_database() -> None:
     settings.data_path.mkdir(parents=True, exist_ok=True)
     migration_engine = create_migration_engine()
     try:
-        with migration_engine.connect() as conn:
-            current = MigrationContext.configure(conn).get_current_revision()
-            has_tables = bool(inspect(conn).get_table_names())
+        with migration_engine.connect() as connection:
+            current = MigrationContext.configure(connection).get_current_revision()
+            has_tables = bool(inspect(connection).get_table_names())
 
         if current == head:
             return
-        if current is not None and current not in {s.revision for s in script.walk_revisions()}:
+        known_revisions = {step.revision for step in script.walk_revisions()}
+        if current is not None and current not in known_revisions:
             raise RuntimeError(
                 f"Database is at revision {current!r}, which this DryDock version does not "
                 "know. It was likely written by a newer release: upgrade DryDock, or restore "
@@ -87,8 +90,8 @@ def upgrade_database() -> None:
             _backup_database(current)
 
         logger.info("Migrating database from %s to %s", current or "an unversioned schema", head)
-        with migration_engine.begin() as conn:
-            config.attributes["connection"] = conn
+        with migration_engine.begin() as connection:
+            config.attributes["connection"] = connection
             command.upgrade(config, "head")
     finally:
         migration_engine.dispose()
@@ -101,11 +104,14 @@ def _backup_database(revision: str | None) -> Path:
     stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     target = backup_dir / f"drydock-{stamp}-{revision or 'unversioned'}.db"
 
-    with closing(sqlite3.connect(settings.db_path)) as src, closing(sqlite3.connect(target)) as dst:
-        src.backup(dst)
+    with (
+        closing(sqlite3.connect(settings.db_path)) as source,
+        closing(sqlite3.connect(target)) as destination,
+    ):
+        source.backup(destination)
     logger.info("Backed up database to %s", target)
 
     # The timestamp prefix makes name order chronological.
-    for old in sorted(backup_dir.glob("drydock-*.db"))[:-KEEP_BACKUPS]:
-        old.unlink()
+    for old_backup in sorted(backup_dir.glob("drydock-*.db"))[:-KEEP_BACKUPS]:
+        old_backup.unlink()
     return target

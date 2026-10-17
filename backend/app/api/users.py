@@ -77,12 +77,12 @@ def update_user(
 def delete_user(
     user_id: int,
     db: Session = Depends(get_db),
-    current: User = Depends(require_admin),
+    current_user: User = Depends(require_admin),
 ) -> None:
     user = db.get(User, user_id)
     if user is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
-    if user.id == current.id:
+    if user.id == current_user.id:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail="You cannot delete your own account"
         )

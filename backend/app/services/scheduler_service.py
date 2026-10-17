@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from datetime import datetime
 
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -71,7 +72,7 @@ def reconfigure() -> None:
     )
 
 
-def _apply(job_id: str, *, enabled: bool, hours: int, func, name: str) -> None:  # noqa: ANN001
+def _apply(job_id: str, *, enabled: bool, hours: int, func: Callable[[], None], name: str) -> None:
     assert _scheduler is not None
     if not enabled:
         if _scheduler.get_job(job_id):

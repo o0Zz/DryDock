@@ -16,10 +16,13 @@ def list_jobs(
     active: bool = Query(default=False, description="Only jobs that are pending or running"),
     db: Session = Depends(get_db),
 ) -> list[Job]:
-    stmt = select(Job).order_by(Job.created_at.desc())
+    query = select(Job).order_by(Job.created_at.desc())
     # Active jobs are few, so they come back in full regardless of `limit`.
-    stmt = stmt.where(Job.status.in_(job_service.ACTIVE_STATUSES)) if active else stmt.limit(limit)
-    return list(db.scalars(stmt))
+    if active:
+        query = query.where(Job.status.in_(job_service.ACTIVE_STATUSES))
+    else:
+        query = query.limit(limit)
+    return list(db.scalars(query))
 
 
 @router.get("/{job_id}", response_model=JobRead)

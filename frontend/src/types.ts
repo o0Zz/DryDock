@@ -6,6 +6,16 @@ export interface User {
   created_at: string;
 }
 
+export type ProjectAction = "up" | "down" | "pull" | "restart" | "stop";
+
+export type ContainerAction = "start" | "stop" | "restart";
+
+export interface UserPatch {
+  password?: string;
+  is_admin?: boolean;
+  is_active?: boolean;
+}
+
 export interface ProjectService {
   name: string;
   image: string | null;
@@ -23,6 +33,10 @@ export interface Project {
 
 export interface ComposeContent {
   content: string;
+}
+
+export interface ComposeSaveResult {
+  backup_path: string;
 }
 
 export interface Volume {
@@ -78,6 +92,11 @@ export interface Container {
   compose_service: string | null;
   compose_config_files: string | null;
   restart_policy: string | null;
+}
+
+export interface ContainerActionResult {
+  status: string;
+  action: string;
 }
 
 export interface EnvVar {
@@ -182,6 +201,15 @@ export interface Job {
   finished_at: string | null;
 }
 
+/** What `useJobs` hands back to a page. */
+export interface JobTracker {
+  jobs: Job[];
+  track: (job: Job) => void;
+  start: (queueJob: () => Promise<Job>) => Promise<void>;
+  dismiss: (id: string) => void;
+  busy: boolean;
+}
+
 export interface AppSettings {
   scan_schedule_enabled: boolean;
   scan_interval_hours: number;
@@ -225,6 +253,11 @@ export interface DashboardStats {
   last_scan_at: string | null;
   last_update_check_at: string | null;
   docker_error: string | null;
+}
+
+/** FastAPI error body: a message, or a list of validation errors. */
+export interface ApiErrorBody {
+  detail?: string | { msg?: string }[];
 }
 
 export interface ContainerStats {

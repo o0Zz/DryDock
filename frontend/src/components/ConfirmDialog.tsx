@@ -35,19 +35,19 @@ export function useConfirm(): Confirm {
 }
 
 interface Pending extends ConfirmOptions {
-  resolve: (ok: boolean) => void;
+  resolve: (accepted: boolean) => void;
 }
 
 export function ConfirmProvider({ children }: { children: ReactNode }) {
   const [pending, setPending] = useState<Pending | null>(null);
-  const dialog = useRef<HTMLDialogElement>(null);
+  const dialogRef = useRef<HTMLDialogElement>(null);
 
   const confirm = useCallback<Confirm>(
     (options) =>
       new Promise<boolean>((resolve) => {
-        setPending((prev) => {
+        setPending((previous) => {
           // A second request replaces the first; the first counts as cancelled.
-          prev?.resolve(false);
+          previous?.resolve(false);
           return { ...options, resolve };
         });
       }),
@@ -55,15 +55,15 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
   );
 
   useEffect(() => {
-    const el = dialog.current;
-    if (pending && el && !el.open) el.showModal();
+    const dialogElement = dialogRef.current;
+    if (pending && dialogElement && !dialogElement.open) dialogElement.showModal();
   }, [pending]);
 
   const settle = useCallback(
-    (ok: boolean) => {
-      pending?.resolve(ok);
+    (accepted: boolean): void => {
+      pending?.resolve(accepted);
       setPending(null);
-      dialog.current?.close();
+      dialogRef.current?.close();
     },
     [pending],
   );
@@ -75,16 +75,16 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
     <ConfirmContext.Provider value={confirm}>
       {children}
       <dialog
-        ref={dialog}
+        ref={dialogRef}
         className={`confirm-dialog ${tone}`}
         aria-labelledby="confirm-title"
         // Escape fires "cancel"; treat it like the Cancel button.
-        onCancel={(e) => {
-          e.preventDefault();
+        onCancel={(event) => {
+          event.preventDefault();
           settle(false);
         }}
         // A click on the backdrop lands on the <dialog> element itself.
-        onClick={(e) => e.target === e.currentTarget && settle(false)}
+        onClick={(event) => event.target === event.currentTarget && settle(false)}
       >
         {pending && (
           <div className="confirm-body">

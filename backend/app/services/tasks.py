@@ -25,12 +25,12 @@ from app.services import (
     trivy_service,
     update_service,
 )
-from app.services.job_service import JobContext
+from app.services.job_service import JobContext, JobRunner
 
 logger = logging.getLogger(__name__)
 
 ImageResolver = Callable[[], list[str]]
-T = TypeVar("T")
+RowT = TypeVar("RowT")
 
 
 # --- Persistence -------------------------------------------------------------
@@ -49,7 +49,7 @@ def store_scan(db: Session, image: str) -> Scan:
         return scan
 
     scan = Scan(image=image, **result.counts)
-    scan.findings = [ScanFinding(**asdict(f)) for f in result.findings]
+    scan.findings = [ScanFinding(**asdict(finding)) for finding in result.findings]
     db.add(scan)
     db.commit()
     db.refresh(scan)
@@ -99,9 +99,9 @@ def all_known_images() -> list[str]:
 
 
 def _summarise_scans(scans: Sequence[Scan]) -> str:
-    failed = sum(1 for s in scans if s.error)
-    critical = sum(s.critical for s in scans)
-    high = sum(s.high for s in scans)
+    failed = sum(1 for scan in scans if scan.error)
+    critical = sum(scan.critical for scan in scans)
+    high = sum(scan.high for scan in scans)
     parts = [f"{len(scans)} image(s) scanned", f"{critical} critical", f"{high} high"]
     if failed:
         parts.append(f"{failed} failed")
@@ -112,7 +112,7 @@ def _maybe_notify_scans(db: Session, scans: Sequence[Scan]) -> None:
     config = settings_service.get_all(db)
     if not config["notify_on_critical"]:
         return
-    offenders = [s for s in scans if s.critical > 0]
+    offenders = [scan for scan in scans if scan.critical > 0]
     if not offenders:
         return
     notify_service.send(
@@ -120,8 +120,13 @@ def _maybe_notify_scans(db: Session, scans: Sequence[Scan]) -> None:
         "scan.critical",
         {
             "images": [
-                {"image": s.image, "critical": s.critical, "high": s.high, "fixable": s.fixable}
-                for s in offenders
+                {
+                    "image": scan.image,
+                    "critical": scan.critical,
+                    "high": scan.high,
+                    "fixable": scan.fixable,
+                }
+                for scan in offenders
             ],
             "summary": _summarise_scans(scans),
         },
@@ -132,15 +137,17 @@ def _maybe_notify_updates(db: Session, checks: Sequence[UpdateCheck]) -> None:
     config = settings_service.get_all(db)
     if not config["notify_on_update"]:
         return
-    available = [c for c in checks if c.has_update]
+    available = [check for check in checks if check.has_update]
     if not available:
         return
     notify_service.send(
         config["notify_webhook_url"],
         "update.available",
         {
-            "images": [c.image for c in available],
-            "newer_tags": {c.image: c.newest_tag for c in available if c.newest_tag},
+            "images": [check.image for check in available],
+            "newer_tags": {
+                check.image: check.newest_tag for check in available if check.newest_tag
+            },
         },
     )
 
@@ -148,11 +155,11 @@ def _maybe_notify_updates(db: Session, checks: Sequence[UpdateCheck]) -> None:
 def _each_image(
     ctx: JobContext,
     resolve: ImageResolver,
-    store: Callable[[Session, str], T],
+    store: Callable[[Session, str], RowT],
     *,
     progress: str,
     empty: str,
-) -> list[T]:
+) -> list[RowT]:
     """Run `store` on every image `resolve` returns, reporting progress as it goes.
 
     The frontend reads the "Scanning <image>" message to tell which image is busy.
@@ -162,7 +169,7 @@ def _each_image(
     if not images:
         ctx.note(empty)
         return []
-    rows: list[T] = []
+    rows: list[RowT] = []
     for image in images:
         ctx.note(f"{progress} {image}")
         rows.append(store(ctx.db, image))
@@ -170,7 +177,7 @@ def _each_image(
     return rows
 
 
-def scan_runner(resolve: ImageResolver, *, notify: bool = False):
+def scan_runner(resolve: ImageResolver, *, notify: bool = False) -> JobRunner:
     """Build a job body that scans whatever `resolve` returns at run time."""
 
     def run(ctx: JobContext) -> None:
@@ -186,7 +193,7 @@ def scan_runner(resolve: ImageResolver, *, notify: bool = False):
     return run
 
 
-def update_check_runner(resolve: ImageResolver, *, notify: bool = False):
+def update_check_runner(resolve: ImageResolver, *, notify: bool = False) -> JobRunner:
     """Build a job body that compares local vs registry digests."""
 
     def run(ctx: JobContext) -> None:
@@ -195,8 +202,8 @@ def update_check_runner(resolve: ImageResolver, *, notify: bool = False):
         )
         if not checks:
             return
-        outdated = sum(1 for c in checks if c.has_update)
-        failed = sum(1 for c in checks if c.error)
+        outdated = sum(1 for check in checks if check.has_update)
+        failed = sum(1 for check in checks if check.error)
         message = f"{len(checks)} image(s) checked, {outdated} with updates"
         if failed:
             message += f", {failed} failed"
@@ -209,7 +216,7 @@ def update_check_runner(resolve: ImageResolver, *, notify: bool = False):
 
 def container_update_runner(
     compose_path: Path, service: str, image: str, *, project_name: str | None = None
-):
+) -> JobRunner:
     """Build a job body that pulls one service's image and recreates its container."""
 
     def run(ctx: JobContext) -> None:
@@ -225,14 +232,14 @@ def container_update_runner(
     return run
 
 
-def project_action_runner(compose_path: Path, action: str):
+def project_action_runner(compose_path: Path, action: str) -> JobRunner:
     """Build a job body that runs `docker compose <action>` on a whole project."""
 
     def run(ctx: JobContext) -> None:
         ctx.set_total(1, f"docker compose {action}")
         result = compose_service.run_action(compose_path, action)
         # docker compose writes its progress to stderr, so keep both streams.
-        ctx.set_output("\n".join(s for s in (result["stdout"], result["stderr"]) if s))
+        ctx.set_output("\n".join(text for text in (result["stdout"], result["stderr"]) if text))
         if result["exit_code"] != 0:
             detail = (result["stderr"] or result["stdout"] or "").strip()[-1000:]
             raise compose_service.ComposeError(
@@ -252,7 +259,7 @@ def _format_bytes(size: int) -> str:
     return f"{value:.1f} TB"
 
 
-def image_prune_runner(*, all_unused: bool):
+def image_prune_runner(*, all_unused: bool) -> JobRunner:
     """Build a job body that prunes dangling images, or every unused one."""
 
     def run(ctx: JobContext) -> None:
@@ -265,7 +272,7 @@ def image_prune_runner(*, all_unused: bool):
     return run
 
 
-def volume_prune_runner():
+def volume_prune_runner() -> JobRunner:
     """Build a job body that removes every volume no container uses."""
 
     def run(ctx: JobContext) -> None:

@@ -5,7 +5,7 @@ import { isActive, JOBS_CHANGED_EVENT } from "../hooks/useJobs";
 import type { Job } from "../types";
 import JobList from "./JobList";
 
-const RECENT = 10;
+const RECENT_JOB_COUNT = 10;
 const ACTIVE_POLL_MS = 1500;
 const IDLE_POLL_MS = 10_000;
 
@@ -17,7 +17,7 @@ export default function JobsIndicator() {
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
   const rootRef = useRef<HTMLDivElement | null>(null);
 
-  const active = jobs.filter(isActive);
+  const activeJobs = jobs.filter(isActive);
 
   // Poll fast while something runs, slowly otherwise; a job started anywhere in
   // the UI triggers an immediate refresh through JOBS_CHANGED_EVENT.
@@ -27,19 +27,22 @@ export default function JobsIndicator() {
     // Only the newest request may schedule the next poll, so an event-triggered
     // refresh during an in-flight one does not start a second polling chain.
     let generation = 0;
-    const poll = () => {
+    const poll = (): void => {
       window.clearTimeout(timer);
-      const mine = ++generation;
-      const current = () => !cancelled && mine === generation;
+      const requestGeneration = ++generation;
+      const isLatest = (): boolean => !cancelled && requestGeneration === generation;
       api
-        .listJobs(RECENT)
-        .then((list) => {
-          if (!current()) return;
-          setJobs(list);
-          timer = window.setTimeout(poll, list.some(isActive) ? ACTIVE_POLL_MS : IDLE_POLL_MS);
+        .listJobs(RECENT_JOB_COUNT)
+        .then((recentJobs) => {
+          if (!isLatest()) return;
+          setJobs(recentJobs);
+          timer = window.setTimeout(
+            poll,
+            recentJobs.some(isActive) ? ACTIVE_POLL_MS : IDLE_POLL_MS,
+          );
         })
         .catch(() => {
-          if (current()) timer = window.setTimeout(poll, IDLE_POLL_MS);
+          if (isLatest()) timer = window.setTimeout(poll, IDLE_POLL_MS);
         });
     };
     poll();
@@ -53,30 +56,32 @@ export default function JobsIndicator() {
 
   useEffect(() => {
     if (!open) return;
-    const onClick = (e: MouseEvent) => {
-      if (!rootRef.current?.contains(e.target as Node)) setOpen(false);
+    const closeOnOutsideClick = (event: MouseEvent): void => {
+      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
     };
-    document.addEventListener("mousedown", onClick);
-    return () => document.removeEventListener("mousedown", onClick);
+    document.addEventListener("mousedown", closeOnOutsideClick);
+    return () => document.removeEventListener("mousedown", closeOnOutsideClick);
   }, [open]);
 
-  const visible = jobs.filter((j) => isActive(j) || !dismissed.has(j.id));
-  const current = active[0];
+  const visibleJobs = jobs.filter((job) => isActive(job) || !dismissed.has(job.id));
+  const firstActive = activeJobs[0];
 
   return (
     <div className="jobs-indicator" ref={rootRef}>
       <button
         type="button"
-        className={active.length ? "secondary small jobs-pill active" : "secondary small jobs-pill"}
+        className={
+          activeJobs.length ? "secondary small jobs-pill active" : "secondary small jobs-pill"
+        }
         title="Background jobs"
-        onClick={() => setOpen((v) => !v)}
+        onClick={() => setOpen((previous) => !previous)}
       >
-        {active.length ? (
+        {activeJobs.length ? (
           <>
             <Loader2 size={14} className="spin" />
             <span className="jobs-pill-label">
-              {active.length > 1 ? `${active.length} jobs running` : current.label}
-              {current.total > 0 && ` · ${current.done}/${current.total}`}
+              {activeJobs.length > 1 ? `${activeJobs.length} jobs running` : firstActive.label}
+              {firstActive.total > 0 && ` · ${firstActive.done}/${firstActive.total}`}
             </span>
           </>
         ) : (
@@ -87,12 +92,12 @@ export default function JobsIndicator() {
       </button>
       {open && (
         <div className="jobs-dropdown">
-          {visible.length === 0 ? (
+          {visibleJobs.length === 0 ? (
             <div className="muted">No recent jobs.</div>
           ) : (
             <JobList
-              jobs={visible}
-              onDismiss={(id) => setDismissed((prev) => new Set(prev).add(id))}
+              jobs={visibleJobs}
+              onDismiss={(id) => setDismissed((previous) => new Set(previous).add(id))}
             />
           )}
         </div>

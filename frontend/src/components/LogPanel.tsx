@@ -26,26 +26,28 @@ export default function LogPanel({
   useEffect(() => {
     setLines([]);
     setStatus("connecting");
-    const src = new EventSource(url);
+    const eventSource = new EventSource(url);
 
-    src.addEventListener("open", () => setStatus("open"));
-    src.addEventListener("close", () => setStatus("closed"));
-    src.addEventListener("error", (e: MessageEvent) => {
+    eventSource.addEventListener("open", () => setStatus("open"));
+    eventSource.addEventListener("close", () => setStatus("closed"));
+    eventSource.addEventListener("error", (event: MessageEvent) => {
       setStatus("error");
-      if (e.data) setLines((prev) => [...prev, `[error] ${e.data}`]);
+      if (event.data) setLines((previous) => [...previous, `[error] ${event.data}`]);
     });
-    src.onmessage = (e) => setLines((prev) => [...prev, e.data]);
-    src.onerror = () => setStatus("error");
+    eventSource.onmessage = (event) => setLines((previous) => [...previous, event.data]);
+    eventSource.onerror = () => setStatus("error");
 
-    return () => src.close();
+    return () => eventSource.close();
   }, [url]);
 
   const needle = filter.trim().toLowerCase();
-  const shown = needle ? lines.filter((l) => l.toLowerCase().includes(needle)) : lines;
+  const shownLines = needle
+    ? lines.filter((line) => line.toLowerCase().includes(needle))
+    : lines;
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ block: "end" });
-  }, [shown.length]);
+  }, [shownLines.length]);
 
   return (
     <div className={inline ? "log-panel inline" : "log-panel"}>
@@ -61,7 +63,7 @@ export default function LogPanel({
         )}
       </div>
       <pre className="log-body">
-        {shown.join("\n")}
+        {shownLines.join("\n")}
         <div ref={bottomRef} />
       </pre>
     </div>

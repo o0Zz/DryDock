@@ -84,7 +84,7 @@ def parse_version(tag: str) -> TagVersion | None:
         tag=tag,
         shape=(match["prefix"], len(numbers), re.sub(r"\d+", "", suffix)),
         numbers=numbers,
-        suffix_numbers=tuple(int(d) for d in re.findall(r"\d+", suffix)),
+        suffix_numbers=tuple(int(digits) for digits in re.findall(r"\d+", suffix)),
     )
 
 
@@ -96,11 +96,11 @@ MAX_MAJOR_GAP = 3
 
 def _drop_outlier_majors(current_major: int, versions: list[TagVersion]) -> list[TagVersion]:
     reachable = current_major
-    for major in sorted({v.numbers[0] for v in versions}):
+    for major in sorted({version.numbers[0] for version in versions}):
         if major - reachable > MAX_MAJOR_GAP:
             break
         reachable = max(reachable, major)
-    return [v for v in versions if v.numbers[0] <= reachable]
+    return [version for version in versions if version.numbers[0] <= reachable]
 
 
 def find_newer(current: str, tags: list[str]) -> tuple[str | None, str | None]:
@@ -113,16 +113,18 @@ def find_newer(current: str, tags: list[str]) -> tuple[str | None, str | None]:
     if base is None:
         return None, None
     newer = [
-        v
-        for v in (parse_version(t) for t in tags)
-        if v is not None and v.shape == base.shape and v.sort_key > base.sort_key
+        version
+        for version in (parse_version(tag) for tag in tags)
+        if version is not None and version.shape == base.shape and version.sort_key > base.sort_key
     ]
     newer = _drop_outlier_majors(base.numbers[0], newer)
     if not newer:
         return None, None
-    newest = max(newer, key=lambda v: v.sort_key)
-    same_major = [v for v in newer if v.numbers[0] == base.numbers[0]]
-    newest_same_major = max(same_major, key=lambda v: v.sort_key) if same_major else None
+    newest = max(newer, key=lambda version: version.sort_key)
+    same_major = [version for version in newer if version.numbers[0] == base.numbers[0]]
+    newest_same_major = (
+        max(same_major, key=lambda version: version.sort_key) if same_major else None
+    )
     if newest_same_major is None or newest_same_major.tag == newest.tag:
         return newest.tag, None
     return newest.tag, newest_same_major.tag

@@ -1,4 +1,5 @@
 import logging
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -61,7 +62,7 @@ def _seed_admin() -> None:
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     init_db()
     _seed_admin()
     host_path_service.setup()
@@ -115,7 +116,7 @@ _ERROR_STATUS: dict[type[Exception], tuple[int, str]] = {
 
 async def _service_error(request: Request, exc: Exception) -> JSONResponse:
     status_code, template = next(
-        _ERROR_STATUS[cls] for cls in type(exc).__mro__ if cls in _ERROR_STATUS
+        _ERROR_STATUS[exc_class] for exc_class in type(exc).__mro__ if exc_class in _ERROR_STATUS
     )
     return JSONResponse({"detail": template.format(exc)}, status_code=status_code)
 

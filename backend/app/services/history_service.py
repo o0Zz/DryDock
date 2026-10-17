@@ -12,11 +12,11 @@ from app.models.update import UpdateCheck
 def _rows(db: Session, model: type, timestamp: InstrumentedAttribute, image: str | None) -> list:
     """Every row for `image`, or else the newest row per image; newest first."""
     if image:
-        stmt = select(model).where(model.image == image)
+        query = select(model).where(model.image == image)
     else:
         newest = select(func.max(model.id)).group_by(model.image)
-        stmt = select(model).where(model.id.in_(newest))
-    return list(db.scalars(stmt.order_by(timestamp.desc())))
+        query = select(model).where(model.id.in_(newest))
+    return list(db.scalars(query.order_by(timestamp.desc())))
 
 
 def scans(db: Session, image: str | None = None) -> list[Scan]:

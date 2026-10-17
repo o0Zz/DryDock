@@ -24,14 +24,14 @@ export default function JobList({
     <div className="job-list">
       {jobs.map((job) => {
         const running = isActive(job);
-        const pct = job.total > 0 ? Math.round((job.done / job.total) * 100) : 0;
-        const failed = failedCount(job);
+        const percent = job.total > 0 ? Math.round((job.done / job.total) * 100) : 0;
+        const failedImages = failedCount(job);
         return (
-          <div key={job.id} className={`job job-${failed ? "warning" : job.status}`}>
+          <div key={job.id} className={`job job-${failedImages ? "warning" : job.status}`}>
             <span className="job-icon">
               {running ? (
                 <Loader2 size={15} className="spin" />
-              ) : failed ? (
+              ) : failedImages ? (
                 <AlertTriangle size={15} />
               ) : job.status === "success" ? (
                 <CheckCircle2 size={15} />
@@ -51,11 +51,11 @@ export default function JobList({
               </div>
               <div className="muted">
                 {job.error ?? job.message ?? job.status}
-                {failed > 0 && " — see Logs for details"}
+                {failedImages > 0 && " — see Logs for details"}
               </div>
               {running && job.total > 0 && (
                 <div className="job-bar">
-                  <div className="job-bar-fill" style={{ width: `${pct}%` }} />
+                  <div className="job-bar-fill" style={{ width: `${percent}%` }} />
                 </div>
               )}
             </div>

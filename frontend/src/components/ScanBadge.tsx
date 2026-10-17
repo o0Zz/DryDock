@@ -29,7 +29,7 @@ export default function ScanBadge({
     );
   }
 
-  const when = formatDate(scan.scanned_at);
+  const scannedAt = formatDate(scan.scanned_at);
 
   if (scan.error) {
     return (
@@ -50,7 +50,7 @@ export default function ScanBadge({
   const label = total === 0 ? "clean" : `${scan.critical}C · ${scan.high}H`;
 
   const tooltip =
-    `Last scanned: ${when}\n` +
+    `Last scanned: ${scannedAt}\n` +
     `Critical ${scan.critical} · High ${scan.high} · ` +
     `Medium ${scan.medium} · Low ${scan.low}` +
     (scan.unknown ? ` · Unknown ${scan.unknown}` : "") +

@@ -23,9 +23,9 @@ def list_scans(
 
 
 @router.post("/image", response_model=JobRead, status_code=status.HTTP_202_ACCEPTED)
-def scan_image(req: ScanRequest) -> Job:
+def scan_image(body: ScanRequest) -> Job:
     """Queue a scan of a single image."""
-    image = req.image.strip()
+    image = body.image.strip()
     if not image:
         raise HTTPException(status_code=400, detail="image is required")
     return job_service.submit(

@@ -1,7 +1,7 @@
 import { Play, RotateCw, Square, type LucideIcon } from "lucide-react";
 import { lazy } from "react";
+import type { ContainerAction } from "./types";
 
-export type ContainerAction = "start" | "stop" | "restart";
 export const CONTAINER_ACTIONS: ContainerAction[] = ["start", "stop", "restart"];
 export const CONTAINER_ACTION_ICONS: Record<ContainerAction, LucideIcon> = {
   start: Play,

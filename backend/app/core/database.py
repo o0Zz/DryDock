@@ -1,8 +1,10 @@
+import sqlite3
 from collections.abc import Iterator
 from datetime import UTC, datetime
 
 from sqlalchemy import MetaData, create_engine, event
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
+from sqlalchemy.pool import ConnectionPoolEntry
 
 from app.core.config import settings
 
@@ -36,7 +38,9 @@ SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False
 
 
 @event.listens_for(engine, "connect")
-def _sqlite_pragmas(dbapi_connection, connection_record) -> None:  # noqa: ANN001
+def _sqlite_pragmas(
+    dbapi_connection: sqlite3.Connection, connection_record: ConnectionPoolEntry
+) -> None:
     """SQLite ignores FK constraints unless asked, and defaults to a slow journal.
 
     ON DELETE CASCADE on scan_findings depends on foreign_keys being ON, and WAL

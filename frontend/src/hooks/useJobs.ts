@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../api";
-import type { Job } from "../types";
+import type { Job, JobTracker } from "../types";
 
 const POLL_MS = 1500;
 
@@ -20,27 +20,30 @@ export function isActive(job: Job): boolean {
  * finishes so the page can reload whatever the job produced. `start` queues a
  * job and reports a failed request through `onError` (cleared with null first).
  */
-export function useJobs(onSettled?: () => void, onError?: (message: string | null) => void) {
+export function useJobs(
+  onSettled?: () => void,
+  onError?: (message: string | null) => void,
+): JobTracker {
   const [jobs, setJobs] = useState<Job[]>([]);
-  const settled = useRef(onSettled);
-  settled.current = onSettled;
-  const failed = useRef(onError);
-  failed.current = onError;
+  const onSettledRef = useRef(onSettled);
+  onSettledRef.current = onSettled;
+  const onErrorRef = useRef(onError);
+  onErrorRef.current = onError;
 
-  const track = useCallback((job: Job) => {
-    setJobs((prev) =>
-      prev.some((j) => j.id === job.id) ? prev : [...prev, job],
+  const track = useCallback((job: Job): void => {
+    setJobs((previous) =>
+      previous.some((tracked) => tracked.id === job.id) ? previous : [...previous, job],
     );
     window.dispatchEvent(new Event(JOBS_CHANGED_EVENT));
   }, []);
 
   const start = useCallback(
-    async (fn: () => Promise<Job>) => {
-      failed.current?.(null);
+    async (queueJob: () => Promise<Job>): Promise<void> => {
+      onErrorRef.current?.(null);
       try {
-        track(await fn());
-      } catch (e) {
-        failed.current?.((e as Error).message);
+        track(await queueJob());
+      } catch (error) {
+        onErrorRef.current?.((error as Error).message);
       }
     },
     [track],
@@ -52,9 +55,12 @@ export function useJobs(onSettled?: () => void, onError?: (message: string | nul
     let cancelled = false;
     api
       .listActiveJobs()
-      .then((list) => {
-        if (cancelled || list.length === 0) return;
-        setJobs((prev) => [...prev, ...list.filter((j) => !prev.some((p) => p.id === j.id))]);
+      .then((serverJobs) => {
+        if (cancelled || serverJobs.length === 0) return;
+        setJobs((previous) => [
+          ...previous,
+          ...serverJobs.filter((serverJob) => !previous.some((known) => known.id === serverJob.id)),
+        ]);
       })
       .catch(() => undefined);
     return () => {
@@ -62,25 +68,25 @@ export function useJobs(onSettled?: () => void, onError?: (message: string | nul
     };
   }, []);
 
-  const dismiss = useCallback((id: string) => {
-    setJobs((prev) => prev.filter((j) => j.id !== id));
+  const dismiss = useCallback((id: string): void => {
+    setJobs((previous) => previous.filter((job) => job.id !== id));
   }, []);
 
-  const active = jobs.filter(isActive);
+  const activeJobs = jobs.filter(isActive);
 
   useEffect(() => {
-    if (active.length === 0) return;
+    if (activeJobs.length === 0) return;
     let cancelled = false;
 
     const timer = window.setInterval(async () => {
       const updated = await Promise.all(
-        active.map((j) => api.getJob(j.id).catch(() => j)),
+        activeJobs.map((job) => api.getJob(job.id).catch(() => job)),
       );
       if (cancelled) return;
-      setJobs((prev) =>
-        prev.map((j) => updated.find((u) => u.id === j.id) ?? j),
+      setJobs((previous) =>
+        previous.map((job) => updated.find((fresh) => fresh.id === job.id) ?? job),
       );
-      if (updated.some((j) => !isActive(j))) settled.current?.();
+      if (updated.some((job) => !isActive(job))) onSettledRef.current?.();
     }, POLL_MS);
 
     return () => {
@@ -88,7 +94,7 @@ export function useJobs(onSettled?: () => void, onError?: (message: string | nul
       window.clearInterval(timer);
     };
     // Re-arm whenever the set of unfinished jobs changes.
-  }, [active.map((j) => j.id).join(",")]);
+  }, [activeJobs.map((job) => job.id).join(",")]);
 
-  return { jobs, track, start, dismiss, busy: active.length > 0 };
+  return { jobs, track, start, dismiss, busy: activeJobs.length > 0 };
 }

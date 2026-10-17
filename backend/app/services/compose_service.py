@@ -43,8 +43,8 @@ def _validate_yaml(content: str) -> None:
 def _backup_compose(project_id: str, compose_path: Path) -> Path:
     backup_dir = settings.backups_path / project_id
     backup_dir.mkdir(parents=True, exist_ok=True)
-    ts = datetime.now(tz=UTC).strftime("%Y%m%dT%H%M%SZ")
-    backup_path = backup_dir / f"{ts}{compose_path.suffix}"
+    stamp = datetime.now(tz=UTC).strftime("%Y%m%dT%H%M%SZ")
+    backup_path = backup_dir / f"{stamp}{compose_path.suffix}"
     shutil.copy2(compose_path, backup_path)
     logger.info("Backed up %s to %s", compose_path, backup_path)
     return backup_path
@@ -62,7 +62,7 @@ def create_compose(name: str, content: str) -> Path:
     single path segment (the API schema enforces it)."""
     _validate_yaml(content)
     project_dir = settings.repo_path / name
-    if any((project_dir / f).exists() for f in COMPOSE_FILENAMES):
+    if any((project_dir / filename).exists() for filename in COMPOSE_FILENAMES):
         raise ComposeExists(f"A compose file already exists in '{name}/'")
     project_dir.mkdir(parents=True, exist_ok=True)
     compose_path = project_dir / "docker-compose.yml"
@@ -72,10 +72,10 @@ def create_compose(name: str, content: str) -> Path:
 
 
 def _command(compose_path: Path, args: list[str], project_name: str | None = None) -> list[str]:
-    cmd = ["docker", "compose", "-f", str(compose_path)]
+    command = ["docker", "compose", "-f", str(compose_path)]
     if project_name:
-        cmd += ["-p", project_name]
-    return cmd + args
+        command += ["-p", project_name]
+    return command + args
 
 
 def _compose(
@@ -87,11 +87,11 @@ def _compose(
 ) -> subprocess.CompletedProcess[str]:
     # Through the host-path alias, so relative bind mounts resolve on the host.
     compose_path = host_path_service.to_host(compose_path)
-    cmd = _command(compose_path, args, project_name)
-    logger.info("Running: %s", " ".join(cmd))
+    command = _command(compose_path, args, project_name)
+    logger.info("Running: %s", " ".join(command))
     try:
         return subprocess.run(  # noqa: S603 — args list, no shell
-            cmd,
+            command,
             capture_output=True,
             text=True,
             timeout=timeout,
@@ -116,38 +116,38 @@ def run_action(compose_path: Path, action: str) -> dict:
         args.append("-d")
     # `up` pulls missing images too, so both can take as long as a pull.
     timeout = PULL_TIMEOUT if action in ("up", "pull") else 300
-    proc = _compose(compose_path, args, timeout=timeout)
+    result = _compose(compose_path, args, timeout=timeout)
 
     return {
         "action": action,
-        "exit_code": proc.returncode,
-        "stdout": proc.stdout,
-        "stderr": proc.stderr,
+        "exit_code": result.returncode,
+        "stdout": result.stdout,
+        "stderr": result.stderr,
     }
 
 
-def _check(proc: subprocess.CompletedProcess[str], step: str) -> None:
-    if proc.returncode != 0:
-        detail = (proc.stderr or proc.stdout or "").strip()[-1000:]
-        raise ComposeError(f"`docker compose {step}` failed (exit {proc.returncode}): {detail}")
+def _check(result: subprocess.CompletedProcess[str], step: str) -> None:
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout or "").strip()[-1000:]
+        raise ComposeError(f"`docker compose {step}` failed (exit {result.returncode}): {detail}")
 
 
 def pull_service(compose_path: Path, service: str, *, project_name: str | None = None) -> None:
     """Pull the image of one service."""
-    proc = _compose(
+    result = _compose(
         compose_path, ["pull", service], project_name=project_name, timeout=PULL_TIMEOUT
     )
-    _check(proc, "pull")
+    _check(result, "pull")
 
 
 def recreate_service(
     compose_path: Path, service: str, *, project_name: str | None = None
 ) -> None:
     """Recreate one service on its current image, leaving the rest of the stack alone."""
-    proc = _compose(
+    result = _compose(
         compose_path, ["up", "-d", "--no-deps", service], project_name=project_name
     )
-    _check(proc, "up")
+    _check(result, "up")
 
 
 def stream_logs(compose_path: Path, *, tail: int = 200) -> subprocess.Popen[bytes]:
@@ -157,11 +157,11 @@ def stream_logs(compose_path: Path, *, tail: int = 200) -> subprocess.Popen[byte
     the client goes away.
     """
     compose_path = host_path_service.to_host(compose_path)
-    cmd = _command(compose_path, ["logs", "--follow", "--no-color", "--tail", str(tail)])
-    logger.info("Streaming: %s", " ".join(cmd))
+    command = _command(compose_path, ["logs", "--follow", "--no-color", "--tail", str(tail)])
+    logger.info("Streaming: %s", " ".join(command))
     try:
         return subprocess.Popen(  # noqa: S603 - args list, no shell
-            cmd,
+            command,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             cwd=compose_path.parent,

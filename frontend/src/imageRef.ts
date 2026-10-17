@@ -1,10 +1,10 @@
 /** Repository part of an image reference, with its tag and digest dropped. */
 export function imageRepo(image: string): string {
-  const ref = image.split("@")[0];
+  const nameAndTag = image.split("@")[0];
   // A colon before the last slash belongs to a registry port, not a tag.
-  const slash = ref.lastIndexOf("/");
-  const colon = ref.lastIndexOf(":");
-  return colon > slash ? ref.slice(0, colon) : ref;
+  const lastSlash = nameAndTag.lastIndexOf("/");
+  const lastColon = nameAndTag.lastIndexOf(":");
+  return lastColon > lastSlash ? nameAndTag.slice(0, lastColon) : nameAndTag;
 }
 
 /**
@@ -13,8 +13,10 @@ export function imageRepo(image: string): string {
  */
 export function extraVersion(image: string, version: string | null): string | null {
   if (!version) return null;
-  const ref = image.split("@")[0];
-  const tag = ref.length > imageRepo(ref).length ? ref.slice(imageRepo(ref).length + 1) : "latest";
+  const nameAndTag = image.split("@")[0];
+  const repository = imageRepo(nameAndTag);
+  const tag =
+    nameAndTag.length > repository.length ? nameAndTag.slice(repository.length + 1) : "latest";
   return tag.replace(/^v/, "") === version.replace(/^v/, "") ? null : version;
 }
 
@@ -27,12 +29,15 @@ export function retagImage(
   image: string,
   tag: string,
 ): { content: string; count: number } {
-  const escaped = image.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const line = new RegExp(`^(\\s*image:\\s*)(["']?)${escaped}\\2(\\s*(?:#.*)?)$`, "gm");
+  const escapedImage = image.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const imageLine = new RegExp(`^(\\s*image:\\s*)(["']?)${escapedImage}\\2(\\s*(?:#.*)?)$`, "gm");
   let count = 0;
-  const next = content.replace(line, (_match, lead: string, quote: string, tail: string) => {
-    count += 1;
-    return `${lead}${quote}${imageRepo(image)}:${tag}${quote}${tail}`;
-  });
-  return { content: next, count };
+  const retagged = content.replace(
+    imageLine,
+    (_match, prefix: string, quote: string, suffix: string) => {
+      count += 1;
+      return `${prefix}${quote}${imageRepo(image)}:${tag}${quote}${suffix}`;
+    },
+  );
+  return { content: retagged, count };
 }

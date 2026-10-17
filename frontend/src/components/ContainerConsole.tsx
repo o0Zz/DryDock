@@ -21,56 +21,61 @@ export default function ContainerConsole({
   const [reason, setReason] = useState<string | null>(null);
 
   useEffect(() => {
-    const host = hostRef.current;
-    if (!host) return;
+    const hostElement = hostRef.current;
+    if (!hostElement) return;
 
-    const term = new Terminal({
+    const terminal = new Terminal({
       cursorBlink: true,
       fontFamily: '"Cascadia Code", Consolas, Menlo, monospace',
       fontSize: 13,
       theme: { background: "#0d1117" },
     });
-    const fit = new FitAddon();
-    term.loadAddon(fit);
-    term.open(host);
-    fit.fit();
+    const fitAddon = new FitAddon();
+    terminal.loadAddon(fitAddon);
+    terminal.open(hostElement);
+    fitAddon.fit();
 
     const scheme = window.location.protocol === "https:" ? "wss" : "ws";
-    const params = new URLSearchParams({ cols: String(term.cols), rows: String(term.rows) });
-    const ws = new WebSocket(
-      `${scheme}://${window.location.host}/api/containers/${containerId}/exec?${params}`,
+    const sizeParams = new URLSearchParams({
+      cols: String(terminal.cols),
+      rows: String(terminal.rows),
+    });
+    const socket = new WebSocket(
+      `${scheme}://${window.location.host}/api/containers/${containerId}/exec?${sizeParams}`,
     );
-    ws.binaryType = "arraybuffer";
+    socket.binaryType = "arraybuffer";
 
-    const send = (msg: object) => {
-      if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(msg));
+    const send = (message: object): void => {
+      if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify(message));
     };
 
-    ws.onopen = () => {
+    socket.onopen = () => {
       setStatus("open");
-      term.focus();
+      terminal.focus();
     };
-    ws.onmessage = (e) => {
-      term.write(typeof e.data === "string" ? e.data : new Uint8Array(e.data));
+    socket.onmessage = (event) => {
+      terminal.write(typeof event.data === "string" ? event.data : new Uint8Array(event.data));
     };
-    ws.onclose = (e) => {
+    socket.onclose = (event) => {
       // 1000 = shell exited normally; 4xxx = backend refused (auth, not running…)
-      setStatus(e.code === 1000 ? "closed" : "error");
-      if (e.reason) setReason(e.reason);
-      term.write(`\r\n\x1b[90m[${e.reason || "connection closed"}]\x1b[0m\r\n`);
+      setStatus(event.code === 1000 ? "closed" : "error");
+      if (event.reason) setReason(event.reason);
+      terminal.write(`\r\n\x1b[90m[${event.reason || "connection closed"}]\x1b[0m\r\n`);
     };
 
-    const onData = term.onData((data) => send({ type: "input", data }));
-    const onResize = term.onResize(({ cols, rows }) => send({ type: "resize", cols, rows }));
-    const observer = new ResizeObserver(() => fit.fit());
-    observer.observe(host);
+    const inputListener = terminal.onData((data) => send({ type: "input", data }));
+    const resizeListener = terminal.onResize(({ cols, rows }) =>
+      send({ type: "resize", cols, rows }),
+    );
+    const observer = new ResizeObserver(() => fitAddon.fit());
+    observer.observe(hostElement);
 
     return () => {
       observer.disconnect();
-      onData.dispose();
-      onResize.dispose();
-      ws.close();
-      term.dispose();
+      inputListener.dispose();
+      resizeListener.dispose();
+      socket.close();
+      terminal.dispose();
     };
   }, [containerId]);
 

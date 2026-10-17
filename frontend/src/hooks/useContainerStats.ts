@@ -11,11 +11,13 @@ export function useContainerStats(): Record<string, ContainerStats> {
   useEffect(() => {
     let timer: number | undefined;
     let cancelled = false;
-    const poll = () => {
+    const poll = (): void => {
       api
         .containerStats()
-        .then((list) => {
-          if (!cancelled) setStats(Object.fromEntries(list.map((s) => [s.id, s])));
+        .then((statsList) => {
+          if (!cancelled) {
+            setStats(Object.fromEntries(statsList.map((entry) => [entry.id, entry])));
+          }
         })
         .catch(() => undefined) // stats are best-effort; pages still work without them
         .finally(() => {

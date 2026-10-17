@@ -1,18 +1,24 @@
 import type {
+  ApiErrorBody,
   AppSettings,
   ComposeContent,
+  ComposeSaveResult,
   Container,
+  ContainerAction,
+  ContainerActionResult,
   ContainerDetail,
   ContainerStats,
   DashboardStats,
   Job,
   LocalImage,
   Project,
+  ProjectAction,
   ScanDetail,
   ScanSummary,
   SettingsPatch,
   UpdateSummary,
   User,
+  UserPatch,
   Volume,
 } from "./types";
 
@@ -25,35 +31,36 @@ export class ApiError extends Error {
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(path, {
+  const response = await fetch(path, {
     credentials: "include",
     headers: { "Content-Type": "application/json" },
     ...init,
   });
-  if (res.status === 401) {
+  if (response.status === 401) {
     // Let the app drop back to the login screen from anywhere.
     window.dispatchEvent(new Event("drydock:unauthorized"));
   }
-  if (!res.ok) {
-    let detail = `${res.status} ${res.statusText}`;
+  if (!response.ok) {
+    let message = `${response.status} ${response.statusText}`;
     try {
-      const body = await res.json();
-      if (typeof body?.detail === "string") {
-        detail = body.detail;
-      } else if (Array.isArray(body?.detail)) {
+      const body = (await response.json()) as ApiErrorBody | null;
+      const detail = body?.detail;
+      if (typeof detail === "string") {
+        message = detail;
+      } else if (Array.isArray(detail)) {
         // FastAPI validation errors: [{ loc, msg, ... }]
-        detail = body.detail
-          .map((e: { msg?: string }) => e.msg)
+        message = detail
+          .map((issue) => issue.msg)
           .filter(Boolean)
           .join("; ");
       }
     } catch {
       // response wasn't JSON — keep the status text
     }
-    throw new ApiError(res.status, detail);
+    throw new ApiError(response.status, message);
   }
-  if (res.status === 204) return undefined as T;
-  return res.json() as Promise<T>;
+  if (response.status === 204) return undefined as T;
+  return response.json() as Promise<T>;
 }
 
 export const api = {
@@ -78,10 +85,7 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ username, password, is_admin }),
     }),
-  updateUser: (
-    id: number,
-    patch: { password?: string; is_admin?: boolean; is_active?: boolean },
-  ) =>
+  updateUser: (id: number, patch: UserPatch) =>
     request<User>(`/api/users/${id}`, {
       method: "PATCH",
       body: JSON.stringify(patch),
@@ -102,19 +106,19 @@ export const api = {
   getProject: (id: string) => request<Project>(`/api/projects/${id}`),
   getCompose: (id: string) => request<ComposeContent>(`/api/projects/${id}/compose`),
   putCompose: (id: string, content: string) =>
-    request<{ backup_path: string }>(`/api/projects/${id}/compose`, {
+    request<ComposeSaveResult>(`/api/projects/${id}/compose`, {
       method: "PUT",
       body: JSON.stringify({ content }),
     }),
   // Compose actions, like prunes below, queue a job and return it at once
-  runAction: (id: string, action: "up" | "down" | "pull" | "restart" | "stop") =>
+  runAction: (id: string, action: ProjectAction) =>
     request<Job>(`/api/projects/${id}/${action}`, { method: "POST" }),
   listContainers: () => request<Container[]>("/api/containers"),
   containerStats: () => request<ContainerStats[]>("/api/containers/stats"),
   inspectContainer: (id: string) =>
     request<ContainerDetail>(`/api/containers/${encodeURIComponent(id)}/inspect`),
-  containerAction: (id: string, action: "start" | "stop" | "restart") =>
-    request<{ status: string; action: string }>(`/api/containers/${id}/${action}`, {
+  containerAction: (id: string, action: ContainerAction) =>
+    request<ContainerActionResult>(`/api/containers/${id}/${action}`, {
       method: "POST",
     }),
   deleteContainer: (id: string) => request<void>(`/api/containers/${id}`, { method: "DELETE" }),

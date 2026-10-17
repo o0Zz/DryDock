@@ -48,33 +48,33 @@ def _parse(payload: dict) -> ScanResult:
 
     for result in payload.get("Results") or []:
         target = result.get("Target")
-        for vuln in result.get("Vulnerabilities") or []:
-            severity = (vuln.get("Severity") or "").upper()
+        for vulnerability in result.get("Vulnerabilities") or []:
+            severity = (vulnerability.get("Severity") or "").upper()
             if severity not in SEVERITIES:
                 continue
             counts[severity.lower()] += 1
-            fixed = vuln.get("FixedVersion") or None
+            fixed = vulnerability.get("FixedVersion") or None
             if fixed:
                 counts["fixable"] += 1
             findings.append(
                 Finding(
-                    vulnerability_id=vuln.get("VulnerabilityID") or "UNKNOWN",
+                    vulnerability_id=vulnerability.get("VulnerabilityID") or "UNKNOWN",
                     severity=severity,
-                    package_name=vuln.get("PkgName") or "",
-                    installed_version=vuln.get("InstalledVersion") or None,
+                    package_name=vulnerability.get("PkgName") or "",
+                    installed_version=vulnerability.get("InstalledVersion") or None,
                     fixed_version=fixed,
-                    title=vuln.get("Title") or None,
-                    primary_url=vuln.get("PrimaryURL") or None,
+                    title=vulnerability.get("Title") or None,
+                    primary_url=vulnerability.get("PrimaryURL") or None,
                     target=target,
                 )
             )
 
     # Worst first, then fixable ones ahead of unfixable, then stable by CVE id.
     findings.sort(
-        key=lambda f: (
-            SEVERITIES.index(f.severity),
-            0 if f.fixed_version else 1,
-            f.vulnerability_id,
+        key=lambda finding: (
+            SEVERITIES.index(finding.severity),
+            0 if finding.fixed_version else 1,
+            finding.vulnerability_id,
         )
     )
     return ScanResult(counts=counts, findings=findings[:MAX_FINDINGS])
@@ -85,7 +85,7 @@ def scan_image(image: str) -> ScanResult:
 
     Raises TrivyError if trivy cannot run or reports a failure.
     """
-    cmd = [
+    command = [
         "trivy",
         "image",
         "--quiet",
@@ -99,8 +99,8 @@ def scan_image(image: str) -> ScanResult:
     ]
     logger.info("Scanning image %s with trivy", image)
     try:
-        proc = subprocess.run(  # noqa: S603 - args list, no shell
-            cmd,
+        result = subprocess.run(  # noqa: S603 - args list, no shell
+            command,
             capture_output=True,
             text=True,
             timeout=SCAN_TIMEOUT + 30,
@@ -110,12 +110,12 @@ def scan_image(image: str) -> ScanResult:
     except subprocess.TimeoutExpired as exc:
         raise TrivyError(f"trivy scan of {image} timed out") from exc
 
-    if proc.returncode != 0:
-        detail = proc.stderr.strip() or proc.stdout.strip() or "unknown error"
-        raise TrivyError(f"trivy exited {proc.returncode}: {detail[:500]}")
+    if result.returncode != 0:
+        detail = result.stderr.strip() or result.stdout.strip() or "unknown error"
+        raise TrivyError(f"trivy exited {result.returncode}: {detail[:500]}")
 
     try:
-        payload = json.loads(proc.stdout)
+        payload = json.loads(result.stdout)
     except json.JSONDecodeError as exc:
         raise TrivyError("could not parse trivy JSON output") from exc
 

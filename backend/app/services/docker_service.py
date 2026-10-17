@@ -6,6 +6,7 @@ from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 from functools import lru_cache
+from typing import Any
 
 import docker
 from docker.errors import APIError, DockerException, NotFound
@@ -98,12 +99,12 @@ def _parse_created(raw: str | int | float) -> datetime:
         # keep at most 6 fractional digits, drop the rest before the timezone
         tz_start = max(tail.find("+"), tail.find("-"))
         if tz_start == -1:
-            frac = tail[:6]
-            tz = ""
+            fraction = tail[:6]
+            tz_suffix = ""
         else:
-            frac = tail[:tz_start][:6]
-            tz = tail[tz_start:]
-        text = f"{head}.{frac}{tz}"
+            fraction = tail[:tz_start][:6]
+            tz_suffix = tail[tz_start:]
+        text = f"{head}.{fraction}{tz_suffix}"
     try:
         return datetime.fromisoformat(text)
     except ValueError:
@@ -116,12 +117,12 @@ def _parse_ports(attrs: dict) -> list[ContainerPort]:
     for key, bindings in ports.items():
         # key looks like "80/tcp"
         try:
-            port_str, proto = key.split("/", 1)
+            port_str, protocol = key.split("/", 1)
             private = int(port_str)
         except (ValueError, AttributeError):
             continue
         if not bindings:
-            result.append(ContainerPort(private_port=private, protocol=proto))
+            result.append(ContainerPort(private_port=private, protocol=protocol))
             continue
         for binding in bindings:
             public = binding.get("HostPort")
@@ -129,7 +130,7 @@ def _parse_ports(attrs: dict) -> list[ContainerPort]:
                 ContainerPort(
                     private_port=private,
                     public_port=int(public) if public else None,
-                    protocol=proto,
+                    protocol=protocol,
                     host_ip=binding.get("HostIp") or None,
                 )
             )
@@ -150,25 +151,25 @@ def _image_version(image: str, labels: dict[str, str]) -> str | None:
         return None
     ref_name = labels.get("org.opencontainers.image.ref.name") or ""
     repo = _repo_of(image).rsplit("/", 1)[-1]
-    if ref_name and not any(ch.isdigit() for ch in ref_name) and ref_name != repo:
+    if ref_name and not any(char.isdigit() for char in ref_name) and ref_name != repo:
         return None
     return version
 
 
-def _to_schema(c: DockerContainer) -> Container:
-    attrs = c.attrs or {}
+def _to_schema(container: DockerContainer) -> Container:
+    attrs = container.attrs or {}
     labels = attrs.get("Config", {}).get("Labels") or {}
     host_config = attrs.get("HostConfig") or {}
     image_tags = (attrs.get("Config") or {}).get("Image") or (
-        c.image.tags[0] if c.image and c.image.tags else ""
+        container.image.tags[0] if container.image and container.image.tags else ""
     )
     return Container(
-        id=c.id or "",
-        name=c.name or "",
+        id=container.id or "",
+        name=container.name or "",
         image=image_tags,
         image_version=_image_version(image_tags, labels),
-        status=c.status,
-        state=(attrs.get("State") or {}).get("Status") or c.status,
+        status=container.status,
+        state=(attrs.get("State") or {}).get("Status") or container.status,
         created_at=_parse_created(attrs.get("Created", "")),
         ports=_parse_ports(attrs),
         compose_project=labels.get("com.docker.compose.project"),
@@ -183,7 +184,7 @@ def list_containers(*, all_states: bool = True) -> list[Container]:
         containers = _client().containers.list(all=all_states)
     except DockerException as exc:
         raise DockerUnavailable(str(exc)) from exc
-    return [_to_schema(c) for c in containers]
+    return [_to_schema(container) for container in containers]
 
 
 def get_container(container_id: str) -> Container:
@@ -209,8 +210,8 @@ def _as_list(value: str | list[str] | None) -> list[str] | None:
 def get_container_detail(container_id: str, *, privileged: bool) -> ContainerDetail:
     """Inspect one container. `privileged` (admin) reveals env values and
     includes the raw inspect payload; otherwise env values are masked."""
-    c = _get_container(container_id)
-    attrs = c.attrs or {}
+    container = _get_container(container_id)
+    attrs = container.attrs or {}
     config = attrs.get("Config") or {}
     state = attrs.get("State") or {}
 
@@ -221,27 +222,27 @@ def get_container_detail(container_id: str, *, privileged: bool) -> ContainerDet
 
     mounts = [
         MountInfo(
-            type=m.get("Type") or "bind",
-            source=m.get("Source") or m.get("Name") or None,
-            destination=m.get("Destination") or "",
-            mode=m.get("Mode") or None,
-            rw=bool(m.get("RW", True)),
+            type=mount.get("Type") or "bind",
+            source=mount.get("Source") or mount.get("Name") or None,
+            destination=mount.get("Destination") or "",
+            mode=mount.get("Mode") or None,
+            rw=bool(mount.get("RW", True)),
         )
-        for m in attrs.get("Mounts") or []
+        for mount in attrs.get("Mounts") or []
     ]
 
     networks = [
         NetworkInfo(
             name=name,
-            ip_address=net.get("IPAddress") or None,
-            gateway=net.get("Gateway") or None,
-            mac_address=net.get("MacAddress") or None,
+            ip_address=network.get("IPAddress") or None,
+            gateway=network.get("Gateway") or None,
+            mac_address=network.get("MacAddress") or None,
         )
-        for name, net in ((attrs.get("NetworkSettings") or {}).get("Networks") or {}).items()
+        for name, network in ((attrs.get("NetworkSettings") or {}).get("Networks") or {}).items()
     ]
 
     return ContainerDetail(
-        **_to_schema(c).model_dump(),
+        **_to_schema(container).model_dump(),
         image_id=attrs.get("Image"),
         command=_as_list(config.get("Cmd")),
         entrypoint=_as_list(config.get("Entrypoint")),
@@ -271,13 +272,13 @@ def perform_action(container_id: str, action: str) -> None:
 
 def remove_container(container_id: str) -> None:
     """Remove a stopped container. Its named volumes are left alone."""
-    c = _get_container(container_id)
+    container = _get_container(container_id)
     try:
-        c.remove()
+        container.remove()
     except APIError as exc:
         # Docker returns 409 Conflict when the container is still running.
         if exc.response is not None and exc.response.status_code == 409:
-            raise ContainerRunning(f"container {c.name} is running; stop it first") from exc
+            raise ContainerRunning(f"container {container.name} is running; stop it first") from exc
         raise DockerUnavailable(str(exc)) from exc
 
 
@@ -292,16 +293,16 @@ def stream_logs(container_id: str, *, tail: int = 200) -> Iterator[bytes]:
 STATS_WORKERS = 8
 
 
-def _stats_to_schema(c: DockerContainer, raw: dict) -> ContainerStats:
+def _stats_to_schema(container: DockerContainer, raw: dict) -> ContainerStats:
     cpu = raw.get("cpu_stats") or {}
     precpu = raw.get("precpu_stats") or {}
     usage = cpu.get("cpu_usage") or {}
     cpu_delta = usage.get("total_usage", 0) - (precpu.get("cpu_usage") or {}).get("total_usage", 0)
     system_delta = cpu.get("system_cpu_usage", 0) - precpu.get("system_cpu_usage", 0)
-    online = cpu.get("online_cpus") or len(usage.get("percpu_usage") or []) or 1
+    online_cpus = cpu.get("online_cpus") or len(usage.get("percpu_usage") or []) or 1
     cpu_percent = 0.0
     if cpu_delta > 0 and system_delta > 0:
-        cpu_percent = cpu_delta / system_delta * online * 100
+        cpu_percent = cpu_delta / system_delta * online_cpus * 100
 
     mem = raw.get("memory_stats") or {}
     mem_detail = mem.get("stats") or {}
@@ -313,30 +314,34 @@ def _stats_to_schema(c: DockerContainer, raw: dict) -> ContainerStats:
     networks = (raw.get("networks") or {}).values()
     blkio = (raw.get("blkio_stats") or {}).get("io_service_bytes_recursive") or []
 
-    def _blk(op: str) -> int:
-        return sum(e.get("value", 0) for e in blkio if str(e.get("op", "")).lower() == op)
+    def _block_bytes(operation: str) -> int:
+        return sum(
+            entry.get("value", 0)
+            for entry in blkio
+            if str(entry.get("op", "")).lower() == operation
+        )
 
     return ContainerStats(
-        id=c.id or "",
-        name=c.name or "",
+        id=container.id or "",
+        name=container.name or "",
         cpu_percent=round(cpu_percent, 2),
         memory_usage=mem_usage,
         memory_limit=mem_limit,
         memory_percent=round(mem_usage / mem_limit * 100, 2) if mem_limit else 0.0,
-        network_rx=sum(n.get("rx_bytes", 0) for n in networks),
-        network_tx=sum(n.get("tx_bytes", 0) for n in networks),
-        block_read=_blk("read"),
-        block_write=_blk("write"),
+        network_rx=sum(network.get("rx_bytes", 0) for network in networks),
+        network_tx=sum(network.get("tx_bytes", 0) for network in networks),
+        block_read=_block_bytes("read"),
+        block_write=_block_bytes("write"),
         pids=(raw.get("pids_stats") or {}).get("current"),
     )
 
 
-def _one_stats(c: DockerContainer) -> ContainerStats | None:
+def _one_stats(container: DockerContainer) -> ContainerStats | None:
     try:
-        return _stats_to_schema(c, c.stats(stream=False))
+        return _stats_to_schema(container, container.stats(stream=False))
     except DockerException as exc:
         # A container stopping mid-poll is normal; skip it rather than fail the batch.
-        logger.debug("Stats unavailable for %s: %s", c.name, exc)
+        logger.debug("Stats unavailable for %s: %s", container.name, exc)
         return None
 
 
@@ -350,7 +355,7 @@ def running_stats() -> list[ContainerStats]:
         return []
     with ThreadPoolExecutor(max_workers=min(STATS_WORKERS, len(containers))) as pool:
         results = pool.map(_one_stats, containers)
-    return [r for r in results if r is not None]
+    return [stats for stats in results if stats is not None]
 
 
 # --- Exec console ------------------------------------------------------------
@@ -362,7 +367,7 @@ CONSOLE_CMD = ["/bin/sh", "-c", "command -v bash >/dev/null 2>&1 && exec bash ||
 class ExecSession:
     """An interactive TTY exec in a container, over Docker's hijacked socket."""
 
-    def __init__(self, exec_id: str, sock) -> None:
+    def __init__(self, exec_id: str, sock: Any) -> None:
         self.exec_id = exec_id
         # Unix sockets come back wrapped in SocketIO; the Windows npipe socket
         # is used as-is. Both expose recv/sendall.
@@ -415,10 +420,10 @@ def open_exec(container_id: str, *, cols: int = 80, rows: int = 24) -> ExecSessi
 def mount_source(container_id: str, destination: str) -> str | None:
     """Host path (or volume path) mounted at `destination` in a container."""
     try:
-        c = _get_container(container_id)
+        container = _get_container(container_id)
     except DockerNotFound:
         return None
-    for mount in (c.attrs or {}).get("Mounts") or []:
+    for mount in (container.attrs or {}).get("Mounts") or []:
         if mount.get("Destination") == destination:
             return mount.get("Source") or None
     return None
@@ -430,17 +435,17 @@ def mount_source(container_id: str, destination: str) -> str | None:
 def _volume_usage() -> dict[str, list[VolumeUser]]:
     """Map each named volume to the containers (any state) mounting it."""
     usage: dict[str, list[VolumeUser]] = {}
-    for c in _client().containers.list(all=True):
-        for mount in (c.attrs or {}).get("Mounts") or []:
+    for container in _client().containers.list(all=True):
+        for mount in (container.attrs or {}).get("Mounts") or []:
             if mount.get("Type") != "volume":
                 continue
             name = mount.get("Name")
             if name:
                 usage.setdefault(name, []).append(
                     VolumeUser(
-                        id=c.id or "",
-                        name=c.name or "",
-                        running=c.status == "running",
+                        id=container.id or "",
+                        name=container.name or "",
+                        running=container.status == "running",
                         destination=mount.get("Destination") or "",
                         rw=bool(mount.get("RW", True)),
                     )
@@ -448,19 +453,19 @@ def _volume_usage() -> dict[str, list[VolumeUser]]:
     return usage
 
 
-def _volume_to_schema(v: DockerVolume, usage: dict[str, list[VolumeUser]]) -> Volume:
-    attrs = v.attrs or {}
+def _volume_to_schema(volume: DockerVolume, usage: dict[str, list[VolumeUser]]) -> Volume:
+    attrs = volume.attrs or {}
     labels = attrs.get("Labels") or {}
     created_raw = attrs.get("CreatedAt")
     return Volume(
-        name=v.name or "",
+        name=volume.name or "",
         driver=attrs.get("Driver") or "local",
         mountpoint=attrs.get("Mountpoint") or "",
         scope=attrs.get("Scope"),
         created_at=_parse_created(created_raw) if created_raw else None,
         labels=labels,
         compose_project=labels.get("com.docker.compose.project"),
-        used_by=usage.get(v.name or "", []),
+        used_by=usage.get(volume.name or "", []),
     )
 
 
@@ -471,31 +476,32 @@ def list_volumes() -> list[Volume]:
     except DockerException as exc:
         raise DockerUnavailable(str(exc)) from exc
     return sorted(
-        (_volume_to_schema(v, usage) for v in volumes), key=lambda v: v.name.lower()
+        (_volume_to_schema(volume, usage) for volume in volumes),
+        key=lambda volume: volume.name.lower(),
     )
 
 
 def get_volume(name: str) -> Volume:
-    v = _get_volume(name)
+    volume = _get_volume(name)
     try:
         usage = _volume_usage()
     except DockerException as exc:
         raise DockerUnavailable(str(exc)) from exc
-    return _volume_to_schema(v, usage)
+    return _volume_to_schema(volume, usage)
 
 
 def create_volume(name: str, driver: str = "local", labels: dict[str, str] | None = None) -> Volume:
     try:
-        v = _client().volumes.create(name=name, driver=driver, labels=labels or {})
+        volume = _client().volumes.create(name=name, driver=driver, labels=labels or {})
     except DockerException as exc:
         raise DockerUnavailable(str(exc)) from exc
-    return _volume_to_schema(v, _volume_usage())
+    return _volume_to_schema(volume, _volume_usage())
 
 
 def remove_volume(name: str, *, force: bool = False) -> None:
-    v = _get_volume(name)
+    volume = _get_volume(name)
     try:
-        v.remove(force=force)
+        volume.remove(force=force)
     except APIError as exc:
         # Docker returns 409 Conflict when the volume is still attached.
         if exc.response is not None and exc.response.status_code == 409:
@@ -535,13 +541,13 @@ def local_repo_digest(image: str) -> str | None:
     locally or loaded from a tarball), so there is nothing to compare against.
     """
     try:
-        img = _client().images.get(image)
+        local_image = _client().images.get(image)
     except DockerImageNotFound as exc:
         raise ImageNotFound(image) from exc
     except DockerException as exc:
         raise DockerUnavailable(str(exc)) from exc
 
-    repo_digests = (img.attrs or {}).get("RepoDigests") or []
+    repo_digests = (local_image.attrs or {}).get("RepoDigests") or []
     if not repo_digests:
         return None
 
@@ -578,24 +584,24 @@ def registry_digest(image: str) -> str:
 def _image_usage() -> dict[str, list[ContainerRef]]:
     """Map each image ID to the containers (any state) created from it."""
     usage: dict[str, list[ContainerRef]] = {}
-    for c in _client().containers.list(all=True):
-        image_id = (c.attrs or {}).get("Image")
+    for container in _client().containers.list(all=True):
+        image_id = (container.attrs or {}).get("Image")
         if image_id:
             usage.setdefault(image_id, []).append(
-                ContainerRef(name=c.name or "", running=c.status == "running")
+                ContainerRef(name=container.name or "", running=container.status == "running")
             )
     return usage
 
 
-def _image_to_schema(img: DockerImage, usage: dict[str, list[ContainerRef]]) -> Image:
-    attrs = img.attrs or {}
+def _image_to_schema(image: DockerImage, usage: dict[str, list[ContainerRef]]) -> Image:
+    attrs = image.attrs or {}
     created_raw = attrs.get("Created")
     return Image(
-        id=img.id or "",
-        tags=img.tags,
+        id=image.id or "",
+        tags=image.tags,
         size=attrs.get("Size") or 0,
         created_at=_parse_created(created_raw) if created_raw else None,
-        used_by=usage.get(img.id or "", []),
+        used_by=usage.get(image.id or "", []),
     )
 
 
@@ -606,8 +612,8 @@ def list_images() -> list[Image]:
     except DockerException as exc:
         raise DockerUnavailable(str(exc)) from exc
     return sorted(
-        (_image_to_schema(i, usage) for i in images),
-        key=lambda i: (i.tags[0] if i.tags else "~").lower(),
+        (_image_to_schema(image, usage) for image in images),
+        key=lambda image: (image.tags[0] if image.tags else "~").lower(),
     )
 
 
@@ -618,14 +624,14 @@ def remove_image(image: str, *, force: bool = False) -> None:
     with ``force``, an image used by a running container is refused.
     """
     try:
-        img = _client().images.get(image)
-        users = _image_usage().get(img.id or "", [])
+        local_image = _client().images.get(image)
+        used_by = _image_usage().get(local_image.id or "", [])
     except DockerImageNotFound as exc:
         raise ImageNotFound(image) from exc
     except DockerException as exc:
         raise DockerUnavailable(str(exc)) from exc
 
-    running = [u.name for u in users if u.running]
+    running = [container.name for container in used_by if container.running]
     if running:
         raise ImageInUse(f"image {image} is used by running container(s): {', '.join(running)}")
     try:
@@ -649,11 +655,13 @@ def prune_images(*, all_unused: bool = False) -> PruneResult:
         raise DockerUnavailable(str(exc)) from exc
     entries = result.get("ImagesDeleted") or []
     return PruneResult(
-        deleted=[e["Deleted"] for e in entries if e.get("Deleted")],
+        deleted=[entry["Deleted"] for entry in entries if entry.get("Deleted")],
         space_reclaimed=result.get("SpaceReclaimed") or 0,
     )
 
 
 def running_images() -> list[str]:
     """Distinct images used by currently running containers."""
-    return sorted({c.image for c in list_containers(all_states=False) if c.image})
+    return sorted(
+        {container.image for container in list_containers(all_states=False) if container.image}
+    )

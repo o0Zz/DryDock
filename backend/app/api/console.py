@@ -114,8 +114,8 @@ async def container_console(
                 await run_in_threadpool(session.write, message["data"].encode("utf-8"))
             elif message.get("type") == "resize":
                 with contextlib.suppress(TypeError, ValueError):
-                    cols_, rows_ = int(message["cols"]), int(message["rows"])
-                    await run_in_threadpool(session.resize, cols_, rows_)
+                    new_cols, new_rows = int(message["cols"]), int(message["rows"])
+                    await run_in_threadpool(session.resize, new_cols, new_rows)
 
     tasks = {asyncio.create_task(pump_output()), asyncio.create_task(pump_input())}
     try:

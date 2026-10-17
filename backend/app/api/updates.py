@@ -22,14 +22,14 @@ def list_updates(
 
 
 @router.post("/check", response_model=JobRead, status_code=status.HTTP_202_ACCEPTED)
-def check_updates(req: UpdateCheckRequest | None = None) -> Job:
+def check_updates(body: UpdateCheckRequest | None = None) -> Job:
     """Compare local image digests against their registries.
 
     With no body, every known image is checked (running containers plus every
     image named in a Compose file).
     """
-    requested = req.images if req and req.images else []
-    images = [i.strip() for i in requested if i.strip()]
+    requested = body.images if body and body.images else []
+    images = [image.strip() for image in requested if image.strip()]
     if images:
         label = f"Update check: {', '.join(images[:3])}" + ("..." if len(images) > 3 else "")
         runner = tasks.update_check_runner(lambda: images)

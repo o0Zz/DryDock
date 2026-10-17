@@ -27,8 +27,8 @@ def _project_id(path: Path) -> str:
 
 def _load_yaml(path: Path) -> object:
     try:
-        with path.open("r", encoding="utf-8") as f:
-            return yaml.safe_load(f)
+        with path.open("r", encoding="utf-8") as handle:
+            return yaml.safe_load(handle)
     except (yaml.YAMLError, OSError, UnicodeDecodeError) as exc:
         logger.warning("Failed to parse %s: %s", path, exc)
         return None
@@ -60,14 +60,14 @@ def _project_from_compose(compose_path: Path, repo_root: Path) -> Project:
     canonical = compose_path.name in COMPOSE_FILENAMES
     name = project_dir.name if canonical and project_dir != repo_root else compose_path.stem
     try:
-        rel = compose_path.relative_to(repo_root).as_posix()
+        relative_path = compose_path.relative_to(repo_root).as_posix()
     except ValueError:
-        rel = compose_path.as_posix()
+        relative_path = compose_path.as_posix()
     return Project(
         id=_project_id(compose_path),
         name=name,
         compose_path=str(compose_path),
-        relative_path=rel,
+        relative_path=relative_path,
         modified_at=datetime.fromtimestamp(stat.st_mtime, tz=UTC),
         services=_parse_services(compose_path),
     )
@@ -86,8 +86,8 @@ def discover_projects() -> list[Project]:
     canonical: dict[Path, Path] = {}
     others: list[Path] = []
     for path in root.rglob("*"):
-        rel_parts = path.relative_to(root).parts
-        if any(part.startswith(".") for part in rel_parts) or not path.is_file():
+        relative_parts = path.relative_to(root).parts
+        if any(part.startswith(".") for part in relative_parts) or not path.is_file():
             continue
         if path.name in COMPOSE_FILENAMES:
             # One canonical compose file per directory — prefer docker-compose.yml
@@ -103,13 +103,13 @@ def discover_projects() -> list[Project]:
         ):
             others.append(path)
 
-    projects = [_project_from_compose(p, root) for p in [*canonical.values(), *others]]
-    projects.sort(key=lambda p: p.name.lower())
+    projects = [_project_from_compose(path, root) for path in [*canonical.values(), *others]]
+    projects.sort(key=lambda project: project.name.lower())
     return projects
 
 
 def find_project(project_id: str) -> Project | None:
-    return next((p for p in discover_projects() if p.id == project_id), None)
+    return next((project for project in discover_projects() if project.id == project_id), None)
 
 
 def referenced_images() -> list[str]:
@@ -153,10 +153,15 @@ def attach_containers(projects: list[Project]) -> list[Project]:
         # The config-files label is exact; a label ending in the repo-relative path
         # catches stacks brought up from the host checkout (different mount root);
         # the project name is the last fallback.
-        rel_suffix = "/" + _normalise_path(project.relative_path)
+        relative_suffix = "/" + _normalise_path(project.relative_path)
         project.containers = (
             by_file.get(_normalise_path(project.compose_path))
-            or [c for path, cs in by_file.items() if path.endswith(rel_suffix) for c in cs]
+            or [
+                container
+                for path, file_containers in by_file.items()
+                if path.endswith(relative_suffix)
+                for container in file_containers
+            ]
             or by_name.get(_normalise_name(project.name), [])
         )
     return projects
@@ -165,6 +170,6 @@ def attach_containers(projects: list[Project]) -> list[Project]:
 def project_for_container(container_id: str) -> Project | None:
     """The repo project a container was deployed from, if any."""
     for project in attach_containers(discover_projects()):
-        if any(c.id == container_id for c in project.containers):
+        if any(container.id == container_id for container in project.containers):
             return project
     return None

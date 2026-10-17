@@ -29,7 +29,9 @@ def _format_sse(data: str, event: str | None = None) -> bytes:
     return ("\n".join(lines) + "\n").encode("utf-8")
 
 
-async def _pump(read_line: Callable[[], bytes | None], close: Callable[[], None], label: str):
+async def _pump(
+    read_line: Callable[[], bytes | None], close: Callable[[], None], label: str
+) -> AsyncIterator[bytes]:
     """Turn a blocking line reader into an SSE stream."""
     loop = asyncio.get_running_loop()
     yield _format_sse("connected", event="open")
@@ -64,22 +66,22 @@ def _container_stream(container_id: str, tail: int) -> AsyncIterator[bytes]:
 
 
 def _project_stream(compose_path: Path, tail: int, label: str) -> AsyncIterator[bytes]:
-    proc = compose_service.stream_logs(compose_path, tail=tail)
+    process = compose_service.stream_logs(compose_path, tail=tail)
 
     def read_line() -> bytes | None:
-        assert proc.stdout is not None
-        line = proc.stdout.readline()
+        assert process.stdout is not None
+        line = process.stdout.readline()
         return line or None
 
     def close() -> None:
-        if proc.poll() is None:
-            proc.terminate()
+        if process.poll() is None:
+            process.terminate()
             try:
-                proc.wait(timeout=5)
+                process.wait(timeout=5)
             except Exception:  # noqa: BLE001 - fall through to kill
-                proc.kill()
-        if proc.stdout is not None:
-            proc.stdout.close()
+                process.kill()
+        if process.stdout is not None:
+            process.stdout.close()
 
     return _pump(read_line, close, label)
 
@@ -115,14 +117,14 @@ async def stream_project_logs(
 async def _app_stream(tail: int) -> AsyncIterator[bytes]:
     yield _format_sse("connected", event="open")
     entries = log_buffer.buffer.tail(tail)
-    seq = entries[-1][0] if entries else log_buffer.buffer.last_seq
+    last_seq = entries[-1][0] if entries else log_buffer.buffer.last_seq
     while True:
         for _, line in entries:
             yield _format_sse(line)
         if entries:
-            seq = entries[-1][0]
+            last_seq = entries[-1][0]
         await asyncio.sleep(APP_LOG_POLL_SECONDS)
-        entries = log_buffer.buffer.since(seq)
+        entries = log_buffer.buffer.since(last_seq)
 
 
 @router.get("/app", dependencies=[Depends(require_admin)])

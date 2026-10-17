@@ -48,25 +48,25 @@ def _check_digest(image: str) -> UpdateResult:
     this is cheap enough to run over every image on a Pi.
     """
     try:
-        local = docker_service.local_repo_digest(image)
+        local_digest = docker_service.local_repo_digest(image)
     except docker_service.ImageNotFound:
         return UpdateResult(image=image, error="image not present locally")
     except docker_service.DockerUnavailable as exc:
         return UpdateResult(image=image, error=f"docker unavailable: {exc}")
 
-    if local is None:
+    if local_digest is None:
         # Images built locally (or loaded from a tarball) have no RepoDigests,
         # so there is no registry reference to compare against.
         return UpdateResult(image=image, error="no registry digest (built locally?)")
 
     try:
-        remote = docker_service.registry_digest(image)
+        remote_digest = docker_service.registry_digest(image)
     except docker_service.DockerUnavailable as exc:
-        return UpdateResult(image=image, local_digest=local, error=str(exc))
+        return UpdateResult(image=image, local_digest=local_digest, error=str(exc))
 
     return UpdateResult(
         image=image,
-        local_digest=local,
-        remote_digest=remote,
-        update_available=bool(remote) and remote != local,
+        local_digest=local_digest,
+        remote_digest=remote_digest,
+        update_available=bool(remote_digest) and remote_digest != local_digest,
     )
