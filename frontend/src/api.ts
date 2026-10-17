@@ -142,6 +142,7 @@ export const api = {
 
   // background jobs
   listJobs: (limit = 25) => request<Job[]>(`/api/jobs?limit=${limit}`),
+  listActiveJobs: () => request<Job[]>("/api/jobs?active=true"),
   getJob: (id: string) => request<Job>(`/api/jobs/${id}`),
 
   // settings

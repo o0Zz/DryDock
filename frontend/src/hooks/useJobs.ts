@@ -4,6 +4,9 @@ import type { Job } from "../types";
 
 const POLL_MS = 1500;
 
+/** Fired when a job is started from any page, so the topbar refreshes at once. */
+export const JOBS_CHANGED_EVENT = "drydock:jobs-changed";
+
 function isFinished(job: Job): boolean {
   return job.status === "success" || job.status === "error";
 }
@@ -24,6 +27,23 @@ export function useJobs(onSettled?: () => void) {
     setJobs((prev) =>
       prev.some((j) => j.id === job.id) ? prev : [...prev, job],
     );
+    window.dispatchEvent(new Event(JOBS_CHANGED_EVENT));
+  }, []);
+
+  // Re-attach to jobs still running server-side (started before navigating
+  // away, or by the scheduler), so progress and busy state survive page changes.
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .listActiveJobs()
+      .then((list) => {
+        if (cancelled || list.length === 0) return;
+        setJobs((prev) => [...prev, ...list.filter((j) => !prev.some((p) => p.id === j.id))]);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const dismiss = useCallback((id: string) => {

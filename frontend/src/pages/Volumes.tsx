@@ -1,5 +1,6 @@
-import { HardDrive, RefreshCw, Trash2 } from "lucide-react";
+import { Circle, HardDrive, RefreshCw, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { Link } from "react-router-dom";
 import { api } from "../api";
 import type { Volume } from "../types";
 
@@ -110,7 +111,7 @@ export default function Volumes() {
             <tr>
               <th>Name</th>
               <th>Driver</th>
-              <th>Usage</th>
+              <th>Used by</th>
               <th>Compose</th>
               <th>Created</th>
               <th></th>
@@ -132,9 +133,26 @@ export default function Volumes() {
                   <td>{v.driver}</td>
                   <td>
                     {inUse ? (
-                      <span className="badge running" title={v.used_by.join(", ")}>
-                        in use ({v.used_by.length})
-                      </span>
+                      v.used_by.map((u) => (
+                        <div key={`${u.id}:${u.destination}`}>
+                          <Link
+                            className="icon-link"
+                            to={`/containers/${u.id}`}
+                            title={u.running ? "running" : "stopped"}
+                          >
+                            <Circle
+                              size={8}
+                              fill="currentColor"
+                              className={u.running ? "dot-running" : "dot-stopped"}
+                            />{" "}
+                            {u.name}
+                          </Link>
+                          <div className="muted">
+                            <code>{u.destination}</code>
+                            {!u.rw && " (ro)"}
+                          </div>
+                        </div>
+                      ))
                     ) : (
                       <span className="badge">unused</span>
                     )}

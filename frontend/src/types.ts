@@ -33,7 +33,7 @@ export interface Volume {
   created_at: string | null;
   labels: Record<string, string>;
   compose_project: string | null;
-  used_by: string[];
+  used_by: VolumeUser[];
 }
 
 export interface ImageUser {
@@ -47,6 +47,15 @@ export interface LocalImage {
   size: number;
   created_at: string | null;
   used_by: ImageUser[];
+}
+
+export interface VolumeUser {
+  id: string;
+  name: string;
+  running: boolean;
+  /** Mount path inside the container. */
+  destination: string;
+  rw: boolean;
 }
 
 export interface PruneResult {

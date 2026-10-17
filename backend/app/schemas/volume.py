@@ -3,6 +3,16 @@ from datetime import datetime
 from pydantic import BaseModel, Field
 
 
+class VolumeUser(BaseModel):
+    """A container mounting the volume, and where."""
+
+    id: str
+    name: str
+    running: bool
+    destination: str
+    rw: bool = True
+
+
 class Volume(BaseModel):
     name: str
     driver: str
@@ -11,7 +21,7 @@ class Volume(BaseModel):
     created_at: datetime | None = None
     labels: dict[str, str] = Field(default_factory=dict)
     compose_project: str | None = None
-    used_by: list[str] = Field(default_factory=list)
+    used_by: list[VolumeUser] = Field(default_factory=list)
 
 
 class VolumeCreate(BaseModel):

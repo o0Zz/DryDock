@@ -24,7 +24,7 @@ from app.schemas.container import (
     NetworkInfo,
 )
 from app.schemas.image import ContainerRef, Image
-from app.schemas.volume import PruneResult, Volume
+from app.schemas.volume import PruneResult, Volume, VolumeUser
 
 logger = logging.getLogger(__name__)
 
@@ -378,20 +378,28 @@ def open_exec(container_id: str, *, cols: int = 80, rows: int = 24) -> ExecSessi
 # --- Volumes -----------------------------------------------------------------
 
 
-def _volume_usage() -> dict[str, list[str]]:
-    """Map each named volume to the containers currently mounting it."""
-    usage: dict[str, list[str]] = {}
+def _volume_usage() -> dict[str, list[VolumeUser]]:
+    """Map each named volume to the containers (any state) mounting it."""
+    usage: dict[str, list[VolumeUser]] = {}
     for c in _client().containers.list(all=True):
         for mount in (c.attrs or {}).get("Mounts") or []:
             if mount.get("Type") != "volume":
                 continue
             name = mount.get("Name")
             if name:
-                usage.setdefault(name, []).append(c.name or "")
+                usage.setdefault(name, []).append(
+                    VolumeUser(
+                        id=c.id or "",
+                        name=c.name or "",
+                        running=c.status == "running",
+                        destination=mount.get("Destination") or "",
+                        rw=bool(mount.get("RW", True)),
+                    )
+                )
     return usage
 
 
-def _volume_to_schema(v: DockerVolume, usage: dict[str, list[str]]) -> Volume:
+def _volume_to_schema(v: DockerVolume, usage: dict[str, list[VolumeUser]]) -> Volume:
     attrs = v.attrs or {}
     labels = attrs.get("Labels") or {}
     created_raw = attrs.get("CreatedAt")

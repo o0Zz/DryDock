@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { NavLink, Route, Routes } from "react-router-dom";
 import { useAuth } from "./auth";
+import JobsIndicator from "./components/JobsIndicator";
 import ContainerDetail from "./pages/ContainerDetail";
 import Containers from "./pages/Containers";
 import Dashboard from "./pages/Dashboard";
@@ -44,6 +45,7 @@ export default function App() {
           DryDock <span className="version">v{__APP_VERSION__}</span>
         </div>
         <div className="topbar-user">
+          <JobsIndicator />
           <span className="topbar-user-name">
             {user.username}
             {user.is_admin && <span className="badge admin-badge">admin</span>}
