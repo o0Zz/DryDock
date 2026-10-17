@@ -86,7 +86,12 @@ export default function Images() {
     );
   }, []);
 
-  const { jobs, track, dismiss, busy } = useJobs(load);
+  // Scans and update checks change the summaries, prunes change the local list.
+  const onJobSettled = useCallback(() => {
+    load();
+    loadImages();
+  }, [load, loadImages]);
+  const { jobs, track, dismiss, busy } = useJobs(onJobSettled);
 
   useEffect(() => {
     load();
@@ -185,12 +190,9 @@ export default function Images() {
           "They will need to be pulled again."
         : "Remove dangling (untagged) images?";
       if (!window.confirm(message)) return;
-      remove(async () => {
-        const res = await api.pruneImages(all);
-        return `Pruned ${res.deleted.length} image(s), reclaimed ${formatBytes(res.space_reclaimed)}.`;
-      });
+      start(() => api.pruneImages(all));
     },
-    [remove],
+    [start],
   );
 
   const openDetail = useCallback(async (scan: ScanSummary) => {
@@ -236,7 +238,7 @@ export default function Images() {
           <button
             type="button"
             className="secondary"
-            disabled={removing}
+            disabled={removing || busy}
             title="Remove untagged images left behind by pulls and builds"
             onClick={() => onPrune(false)}
           >
@@ -245,7 +247,7 @@ export default function Images() {
           <button
             type="button"
             className="secondary"
-            disabled={removing}
+            disabled={removing || busy}
             title="Remove every image no container uses"
             onClick={() => onPrune(true)}
           >

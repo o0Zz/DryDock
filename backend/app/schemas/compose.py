@@ -7,10 +7,3 @@ class ComposeContent(BaseModel):
 
 class ComposeWriteResponse(BaseModel):
     backup_path: str
-
-
-class ActionResult(BaseModel):
-    action: str
-    exit_code: int
-    stdout: str
-    stderr: str

@@ -14,6 +14,7 @@ class JobRead(BaseModel):
     done: int = 0
     message: str | None = None
     error: str | None = None
+    output: str | None = None
     trigger: str = "manual"
     created_at: UtcDatetime
     started_at: UtcDatetime | None = None

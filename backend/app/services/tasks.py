@@ -217,3 +217,56 @@ def container_update_runner(
         ctx.advance(f"{service} updated to the latest {image}")
 
     return run
+
+
+def project_action_runner(compose_path: Path, action: str):
+    """Build a job body that runs `docker compose <action>` on a whole project."""
+
+    def run(ctx: JobContext) -> None:
+        ctx.set_total(1, f"docker compose {action}")
+        result = compose_service.run_action(compose_path, action)
+        # docker compose writes its progress to stderr, so keep both streams.
+        ctx.set_output("\n".join(s for s in (result["stdout"], result["stderr"]) if s))
+        if result["exit_code"] != 0:
+            detail = (result["stderr"] or result["stdout"] or "").strip()[-1000:]
+            raise compose_service.ComposeError(
+                f"`docker compose {action}` failed (exit {result['exit_code']}): {detail}"
+            )
+        ctx.advance(f"docker compose {action} done")
+
+    return run
+
+
+def _format_bytes(size: int) -> str:
+    value = float(size)
+    for unit in ("B", "KB", "MB", "GB"):
+        if value < 1024:
+            return f"{value:.0f} {unit}" if unit == "B" else f"{value:.1f} {unit}"
+        value /= 1024
+    return f"{value:.1f} TB"
+
+
+def image_prune_runner(*, all_unused: bool):
+    """Build a job body that prunes dangling images, or every unused one."""
+
+    def run(ctx: JobContext) -> None:
+        result = docker_service.prune_images(all_unused=all_unused)
+        ctx.note(
+            f"Pruned {len(result.deleted)} image(s), "
+            f"reclaimed {_format_bytes(result.space_reclaimed)}"
+        )
+
+    return run
+
+
+def volume_prune_runner():
+    """Build a job body that removes every volume no container uses."""
+
+    def run(ctx: JobContext) -> None:
+        result = docker_service.prune_volumes()
+        ctx.note(
+            f"Pruned {len(result.deleted)} volume(s), "
+            f"reclaimed {_format_bytes(result.space_reclaimed)}"
+        )
+
+    return run

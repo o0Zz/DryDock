@@ -47,7 +47,7 @@ Dockerfile             3-stage build (frontend, backend venv, runtime with docke
   - The project ID is a hash of the file path.
   - Containers are matched to a project by the `com.docker.compose.project.config_files` label: the exact path first, then a path ending in the same repo-relative path (host and container mount roots differ), then by project name.
 - **Editing:** validate the YAML first, then back up to `/data/backups/<project-id>/`, then write. New stacks are created as `<repo>/<name>/docker-compose.yml`. The name must match `^[a-z0-9][a-z0-9_-]*$`.
-- **Background jobs** (`job_service`, `tasks`): anything slow (scans, update checks, container update) returns a job with status 202. The UI polls `/api/jobs`. `useJobs` re-attaches to active jobs when a page opens. `JobsIndicator` in the topbar shows them from any page.
+- **Background jobs** (`job_service`, `tasks`): anything slow (scans, update checks, container update, project compose actions, image and volume prunes) returns a job with status 202. Command output goes in `Job.output`. The UI polls `/api/jobs`. `useJobs` re-attaches to active jobs when a page opens. `JobsIndicator` in the topbar shows them from any page.
 - **Update checks** (`update_service`): two independent signals.
   - Digest: the same tag was rebuilt (`latest`, `stable`).
   - Newer tag: `registry_service` lists the registry's tags over the v2 API with an anonymous bearer token. Only tags of the same shape count (same prefix, same number of parts, same suffix), so prereleases and other variants are ignored. It reports the newest tag and the newest within the current major, and skips outlier majors (a jump of more than 3).

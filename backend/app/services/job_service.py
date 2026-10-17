@@ -23,6 +23,9 @@ MAX_HISTORY = 200
 
 ACTIVE_STATUSES = (JobStatus.PENDING, JobStatus.RUNNING)
 
+# Only the tail of command output is kept: the end is where errors are.
+MAX_OUTPUT = 20_000
+
 
 def _utcnow() -> datetime:
     return datetime.now(UTC)
@@ -49,6 +52,11 @@ class JobContext:
 
     def note(self, message: str) -> None:
         self.job.message = message
+        self.db.commit()
+
+    def set_output(self, output: str) -> None:
+        # Committed at once so the output survives the rollback of a failing job.
+        self.job.output = output[-MAX_OUTPUT:] or None
         self.db.commit()
 
 

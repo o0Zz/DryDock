@@ -124,7 +124,7 @@ def test_run_action_unchanged(runs):
     result = compose_service.run_action(COMPOSE, "up")
 
     assert runs.calls[0][0] == ["docker", "compose", "-f", str(COMPOSE), "up", "-d"]
-    assert runs.calls[0][1]["timeout"] == 300
+    assert runs.calls[0][1]["timeout"] == compose_service.PULL_TIMEOUT
     assert result == {"action": "up", "exit_code": 0, "stdout": "ok", "stderr": ""}
 
 

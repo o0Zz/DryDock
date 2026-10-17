@@ -98,6 +98,10 @@ def _compose(
         raise ComposeError(f"`docker compose {args[0]}` timed out after {timeout}s") from exc
 
 
+# Pulling a large image on a Pi over a slow link easily takes several minutes.
+PULL_TIMEOUT = 1800
+
+
 def run_action(compose_path: Path, action: str, *, detached: bool = True) -> dict:
     if action not in ALLOWED_ACTIONS:
         raise ComposeError(f"Unsupported action: {action}")
@@ -105,7 +109,9 @@ def run_action(compose_path: Path, action: str, *, detached: bool = True) -> dic
     args = [action]
     if action == "up" and detached:
         args.append("-d")
-    proc = _compose(compose_path, args)
+    # `up` pulls missing images too, so both can take as long as a pull.
+    timeout = PULL_TIMEOUT if action in ("up", "pull") else 300
+    proc = _compose(compose_path, args, timeout=timeout)
 
     return {
         "action": action,
@@ -113,10 +119,6 @@ def run_action(compose_path: Path, action: str, *, detached: bool = True) -> dic
         "stdout": proc.stdout,
         "stderr": proc.stderr,
     }
-
-
-# Pulling a large image on a Pi over a slow link easily takes several minutes.
-PULL_TIMEOUT = 1800
 
 
 def _check(proc: subprocess.CompletedProcess[str], step: str) -> None:

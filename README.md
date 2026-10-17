@@ -47,7 +47,7 @@ Works on `amd64` and `arm64` (Raspberry Pi 3, 4 and 5 with 64-bit OS).
 - **Images:** see which images are in use, and remove or prune the rest.
 - **CVE scans:** scan one image, all running images, or all images in your Compose files.
 - **Updates:** finds rebuilt tags (`latest`, `stable`) and newer versions (`2025.10.4` → `2026.10.2`). For `postgres:16.2` you see both the newest `16.x` and the newest overall.
-- **Background jobs:** scans and checks run in the background. The top bar shows progress from any page.
+- **Background jobs:** scans, update checks, stack actions and prunes run in the background. The top bar shows progress from any page.
 - **Schedules and alerts:** run scans and update checks on an interval, and send results to a webhook.
 - **Users and volumes:** several users with an admin flag, and named volume management.
 - **Logs page:** DryDock's own log, to see why a scan or a check failed.

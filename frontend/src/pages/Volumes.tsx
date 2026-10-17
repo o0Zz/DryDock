@@ -2,14 +2,9 @@ import { Circle, HardDrive, RefreshCw, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api";
+import JobList from "../components/JobList";
+import { useJobs } from "../hooks/useJobs";
 import type { Volume } from "../types";
-
-function formatBytes(bytes: number): string {
-  if (!bytes) return "0 B";
-  const units = ["B", "KB", "MB", "GB", "TB"];
-  const i = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
-  return `${(bytes / 1024 ** i).toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
-}
 
 export default function Volumes() {
   const [volumes, setVolumes] = useState<Volume[] | null>(null);
@@ -31,6 +26,12 @@ export default function Volumes() {
   useEffect(() => {
     refresh();
   }, [refresh]);
+
+  // Prunes run as background jobs; useJobs also re-attaches to unrelated ones
+  // (scans), so only this page's own kind is shown.
+  const { jobs, track, dismiss } = useJobs(refresh);
+  const pruneJobs = jobs.filter((j) => j.kind === "volume_prune");
+  const pruning = pruneJobs.some((j) => j.status === "pending" || j.status === "running");
 
   async function run(fn: () => Promise<unknown>, ok?: string) {
     setBusy(true);
@@ -62,12 +63,7 @@ export default function Volumes() {
 
   function onPrune() {
     if (!window.confirm("Remove all unused volumes? This cannot be undone.")) return;
-    run(async () => {
-      const res = await api.pruneVolumes();
-      setNotice(
-        `Pruned ${res.deleted.length} volume(s), reclaimed ${formatBytes(res.space_reclaimed)}.`,
-      );
-    });
+    run(async () => track(await api.pruneVolumes()));
   }
 
   return (
@@ -75,7 +71,7 @@ export default function Volumes() {
       <div className="row-between">
         <h1>Volumes</h1>
         <div className="button-row">
-          <button type="button" className="secondary" disabled={busy} onClick={onPrune}>
+          <button type="button" className="secondary" disabled={busy || pruning} onClick={onPrune}>
             <Trash2 size={15} /> Prune unused
           </button>
           <button type="button" className="secondary" onClick={refresh}>
@@ -86,6 +82,7 @@ export default function Volumes() {
 
       {error && <div className="error">{error}</div>}
       {notice && <div className="output ok" style={{ padding: "0.75rem" }}>{notice}</div>}
+      <JobList jobs={pruneJobs} onDismiss={dismiss} />
 
       <div className="section">
         <h2>Create volume</h2>

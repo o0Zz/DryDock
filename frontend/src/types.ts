@@ -58,18 +58,6 @@ export interface VolumeUser {
   rw: boolean;
 }
 
-export interface PruneResult {
-  deleted: string[];
-  space_reclaimed: number;
-}
-
-export interface ActionResult {
-  action: string;
-  exit_code: number;
-  stdout: string;
-  stderr: string;
-}
-
 export interface ContainerPort {
   private_port: number;
   public_port: number | null;
@@ -186,6 +174,7 @@ export interface Job {
   done: number;
   message: string | null;
   error: string | null;
+  output: string | null;
   trigger: string;
   created_at: string;
   started_at: string | null;

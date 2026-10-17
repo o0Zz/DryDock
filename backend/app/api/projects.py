@@ -4,10 +4,12 @@ from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, status
 
-from app.schemas.compose import ActionResult, ComposeContent, ComposeWriteResponse
+from app.models.job import Job, JobKind
+from app.schemas.compose import ComposeContent, ComposeWriteResponse
 from app.schemas.container import Container
+from app.schemas.job import JobRead
 from app.schemas.project import Project, ProjectCreate
-from app.services import compose_service, docker_service, repo_service
+from app.services import compose_service, docker_service, job_service, repo_service, tasks
 
 router = APIRouter(prefix="/api/projects", tags=["projects"])
 
@@ -105,11 +107,16 @@ def put_compose(project_id: str, body: ComposeContent) -> ComposeWriteResponse:
     return ComposeWriteResponse(backup_path=str(backup))
 
 
-@router.post("/{project_id}/{action}", response_model=ActionResult)
-def run_action(project_id: str, action: str) -> ActionResult:
+@router.post(
+    "/{project_id}/{action}", response_model=JobRead, status_code=status.HTTP_202_ACCEPTED
+)
+def run_action(project_id: str, action: str) -> Job:
+    """Queue `docker compose <action>`; a pull or first `up` can take minutes."""
+    if action not in compose_service.ALLOWED_ACTIONS:
+        raise HTTPException(status_code=400, detail=f"Unsupported action: {action}")
     project = _find_project(project_id)
-    try:
-        result = compose_service.run_action(Path(project.compose_path), action)
-    except compose_service.ComposeError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return ActionResult(**result)
+    return job_service.submit(
+        JobKind.PROJECT_ACTION,
+        f"{action.capitalize()} {project.name}",
+        tasks.project_action_runner(Path(project.compose_path), action),
+    )

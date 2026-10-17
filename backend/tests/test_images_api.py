@@ -8,7 +8,6 @@ from fastapi.testclient import TestClient
 from app.core.security import get_current_user
 from app.main import app
 from app.schemas.image import ContainerRef, Image
-from app.schemas.volume import PruneResult
 from app.services import docker_service
 
 
@@ -107,29 +106,3 @@ def test_delete_errors(client, monkeypatch, exc, code):
     monkeypatch.setattr(docker_service, "remove_image", _raise(exc))
     res = client.delete("/api/images", params={"image": "ghost:1"})
     assert res.status_code == code
-
-
-@pytest.mark.parametrize(
-    ("query", "expected"), [("", False), ("?all=false", False), ("?all=true", True)]
-)
-def test_prune(client, monkeypatch, query, expected):
-    calls = []
-
-    def prune(*, all_unused):
-        calls.append(all_unused)
-        return PruneResult(deleted=["sha256:a"], space_reclaimed=100)
-
-    monkeypatch.setattr(docker_service, "prune_images", prune)
-
-    res = client.post(f"/api/images/prune{query}")
-
-    assert res.status_code == 200
-    assert res.json() == {"deleted": ["sha256:a"], "space_reclaimed": 100}
-    assert calls == [expected]
-
-
-def test_prune_docker_down(client, monkeypatch):
-    monkeypatch.setattr(
-        docker_service, "prune_images", _raise(docker_service.DockerUnavailable("down"))
-    )
-    assert client.post("/api/images/prune").status_code == 503

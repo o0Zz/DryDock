@@ -1,5 +1,4 @@
 import type {
-  ActionResult,
   AppSettings,
   ComposeContent,
   Container,
@@ -9,7 +8,6 @@ import type {
   Job,
   LocalImage,
   Project,
-  PruneResult,
   ScanDetail,
   ScanSummary,
   SettingsPatch,
@@ -108,8 +106,9 @@ export const api = {
       method: "PUT",
       body: JSON.stringify({ content }),
     }),
+  // Compose actions, like prunes below, queue a job and return it at once
   runAction: (id: string, action: "up" | "down" | "pull" | "restart" | "stop") =>
-    request<ActionResult>(`/api/projects/${id}/${action}`, { method: "POST" }),
+    request<Job>(`/api/projects/${id}/${action}`, { method: "POST" }),
   listContainers: () => request<Container[]>("/api/containers"),
   containerStats: () => request<ContainerStats[]>("/api/containers/stats"),
   inspectContainer: (id: string) =>
@@ -168,7 +167,7 @@ export const api = {
     request<void>(`/api/volumes/${encodeURIComponent(name)}?force=${force}`, {
       method: "DELETE",
     }),
-  pruneVolumes: () => request<PruneResult>("/api/volumes/prune", { method: "POST" }),
+  pruneVolumes: () => request<Job>("/api/volumes/prune", { method: "POST" }),
 
   // local images
   listImages: () => request<LocalImage[]>("/api/images"),
@@ -177,5 +176,5 @@ export const api = {
       method: "DELETE",
     }),
   pruneImages: (all = false) =>
-    request<PruneResult>(`/api/images/prune?all=${all}`, { method: "POST" }),
+    request<Job>(`/api/images/prune?all=${all}`, { method: "POST" }),
 };

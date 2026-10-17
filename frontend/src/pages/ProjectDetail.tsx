@@ -16,8 +16,9 @@ import { lazy, Suspense, useCallback, useEffect, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { api } from "../api";
 import LogPanel from "../components/LogPanel";
+import { useJobs } from "../hooks/useJobs";
 import { imageRepo, retagImage } from "../imageRef";
-import type { ActionResult, Project, UpdateSummary } from "../types";
+import type { Job, Project, UpdateSummary } from "../types";
 
 // CodeMirror is by far the heaviest dependency in the bundle and is only
 // needed on this page, so it loads on demand.
@@ -38,6 +39,15 @@ const CONFIRM: Partial<Record<Action, string>> = {
   down: "Bring this stack down? Its containers and networks will be removed.",
 };
 
+// Must match the job label built by the backend route (`Up web`, `Pull web`).
+function actionLabel(action: Action, project: string): string {
+  return `${action[0].toUpperCase()}${action.slice(1)} ${project}`;
+}
+
+function isRunning(job: Job): boolean {
+  return job.status === "pending" || job.status === "running";
+}
+
 export default function ProjectDetail() {
   const { id = "" } = useParams();
   const [project, setProject] = useState<Project | null>(null);
@@ -47,8 +57,7 @@ export default function ProjectDetail() {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [savedAt, setSavedAt] = useState<string | null>(null);
-  const [busyAction, setBusyAction] = useState<Action | null>(null);
-  const [actionResult, setActionResult] = useState<ActionResult | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [showLogs, setShowLogs] = useState(false);
   // `?retag=<image>` arrives from a container's update shortcut: offer the
   // newer tags for that image as a one-click edit of the compose file.
@@ -101,30 +110,23 @@ export default function ProjectDetail() {
     }
   }, [id, compose]);
 
+  // Compose actions run as background jobs. Container state almost always
+  // changes, so the project reloads when one ends.
+  const { jobs, track } = useJobs(() => reloadProject().catch(() => undefined));
+
   const runAction = useCallback(
     async (action: Action) => {
       const question = CONFIRM[action];
       if (question && !window.confirm(question)) return;
 
-      setBusyAction(action);
-      setActionResult(null);
+      setActionError(null);
       try {
-        const result = await api.runAction(id, action);
-        setActionResult(result);
-        // Container state almost always changed; refresh what we show.
-        await reloadProject().catch(() => undefined);
+        track(await api.runAction(id, action));
       } catch (e) {
-        setActionResult({
-          action,
-          exit_code: -1,
-          stdout: "",
-          stderr: (e as Error).message,
-        });
-      } finally {
-        setBusyAction(null);
+        setActionError((e as Error).message);
       }
     },
-    [id, reloadProject],
+    [id, track],
   );
 
   const applyTag = (tag: string) => {
@@ -158,6 +160,15 @@ export default function ProjectDetail() {
 
   const dirty = compose !== originalCompose;
   const running = project.containers.filter((c) => c.state === "running").length;
+  // useJobs also re-attaches to unrelated jobs (scans); keep this stack's own.
+  const actionJobs = jobs.filter(
+    (j) =>
+      j.kind === "project_action" && ACTIONS.some((a) => j.label === actionLabel(a, project.name)),
+  );
+  const lastJob = actionJobs[actionJobs.length - 1];
+  const busyAction = ACTIONS.find((a) =>
+    actionJobs.some((j) => isRunning(j) && j.label === actionLabel(a, project.name)),
+  );
 
   return (
     <div>
@@ -185,7 +196,7 @@ export default function ProjectDetail() {
               <button
                 key={a}
                 type="button"
-                disabled={busyAction !== null}
+                disabled={busyAction !== undefined}
                 onClick={() => runAction(a)}
               >
                 <Icon size={15} /> {busyAction === a ? `${a}…` : a}
@@ -193,14 +204,19 @@ export default function ProjectDetail() {
             );
           })}
         </div>
-        {actionResult && (
-          <div className={actionResult.exit_code === 0 ? "output ok" : "output fail"}>
+        {actionError && <div className="error">{actionError}</div>}
+        {lastJob && (
+          <div
+            className={
+              isRunning(lastJob) ? "output" : lastJob.status === "success" ? "output ok" : "output fail"
+            }
+          >
             <div className="output-header">
-              <strong>{actionResult.action}</strong>
-              <span>exit {actionResult.exit_code}</span>
+              <strong>{lastJob.label}</strong>
+              <span>{isRunning(lastJob) ? `${lastJob.status}…` : lastJob.status}</span>
             </div>
-            {actionResult.stdout && <pre>{actionResult.stdout}</pre>}
-            {actionResult.stderr && <pre className="stderr">{actionResult.stderr}</pre>}
+            {lastJob.output && <pre>{lastJob.output}</pre>}
+            {lastJob.error && !lastJob.output && <pre className="stderr">{lastJob.error}</pre>}
           </div>
         )}
       </section>
@@ -259,7 +275,7 @@ export default function ProjectDetail() {
             update={retagUpdate}
             applied={retagApplied}
             note={retagNote}
-            busy={saving || busyAction !== null}
+            busy={saving || busyAction !== undefined}
             onApply={applyTag}
             onDeploy={saveAndDeploy}
             onDismiss={dismissRetag}

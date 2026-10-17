@@ -1,8 +1,9 @@
 from fastapi import APIRouter, HTTPException, Query, status
 
+from app.models.job import Job, JobKind
 from app.schemas.image import Image
-from app.schemas.volume import PruneResult
-from app.services import docker_service
+from app.schemas.job import JobRead
+from app.services import docker_service, job_service, tasks
 
 router = APIRouter(prefix="/api/images", tags=["images"])
 
@@ -15,18 +16,18 @@ def list_images() -> list[Image]:
         raise HTTPException(status_code=503, detail=f"Docker unavailable: {exc}") from exc
 
 
-@router.post("/prune", response_model=PruneResult)
+@router.post("/prune", response_model=JobRead, status_code=status.HTTP_202_ACCEPTED)
 def prune_images(
     all_unused: bool = Query(
         default=False,
         alias="all",
         description="Remove every image without a container, not only dangling ones",
     ),
-) -> PruneResult:
-    try:
-        return docker_service.prune_images(all_unused=all_unused)
-    except docker_service.DockerUnavailable as exc:
-        raise HTTPException(status_code=503, detail=f"Docker unavailable: {exc}") from exc
+) -> Job:
+    label = "Prune unused images" if all_unused else "Prune dangling images"
+    return job_service.submit(
+        JobKind.IMAGE_PRUNE, label, tasks.image_prune_runner(all_unused=all_unused)
+    )
 
 
 # Image references contain "/" and ":", so they travel as a query parameter.

@@ -73,6 +73,8 @@ def test_adopts_pre_alembic_database():
     with legacy.begin() as conn:
         for column in ("newest_tag", "newest_same_major_tag", "tag_error"):
             conn.execute(text(f"ALTER TABLE update_checks DROP COLUMN {column}"))
+        # Added after the move to Alembic, so no legacy database has it.
+        conn.execute(text("ALTER TABLE jobs DROP COLUMN output"))
         conn.execute(
             text(
                 "INSERT INTO users (username, hashed_password, is_admin, is_active, created_at) "

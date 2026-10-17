@@ -1,7 +1,9 @@
 from fastapi import APIRouter, HTTPException, Query, status
 
-from app.schemas.volume import PruneResult, Volume, VolumeCreate
-from app.services import docker_service
+from app.models.job import Job, JobKind
+from app.schemas.job import JobRead
+from app.schemas.volume import Volume, VolumeCreate
+from app.services import docker_service, job_service, tasks
 
 router = APIRouter(prefix="/api/volumes", tags=["volumes"])
 
@@ -14,12 +16,11 @@ def list_volumes() -> list[Volume]:
         raise HTTPException(status_code=503, detail=f"Docker unavailable: {exc}") from exc
 
 
-@router.post("/prune", response_model=PruneResult)
-def prune_volumes() -> PruneResult:
-    try:
-        return docker_service.prune_volumes()
-    except docker_service.DockerUnavailable as exc:
-        raise HTTPException(status_code=503, detail=f"Docker unavailable: {exc}") from exc
+@router.post("/prune", response_model=JobRead, status_code=status.HTTP_202_ACCEPTED)
+def prune_volumes() -> Job:
+    return job_service.submit(
+        JobKind.VOLUME_PRUNE, "Prune unused volumes", tasks.volume_prune_runner()
+    )
 
 
 @router.post("", response_model=Volume, status_code=status.HTTP_201_CREATED)
