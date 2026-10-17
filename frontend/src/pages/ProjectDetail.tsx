@@ -32,13 +32,21 @@ import type { Project, ProjectAction, UpdateSummary } from "../types";
 // needed on this page, so it loads on demand.
 const YamlEditor = lazy(() => import("../components/YamlEditor"));
 
-const ACTIONS: ProjectAction[] = ["up", "down", "pull", "restart", "stop"];
+const ACTIONS: ProjectAction[] = ["up", "down", "pull", "reload", "stop"];
 const ACTION_ICONS: Record<ProjectAction, LucideIcon> = {
   up: Play,
   down: ArrowDownCircle,
   pull: Download,
-  restart: RotateCw,
+  reload: RotateCw,
   stop: Square,
+};
+
+const ACTION_HINTS: Record<ProjectAction, string> = {
+  up: "Start the stack; recreates services whose config changed",
+  down: "Stop and remove the stack's containers and networks",
+  pull: "Download newer images (not applied until up or reload)",
+  reload: "Stop the stack, then up: applies your Compose file changes",
+  stop: "Stop the containers without removing them",
 };
 
 // `down` removes containers and networks, so it gets a confirmation step.
@@ -306,6 +314,7 @@ export default function ProjectDetail() {
                 key={action}
                 type="button"
                 disabled={busyAction !== undefined}
+                title={ACTION_HINTS[action]}
                 onClick={() => runAction(action)}
               >
                 <Icon size={15} /> {busyAction === action ? `${action}…` : action}
