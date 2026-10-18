@@ -40,7 +40,7 @@ frontend/src/
   i18n.tsx, i18n/fr/   translations: English text is the key, one JSON file per UI area
 docs/                  user docs (troubleshooting.md)
 sample-repo/           Compose stacks for local dev
-Dockerfile             3-stage build (frontend, backend venv, runtime with docker/compose/trivy)
+Dockerfile             3-stage build (frontend, backend venv, runtime with docker/compose/buildx/trivy)
 .github/workflows/     multi-arch build and push to ghcr.io
 ```
 

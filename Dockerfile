@@ -69,8 +69,9 @@ ARG TARGETARCH
 ARG TRIVY_VERSION=0.76.0
 ARG DOCKER_VERSION=29.9.1
 ARG COMPOSE_VERSION=5.6.0
+ARG BUILDX_VERSION=0.38.0
 
-# Install docker CLI + compose plugin + trivy from static binaries.
+# Install docker CLI + compose and buildx plugins + trivy from static binaries.
 # We deliberately avoid Docker's apt repository (gpg --dearmor is flaky
 # under QEMU emulation) and pull prebuilt binaries instead.
 # Use bash with pipefail so a failed curl in a `curl | tar` pipe fails the
@@ -82,10 +83,10 @@ RUN set -eux; \
     apt-get upgrade -y; \
     apt-get install -y --no-install-recommends ca-certificates curl tini; \
     case "${TARGETARCH:-amd64}" in \
-        amd64) DOCKER_ARCH=x86_64;  COMPOSE_ARCH=x86_64;  TRIVY_ARCH=64bit ;; \
-        arm64) DOCKER_ARCH=aarch64; COMPOSE_ARCH=aarch64; TRIVY_ARCH=ARM64 ;; \
-        arm)   DOCKER_ARCH=armhf;   COMPOSE_ARCH=armv7;   TRIVY_ARCH=ARM ;; \
-        *)     DOCKER_ARCH=x86_64;  COMPOSE_ARCH=x86_64;  TRIVY_ARCH=64bit ;; \
+        amd64) DOCKER_ARCH=x86_64;  COMPOSE_ARCH=x86_64;  BUILDX_ARCH=amd64;  TRIVY_ARCH=64bit ;; \
+        arm64) DOCKER_ARCH=aarch64; COMPOSE_ARCH=aarch64; BUILDX_ARCH=arm64;  TRIVY_ARCH=ARM64 ;; \
+        arm)   DOCKER_ARCH=armhf;   COMPOSE_ARCH=armv7;   BUILDX_ARCH=arm-v7; TRIVY_ARCH=ARM ;; \
+        *)     DOCKER_ARCH=x86_64;  COMPOSE_ARCH=x86_64;  BUILDX_ARCH=amd64;  TRIVY_ARCH=64bit ;; \
     esac; \
     # Docker CLI (static bundle contains the full client; keep only `docker`)
     curl -fsSL "https://download.docker.com/linux/static/stable/${DOCKER_ARCH}/docker-${DOCKER_VERSION}.tgz" \
@@ -95,10 +96,15 @@ RUN set -eux; \
     curl -fsSL "https://github.com/docker/compose/releases/download/v${COMPOSE_VERSION}/docker-compose-linux-${COMPOSE_ARCH}" \
         -o /usr/local/lib/docker/cli-plugins/docker-compose; \
     chmod +x /usr/local/lib/docker/cli-plugins/docker-compose; \
+    # Buildx plugin. Without it Compose falls back to the classic builder, which
+    # needs a local git for a git URL build context and has no RUN --mount.
+    curl -fsSL "https://github.com/docker/buildx/releases/download/v${BUILDX_VERSION}/buildx-v${BUILDX_VERSION}.linux-${BUILDX_ARCH}" \
+        -o /usr/local/lib/docker/cli-plugins/docker-buildx; \
+    chmod +x /usr/local/lib/docker/cli-plugins/docker-buildx; \
     # Trivy CVE scanner
     curl -fsSL "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-${TRIVY_ARCH}.tar.gz" \
         | tar -xz -C /usr/local/bin trivy; \
-    docker --version; docker compose version; trivy --version; \
+    docker --version; docker compose version; docker buildx version; trivy --version; \
     apt-get purge -y curl; \
     apt-get autoremove -y; \
     rm -rf /var/lib/apt/lists/*; \
