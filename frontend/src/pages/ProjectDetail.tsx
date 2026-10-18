@@ -482,7 +482,13 @@ export default function ProjectDetail() {
             />
           )}
           <Suspense fallback={<div className="empty">{t("Loading editor…")}</div>}>
-            <YamlEditor value={compose} onChange={setCompose} />
+            <YamlEditor
+              value={compose}
+              onChange={setCompose}
+              onSave={() => {
+                if (dirty && !saving) void save();
+              }}
+            />
           </Suspense>
           <div className="button-row">
             <button type="button" onClick={save} disabled={!dirty || saving}>
@@ -569,7 +575,15 @@ function EnvFile({ projectId }: { projectId: string }) {
           : t("No .env in this folder yet. Saving creates it.")}
       </div>
       <Suspense fallback={<div className="empty">{t("Loading editor…")}</div>}>
-        <YamlEditor value={content} onChange={setContent} height="320px" plain />
+        <YamlEditor
+          value={content}
+          onChange={setContent}
+          onSave={() => {
+            if (dirty && !saving) void save();
+          }}
+          height="320px"
+          plain
+        />
       </Suspense>
       <div className="button-row">
         <button type="button" onClick={save} disabled={!dirty || saving}>
