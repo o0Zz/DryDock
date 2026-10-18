@@ -22,12 +22,11 @@ export function formatDate(value: string | null | undefined, fallback = "—"): 
 
 /** Published ports as `8080→80/tcp, …`, or "—" when nothing is published. */
 export function formatPorts(ports: ContainerPort[]): string {
-  return (
-    ports
-      .filter((port) => port.public_port)
-      .map((port) => `${port.public_port}→${port.private_port}/${port.protocol}`)
-      .join(", ") || "—"
-  );
+  // Docker lists one binding per host IP (0.0.0.0 and ::), so the same mapping comes twice.
+  const mappings = ports
+    .filter((port) => port.public_port)
+    .map((port) => `${port.public_port}→${port.private_port}/${port.protocol}`);
+  return [...new Set(mappings)].join(", ") || "—";
 }
 
 /** Rough length of a span of seconds, e.g. `3d 4h` or `12m`. */

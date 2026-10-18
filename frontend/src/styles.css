@@ -779,6 +779,19 @@ details summary { cursor: pointer; }
 }
 .projects-table.compact .button-row { flex-wrap: nowrap; gap: 0.25rem; }
 .projects-table.compact .meter { margin-top: 0.1rem; }
+/* The name anchors each row: bold text, a link look only on hover. */
+.projects-table a.row-name { font-weight: 600; color: var(--text); text-decoration: none; }
+.projects-table a.row-name:hover { color: var(--accent); text-decoration: underline; }
+/* A column header you can click to sort by. */
+button.sort-header {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font: inherit;
+  text-transform: none;
+  gap: 0.2rem;
+}
+button.sort-header:hover { color: var(--text); }
 button.small.icon-only { padding: 0.25rem 0.35rem; line-height: 0; }
 
 /* --- Topbar background-jobs indicator ---------------------------------- */

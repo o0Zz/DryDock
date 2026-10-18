@@ -1,4 +1,13 @@
-import { ArrowUpCircle, Circle, RefreshCw, ShieldCheck, SquareTerminal, Trash2 } from "lucide-react";
+import {
+  ArrowUpCircle,
+  ChevronDown,
+  ChevronUp,
+  Circle,
+  RefreshCw,
+  ShieldCheck,
+  SquareTerminal,
+  Trash2,
+} from "lucide-react";
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { api } from "../api";
@@ -30,6 +39,54 @@ import type {
   UpdateSummary,
 } from "../types";
 
+const SORT_STORAGE_KEY = "drydock.containers.sort";
+const SORT_COLUMNS = ["name", "image", "status", "cpu", "memory", "compose"] as const;
+type SortColumn = (typeof SORT_COLUMNS)[number];
+interface Sort {
+  column: SortColumn;
+  descending: boolean;
+}
+// The busiest containers are what you look for, so these start high to low.
+const DESCENDING_FIRST: SortColumn[] = ["cpu", "memory"];
+// Running first when sorting by status; unknown states go last.
+const STATE_ORDER = ["running", "restarting", "paused", "created", "exited", "dead"];
+
+function loadSort(): Sort {
+  try {
+    const saved = JSON.parse(window.localStorage.getItem(SORT_STORAGE_KEY) ?? "null") as Sort | null;
+    if (saved && (SORT_COLUMNS as readonly string[]).includes(saved.column)) return saved;
+  } catch {
+    // storage blocked or bad value: default order
+  }
+  return { column: "name", descending: false };
+}
+
+function sortValue(container: Container, column: SortColumn, stats?: ContainerStats): string | number {
+  switch (column) {
+    case "name":
+      return container.name;
+    case "image":
+      return container.image;
+    case "status": {
+      const rank = STATE_ORDER.indexOf(container.state);
+      return rank === -1 ? STATE_ORDER.length : rank;
+    }
+    case "cpu":
+      return stats?.cpu_percent ?? -1;
+    case "memory":
+      return stats?.memory_usage ?? -1;
+    case "compose":
+      return container.compose_project
+        ? `${container.compose_project} / ${container.compose_service ?? ""}`
+        : "";
+  }
+}
+
+function compareValues(a: string | number, b: string | number): number {
+  if (typeof a === "number" && typeof b === "number") return a - b;
+  return String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: "base" });
+}
+
 export default function Containers() {
   const [containers, setContainers] = useState<Container[] | null>(null);
   const [scans, setScans] = useState<Record<string, ScanSummary>>({});
@@ -43,7 +100,38 @@ export default function Containers() {
   const navigate = useNavigate();
   const [busy, setBusy] = useState<string | null>(null);
   const confirm = useConfirm();
+  const [sort, setSort] = useState<Sort>(loadSort);
   const t = useT();
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(SORT_STORAGE_KEY, JSON.stringify(sort));
+    } catch {
+      // storage blocked: the order just isn't remembered
+    }
+  }, [sort]);
+
+  const changeSort = useCallback((column: SortColumn): void => {
+    setSort((current) =>
+      current.column === column
+        ? { column, descending: !current.descending }
+        : { column, descending: DESCENDING_FIRST.includes(column) },
+    );
+  }, []);
+
+  // Ties fall back to the name, so rows don't jump when stats refresh.
+  const sortedContainers = useMemo(() => {
+    if (!containers) return null;
+    const direction = sort.descending ? -1 : 1;
+    return [...containers].sort(
+      (a, b) =>
+        direction *
+          compareValues(
+            sortValue(a, sort.column, stats[a.id]),
+            sortValue(b, sort.column, stats[b.id]),
+          ) || compareValues(a.name, b.name),
+    );
+  }, [containers, sort, stats]);
 
   const refresh = useCallback((): void => {
     api
@@ -186,22 +274,23 @@ export default function Containers() {
         <table className="projects-table compact">
           <thead>
             <tr>
-              <th>{t("Name")}</th>
-              <th>{t("Image")}</th>
+              <SortHeader column="name" label={t("Name")} sort={sort} onSort={changeSort} />
+              <SortHeader column="image" label={t("Image")} sort={sort} onSort={changeSort} />
               <th>{t("CVEs")}</th>
-              <th>{t("Status")}</th>
-              <th>CPU</th>
-              <th>{t("Memory")}</th>
+              <SortHeader column="status" label={t("Status")} sort={sort} onSort={changeSort} />
+              <SortHeader column="cpu" label="CPU" sort={sort} onSort={changeSort} />
+              <SortHeader column="memory" label={t("Memory")} sort={sort} onSort={changeSort} />
               <th>{t("Ports")}</th>
-              <th>{t("Compose")}</th>
+              <SortHeader column="compose" label={t("Compose")} sort={sort} onSort={changeSort} />
               <th></th>
             </tr>
           </thead>
           <tbody>
-            {containers.map((container) => (
+            {(sortedContainers ?? []).map((container) => (
               <tr key={container.id}>
                 <td>
                   <Link
+                    className="row-name"
                     to={`/containers/${container.id}`}
                     title={t("Details, logs, CVEs and updates\nCreated {date}", {
                       date: formatDate(container.created_at),
@@ -318,6 +407,29 @@ export default function Containers() {
         </Suspense>
       )}
     </div>
+  );
+}
+
+function SortHeader({
+  column,
+  label,
+  sort,
+  onSort,
+}: {
+  column: SortColumn;
+  label: string;
+  sort: Sort;
+  onSort: (column: SortColumn) => void;
+}) {
+  const active = sort.column === column;
+  const Arrow = sort.descending ? ChevronDown : ChevronUp;
+  return (
+    <th aria-sort={active ? (sort.descending ? "descending" : "ascending") : undefined}>
+      <button type="button" className="sort-header" onClick={() => onSort(column)}>
+        {label}
+        {active && <Arrow size={13} />}
+      </button>
+    </th>
   );
 }
 
