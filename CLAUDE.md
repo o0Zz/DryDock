@@ -35,7 +35,7 @@ backend/
 frontend/src/
   pages/               one file per route
   components/          shared UI (LogPanel, JobList, JobsIndicator, ContainerConsole, ...)
-  hooks/               useJobs, useContainerStats
+  hooks/               useJobs, useContainerStats, useSort (click-to-sort tables with SortHeader)
   api.ts, types.ts     typed API client and response types
   i18n.tsx, i18n/fr/   translations: English text is the key, one JSON file per UI area
 docs/                  user docs (troubleshooting.md)

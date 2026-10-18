@@ -113,7 +113,7 @@ export default function ApiTokens() {
           <tbody>
             {tokens.map((token) => (
               <tr key={token.id}>
-                <td>{token.name}</td>
+                <td className="row-name">{token.name}</td>
                 <td>
                   <code>{token.prefix}…</code>
                 </td>

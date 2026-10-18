@@ -5,8 +5,10 @@ import { api } from "../api";
 import { useAuth } from "../auth";
 import { useConfirm } from "../components/ConfirmDialog";
 import JobList from "../components/JobList";
+import SortHeader from "../components/SortHeader";
 import { formatDate } from "../format";
 import { isActive, useJobs } from "../hooks/useJobs";
+import { useSort } from "../hooks/useSort";
 import { useT } from "../i18n";
 import type { Volume } from "../types";
 
@@ -15,6 +17,18 @@ export default function Volumes() {
   const t = useT();
   const { user } = useAuth();
   const [volumes, setVolumes] = useState<Volume[] | null>(null);
+  const sorting = useSort(volumes, {
+    storageKey: "drydock.sort.volumes",
+    columns: {
+      name: (volume) => volume.name,
+      driver: (volume) => volume.driver,
+      used: (volume) => volume.used_by.length,
+      compose: (volume) => volume.compose_project,
+      created: (volume) => (volume.created_at ? Date.parse(volume.created_at) : null),
+    },
+    initial: { column: "name", descending: false },
+    descendingFirst: ["used", "created"],
+  });
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [name, setName] = useState("");
@@ -125,30 +139,40 @@ export default function Volumes() {
         <table className="projects-table">
           <thead>
             <tr>
-              <th>{t("Name")}</th>
-              <th>{t("Driver")}</th>
-              <th>{t("Used by")}</th>
-              <th>{t("Compose")}</th>
-              <th>{t("Created")}</th>
+              <SortHeader sorting={sorting} column="name">
+                {t("Name")}
+              </SortHeader>
+              <SortHeader sorting={sorting} column="driver">
+                {t("Driver")}
+              </SortHeader>
+              <SortHeader sorting={sorting} column="used">
+                {t("Used by")}
+              </SortHeader>
+              <SortHeader sorting={sorting} column="compose">
+                {t("Compose")}
+              </SortHeader>
+              <SortHeader sorting={sorting} column="created">
+                {t("Created")}
+              </SortHeader>
               <th></th>
             </tr>
           </thead>
           <tbody>
-            {volumes.map((volume) => {
+            {sorting.rows.map((volume) => {
               const inUse = volume.used_by.length > 0;
               return (
                 <tr key={volume.name}>
                   <td>
                     {user?.is_admin ? (
                       <Link
-                        className="icon-link"
+                        className="icon-link row-name"
                         to={`/volumes/${encodeURIComponent(volume.name)}`}
                         title={t("Browse files")}
                       >
                         <HardDrive size={15} /> {volume.name}
                       </Link>
                     ) : (
-                      <span className="icon-link">
+                      <span className="icon-link row-name">
                         <HardDrive size={15} /> {volume.name}
                       </span>
                     )}

@@ -386,7 +386,7 @@ function OverviewTab({ detail, isAdmin }: { detail: ContainerDetailData; isAdmin
             <tbody>
               {detail.networks.map((network) => (
                 <tr key={network.name}>
-                  <td>{network.name}</td>
+                  <td className="row-name">{network.name}</td>
                   <td>{network.ip_address ?? "—"}</td>
                   <td className="muted">{network.gateway ?? "—"}</td>
                   <td className="muted">{network.mac_address ?? "—"}</td>

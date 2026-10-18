@@ -1,7 +1,9 @@
 import { ExternalLink } from "lucide-react";
 import { useMemo, useState } from "react";
+import { useSort } from "../hooks/useSort";
 import { msg, useT } from "../i18n";
 import type { ScanDetail } from "../types";
+import SortHeader from "./SortHeader";
 
 const SEVERITY_ORDER = ["CRITICAL", "HIGH", "MEDIUM", "LOW", "UNKNOWN"];
 
@@ -37,6 +39,19 @@ export default function ScanFindings({ detail }: { detail: ScanDetail }) {
         : detail.findings.filter((finding) => finding.severity === severity),
     [detail.findings, severity],
   );
+  // No default: Trivy's order, most severe first.
+  const sorting = useSort(findings, {
+    storageKey: "drydock.sort.findings",
+    columns: {
+      severity: (finding) => {
+        const rank = SEVERITY_ORDER.indexOf(finding.severity);
+        return rank === -1 ? SEVERITY_ORDER.length : rank;
+      },
+      cve: (finding) => finding.vulnerability_id,
+      package: (finding) => finding.package_name,
+      fixed: (finding) => (finding.fixed_version ? 0 : 1),
+    },
+  });
 
   if (detail.error) return <div className="error">{detail.error}</div>;
 
@@ -65,15 +80,23 @@ export default function ScanFindings({ detail }: { detail: ScanDetail }) {
         <table className="projects-table">
           <thead>
             <tr>
-              <th>{t("Severity")}</th>
-              <th>CVE</th>
-              <th>{t("Package")}</th>
+              <SortHeader sorting={sorting} column="severity">
+                {t("Severity")}
+              </SortHeader>
+              <SortHeader sorting={sorting} column="cve">
+                CVE
+              </SortHeader>
+              <SortHeader sorting={sorting} column="package">
+                {t("Package")}
+              </SortHeader>
               <th>{t("Installed")}</th>
-              <th>{t("Fixed in")}</th>
+              <SortHeader sorting={sorting} column="fixed">
+                {t("Fixed in")}
+              </SortHeader>
             </tr>
           </thead>
           <tbody>
-            {findings.map((finding, index) => (
+            {sorting.rows.map((finding, index) => (
               <tr key={`${finding.vulnerability_id}-${finding.package_name}-${index}`}>
                 <td>
                   <span className={`badge ${severityClass(finding.severity)}`}>
@@ -97,7 +120,7 @@ export default function ScanFindings({ detail }: { detail: ScanDetail }) {
                   {finding.title && <div className="muted">{finding.title}</div>}
                 </td>
                 <td>
-                  {finding.package_name}
+                  <span className="row-name">{finding.package_name}</span>
                   {finding.target && <div className="muted">{finding.target}</div>}
                 </td>
                 <td className="muted">{finding.installed_version ?? "—"}</td>

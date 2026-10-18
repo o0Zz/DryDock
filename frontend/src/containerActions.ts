@@ -38,6 +38,15 @@ export function containerStateLabel(state: string): string {
   return CONTAINER_STATE_LABELS[state] ?? state;
 }
 
+// Running first when sorting by status; unknown states go last.
+const CONTAINER_STATE_ORDER = ["running", "restarting", "paused", "created", "exited", "dead"];
+
+/** Sort key for a container state. */
+export function containerStateRank(state: string): number {
+  const rank = CONTAINER_STATE_ORDER.indexOf(state);
+  return rank === -1 ? CONTAINER_STATE_ORDER.length : rank;
+}
+
 /** The actions that make sense for a container in this state. */
 export function containerActionsFor(state: string): ContainerAction[] {
   switch (state) {

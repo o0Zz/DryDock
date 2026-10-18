@@ -2,7 +2,9 @@ import { ChevronLeft, Download, File, FileSymlink, Folder, RefreshCw } from "luc
 import { useCallback, useEffect, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { api } from "../api";
+import SortHeader from "../components/SortHeader";
 import { formatBytes, formatDate } from "../format";
+import { useSort } from "../hooks/useSort";
 import { useT } from "../i18n";
 import type { VolumeEntry, VolumeListing } from "../types";
 
@@ -19,6 +21,17 @@ export default function VolumeFiles() {
   const [searchParams, setSearchParams] = useSearchParams();
   const path = searchParams.get("path") || "/";
   const [listing, setListing] = useState<VolumeListing | null>(null);
+  // The server sends folders first, by name; they stay first in every order.
+  const sorting = useSort(listing?.entries, {
+    storageKey: "drydock.sort.volume-files",
+    columns: {
+      name: (entry) => entry.name,
+      size: (entry) => (entry.type === "file" ? entry.size : null),
+      modified: (entry) => (entry.modified_at ? Date.parse(entry.modified_at) : null),
+    },
+    descendingFirst: ["size", "modified"],
+    group: (entry) => (entry.type === "dir" ? 0 : 1),
+  });
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -55,7 +68,7 @@ export default function VolumeFiles() {
       return (
         <button
           type="button"
-          className="linklike"
+          className="linklike row-name"
           style={{ fontSize: "inherit" }}
           onClick={() => open(joinPath(listing?.path ?? path, entry.name))}
         >
@@ -63,7 +76,7 @@ export default function VolumeFiles() {
         </button>
       );
     }
-    return <span className="icon-link">{label}</span>;
+    return <span className="icon-link row-name">{label}</span>;
   }
 
   return (
@@ -117,14 +130,20 @@ export default function VolumeFiles() {
         <table className="projects-table">
           <thead>
             <tr>
-              <th>{t("Name")}</th>
-              <th>{t("Size")}</th>
-              <th>{t("Modified")}</th>
+              <SortHeader sorting={sorting} column="name">
+                {t("Name")}
+              </SortHeader>
+              <SortHeader sorting={sorting} column="size">
+                {t("Size")}
+              </SortHeader>
+              <SortHeader sorting={sorting} column="modified">
+                {t("Modified")}
+              </SortHeader>
               <th></th>
             </tr>
           </thead>
           <tbody>
-            {listing.entries.map((entry) => (
+            {sorting.rows.map((entry) => (
               <tr key={entry.name}>
                 <td>{renderName(entry)}</td>
                 <td className="muted">{entry.type === "file" ? formatBytes(entry.size) : "—"}</td>

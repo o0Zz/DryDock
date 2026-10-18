@@ -98,7 +98,7 @@ export default function RegistryCredentials() {
           <tbody>
             {registries.map((credential) => (
               <tr key={credential.registry}>
-                <td>{label(credential.registry)}</td>
+                <td className="row-name">{label(credential.registry)}</td>
                 <td>{credential.username}</td>
                 <td>
                   <button

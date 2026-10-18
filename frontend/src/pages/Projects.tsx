@@ -3,10 +3,20 @@ import { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { api } from "../api";
 import { useConfirm } from "../components/ConfirmDialog";
+import SortHeader from "../components/SortHeader";
 import { formatDate } from "../format";
+import { useSort } from "../hooks/useSort";
 import { useT } from "../i18n";
 import { askDelete, waitForJob } from "../stackActions";
 import type { Project } from "../types";
+
+// Down, then stopped, partial and up, so stacks that need a look come first.
+function stackRank(project: Project): number {
+  const total = project.containers.length;
+  if (total === 0) return 0;
+  const running = project.containers.filter((container) => container.state === "running").length;
+  return running === 0 ? 1 : running < total ? 2 : 3;
+}
 
 function StackStatus({ project }: { project: Project }) {
   const t = useT();
@@ -30,6 +40,18 @@ export default function Projects() {
   const navigate = useNavigate();
   const confirm = useConfirm();
   const t = useT();
+  const sorting = useSort(projects, {
+    storageKey: "drydock.sort.projects",
+    columns: {
+      name: (project) => project.name,
+      status: stackRank,
+      services: (project) => project.services.length,
+      path: (project) => project.relative_path,
+      modified: (project) => Date.parse(project.modified_at),
+    },
+    initial: { column: "name", descending: false },
+    descendingFirst: ["services", "modified"],
+  });
 
   const load = useCallback((): void => {
     api
@@ -82,19 +104,29 @@ export default function Projects() {
         <table className="projects-table">
           <thead>
             <tr>
-              <th>{t("Name")}</th>
-              <th>{t("Status")}</th>
-              <th>{t("Services")}</th>
-              <th>{t("Path")}</th>
-              <th>{t("Modified")}</th>
+              <SortHeader sorting={sorting} column="name">
+                {t("Name")}
+              </SortHeader>
+              <SortHeader sorting={sorting} column="status">
+                {t("Status")}
+              </SortHeader>
+              <SortHeader sorting={sorting} column="services">
+                {t("Services")}
+              </SortHeader>
+              <SortHeader sorting={sorting} column="path">
+                {t("Path")}
+              </SortHeader>
+              <SortHeader sorting={sorting} column="modified">
+                {t("Modified")}
+              </SortHeader>
               <th></th>
             </tr>
           </thead>
           <tbody>
-            {projects.map((project) => (
+            {sorting.rows.map((project) => (
               <tr key={project.id}>
                 <td>
-                  <Link className="icon-link" to={`/projects/${project.id}`}>
+                  <Link className="icon-link row-name" to={`/projects/${project.id}`}>
                     <FolderGit2 size={15} /> {project.name}
                   </Link>
                 </td>

@@ -4,8 +4,10 @@ import { Link } from "react-router-dom";
 import { api } from "../api";
 import { useConfirm } from "../components/ConfirmDialog";
 import JobList from "../components/JobList";
+import SortHeader from "../components/SortHeader";
 import { formatDate } from "../format";
 import { isActive, useJobs } from "../hooks/useJobs";
+import { useSort } from "../hooks/useSort";
 import { useT } from "../i18n";
 import type { DockerNetwork } from "../types";
 
@@ -13,6 +15,19 @@ export default function Networks() {
   const confirm = useConfirm();
   const t = useT();
   const [networks, setNetworks] = useState<DockerNetwork[] | null>(null);
+  const sorting = useSort(networks, {
+    storageKey: "drydock.sort.networks",
+    columns: {
+      name: (network) => network.name,
+      driver: (network) => network.driver,
+      subnet: (network) => network.subnets[0],
+      containers: (network) => network.used_by.length,
+      compose: (network) => network.compose_project,
+      created: (network) => (network.created_at ? Date.parse(network.created_at) : null),
+    },
+    initial: { column: "name", descending: false },
+    descendingFirst: ["containers", "created"],
+  });
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -106,22 +121,34 @@ export default function Networks() {
         <table className="projects-table">
           <thead>
             <tr>
-              <th>{t("Name")}</th>
-              <th>{t("Driver")}</th>
-              <th>{t("Subnet")}</th>
-              <th>{t("Containers")}</th>
-              <th>{t("Compose")}</th>
-              <th>{t("Created")}</th>
+              <SortHeader sorting={sorting} column="name">
+                {t("Name")}
+              </SortHeader>
+              <SortHeader sorting={sorting} column="driver">
+                {t("Driver")}
+              </SortHeader>
+              <SortHeader sorting={sorting} column="subnet">
+                {t("Subnet")}
+              </SortHeader>
+              <SortHeader sorting={sorting} column="containers">
+                {t("Containers")}
+              </SortHeader>
+              <SortHeader sorting={sorting} column="compose">
+                {t("Compose")}
+              </SortHeader>
+              <SortHeader sorting={sorting} column="created">
+                {t("Created")}
+              </SortHeader>
               <th></th>
             </tr>
           </thead>
           <tbody>
-            {networks.map((network) => {
+            {sorting.rows.map((network) => {
               const inUse = network.used_by.length > 0;
               return (
                 <tr key={network.id}>
                   <td>
-                    <span className="icon-link">
+                    <span className="icon-link row-name">
                       <Network size={15} /> {network.name}
                     </span>{" "}
                     {network.predefined && <span className="badge">{t("built-in")}</span>}{" "}

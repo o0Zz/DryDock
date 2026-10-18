@@ -23,8 +23,11 @@ import { useConfirm, type ConfirmOptions } from "../components/ConfirmDialog";
 import ImageName from "../components/ImageName";
 import { JOB_STATUS_TEXT } from "../components/JobList";
 import LogPanel from "../components/LogPanel";
+import SortHeader from "../components/SortHeader";
+import { containerStateLabel, containerStateRank } from "../containerActions";
 import { formatPorts } from "../format";
 import { isActive, useJobs } from "../hooks/useJobs";
+import { useSort } from "../hooks/useSort";
 import { msg, useT } from "../i18n";
 import { imageRepo, retagImage } from "../imageRef";
 import { askDelete, askName, waitForJob } from "../stackActions";
@@ -77,6 +80,16 @@ export default function ProjectDetail() {
   const t = useT();
   const { id = "" } = useParams();
   const [project, setProject] = useState<Project | null>(null);
+  const sorting = useSort(project?.containers, {
+    storageKey: "drydock.sort.stack-containers",
+    columns: {
+      name: (container) => container.name,
+      service: (container) => container.compose_service,
+      image: (container) => container.image,
+      status: (container) => containerStateRank(container.state),
+    },
+    initial: { column: "name", descending: false },
+  });
   const [compose, setCompose] = useState<string>("");
   const [originalCompose, setOriginalCompose] = useState<string>("");
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -383,24 +396,36 @@ export default function ProjectDetail() {
           <table className="projects-table">
             <thead>
               <tr>
-                <th>{t("Name")}</th>
-                <th>{t("Service")}</th>
-                <th>{t("Image")}</th>
-                <th>{t("Status")}</th>
+                <SortHeader sorting={sorting} column="name">
+                  {t("Name")}
+                </SortHeader>
+                <SortHeader sorting={sorting} column="service">
+                  {t("Service")}
+                </SortHeader>
+                <SortHeader sorting={sorting} column="image">
+                  {t("Image")}
+                </SortHeader>
+                <SortHeader sorting={sorting} column="status">
+                  {t("Status")}
+                </SortHeader>
                 <th>{t("Ports")}</th>
               </tr>
             </thead>
             <tbody>
-              {project.containers.map((container) => (
+              {sorting.rows.map((container) => (
                 <tr key={container.id}>
-                  <td>{container.name}</td>
+                  <td>
+                    <Link className="row-name" to={`/containers/${container.id}`}>
+                      {container.name}
+                    </Link>
+                  </td>
                   <td>{container.compose_service ?? "—"}</td>
                   <td>
                     <ImageName image={container.image} version={container.image_version} />
                   </td>
                   <td>
                     <span className={`badge ${container.state}`}>
-                      <Circle size={8} fill="currentColor" /> {container.state}
+                      <Circle size={8} fill="currentColor" /> {t(containerStateLabel(container.state))}
                     </span>
                   </td>
                   <td>

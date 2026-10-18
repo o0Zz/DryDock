@@ -10,10 +10,12 @@ import { api } from "../api";
 import { useConfirm } from "../components/ConfirmDialog";
 import JobList from "../components/JobList";
 import ScanBadge from "../components/ScanBadge";
+import SortHeader from "../components/SortHeader";
 import ScanFindings from "../components/ScanFindings";
 import UpdateBadge, { hasUpdate } from "../components/UpdateBadge";
 import { formatBytes, formatDate } from "../format";
 import { useJobs } from "../hooks/useJobs";
+import { useSort } from "../hooks/useSort";
 import { useT } from "../i18n";
 import type { LocalImage, ScanDetail, ScanSummary, UpdateSummary } from "../types";
 
@@ -152,6 +154,25 @@ export default function Images() {
         );
       });
   }, [scans, updates, running, composeImages, localImages, filter]);
+
+  // No default: rows stay worst first until a header is clicked.
+  const sorting = useSort(rows, {
+    storageKey: "drydock.sort.images",
+    columns: {
+      image: (row) => row.image,
+      cves: (row) =>
+        row.scan && !row.scan.error
+          ? [row.scan.critical, row.scan.high, row.scan.medium, row.scan.low].reduce(
+              (total, count) => total * 10000 + count,
+              0,
+            )
+          : null,
+      fixable: (row) => (row.scan && !row.scan.error ? row.scan.fixable : null),
+      update: (row) => (hasUpdate(row.update) ? 1 : 0),
+      scanned: (row) => (row.scan ? Date.parse(row.scan.scanned_at) : null),
+    },
+    descendingFirst: ["cves", "fixable", "update", "scanned"],
+  });
 
   const remove = useCallback(
     async (removeImage: () => Promise<string>): Promise<void> => {
@@ -316,19 +337,29 @@ export default function Images() {
         <table className="projects-table">
           <thead>
             <tr>
-              <th>{t("Image")}</th>
-              <th>{t("CVEs")}</th>
-              <th>{t("Fixable")}</th>
-              <th>{t("Update")}</th>
-              <th>{t("Last scanned")}</th>
+              <SortHeader sorting={sorting} column="image">
+                {t("Image")}
+              </SortHeader>
+              <SortHeader sorting={sorting} column="cves">
+                {t("CVEs")}
+              </SortHeader>
+              <SortHeader sorting={sorting} column="fixable">
+                {t("Fixable")}
+              </SortHeader>
+              <SortHeader sorting={sorting} column="update">
+                {t("Update")}
+              </SortHeader>
+              <SortHeader sorting={sorting} column="scanned">
+                {t("Last scanned")}
+              </SortHeader>
               <th></th>
             </tr>
           </thead>
           <tbody>
-            {rows.map((row) => (
+            {sorting.rows.map((row) => (
               <tr key={row.image}>
                 <td>
-                  <div className="icon-link">{row.image}</div>
+                  <div className="icon-link row-name">{row.image}</div>
                   <div className="muted">
                     {row.inUse && <span className="badge running">{t("running")}</span>}{" "}
                     {row.inCompose && <span className="badge">compose</span>}{" "}

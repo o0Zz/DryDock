@@ -12,6 +12,8 @@ import { useEffect, useState, type FormEvent } from "react";
 import { api } from "../api";
 import { useAuth } from "../auth";
 import { useConfirm } from "../components/ConfirmDialog";
+import SortHeader from "../components/SortHeader";
+import { useSort } from "../hooks/useSort";
 import { useT } from "../i18n";
 import type { User } from "../types";
 
@@ -20,6 +22,17 @@ export default function Users() {
   const confirm = useConfirm();
   const { user: currentUser } = useAuth();
   const [users, setUsers] = useState<User[]>([]);
+  const sorting = useSort(users, {
+    storageKey: "drydock.sort.users",
+    columns: {
+      username: (user) => user.username,
+      role: (user) => (user.is_admin ? 0 : 1),
+      status: (user) => (user.is_active ? 0 : 1),
+      created: (user) => Date.parse(user.created_at),
+    },
+    initial: { column: "username", descending: false },
+    descendingFirst: ["created"],
+  });
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -127,20 +140,28 @@ export default function Users() {
         <table className="projects-table">
           <thead>
             <tr>
-              <th>{t("Username")}</th>
-              <th>{t("Role")}</th>
-              <th>{t("Status")}</th>
-              <th>{t("Created")}</th>
+              <SortHeader sorting={sorting} column="username">
+                {t("Username")}
+              </SortHeader>
+              <SortHeader sorting={sorting} column="role">
+                {t("Role")}
+              </SortHeader>
+              <SortHeader sorting={sorting} column="status">
+                {t("Status")}
+              </SortHeader>
+              <SortHeader sorting={sorting} column="created">
+                {t("Created")}
+              </SortHeader>
               <th>{t("Actions")}</th>
             </tr>
           </thead>
           <tbody>
-            {users.map((user) => {
+            {sorting.rows.map((user) => {
               const isSelf = user.id === currentUser?.id;
               return (
                 <tr key={user.id}>
                   <td>
-                    {user.username}
+                    <span className="row-name">{user.username}</span>
                     {isSelf && <span className="muted"> {t("(you)")}</span>}
                   </td>
                   <td>
