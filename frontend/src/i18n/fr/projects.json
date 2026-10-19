@@ -75,5 +75,7 @@
   "{days}d {hours}h": "{days} j {hours} h",
   "{hours}h {minutes}m": "{hours} h {minutes} min",
   "{minutes}m": "{minutes} min",
-  "Update {image}:": "Mettre à jour {image} :"
+  "Update {image}:": "Mettre à jour {image} :",
+  "Compose file saved {saved}. Newest container created {created}.": "Fichier Compose enregistré le {saved}. Conteneur le plus récent créé le {created}.",
+  "The Compose file changed after these containers were created. Run up to apply it.": "Le fichier Compose a changé après la création de ces conteneurs. Lancez up pour l'appliquer."
 }

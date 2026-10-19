@@ -185,6 +185,7 @@ def _to_schema(container: DockerContainer) -> Container:
     attrs = container.attrs or {}
     labels = attrs.get("Config", {}).get("Labels") or {}
     host_config = attrs.get("HostConfig") or {}
+    state = attrs.get("State") or {}
     image_tags = (attrs.get("Config") or {}).get("Image") or (
         container.image.tags[0] if container.image and container.image.tags else ""
     )
@@ -194,7 +195,7 @@ def _to_schema(container: DockerContainer) -> Container:
         image=image_tags,
         image_version=_image_version(image_tags, labels),
         status=container.status,
-        state=(attrs.get("State") or {}).get("Status") or container.status,
+        state=state.get("Status") or container.status,
         created_at=_parse_created(attrs.get("Created", "")),
         ports=_parse_ports(attrs),
         compose_project=labels.get("com.docker.compose.project"),
@@ -202,7 +203,9 @@ def _to_schema(container: DockerContainer) -> Container:
         compose_config_files=labels.get("com.docker.compose.project.config_files"),
         restart_policy=(host_config.get("RestartPolicy") or {}).get("Name") or None,
         restart_count=attrs.get("RestartCount") or 0,
-        health=((attrs.get("State") or {}).get("Health") or {}).get("Status"),
+        health=(state.get("Health") or {}).get("Status"),
+        started_at=_optional_time(state.get("StartedAt")),
+        finished_at=_optional_time(state.get("FinishedAt")),
     )
 
 
@@ -291,8 +294,6 @@ def get_container_detail(container_id: str, *, privileged: bool) -> ContainerDet
         working_dir=config.get("WorkingDir") or None,
         user=config.get("User") or None,
         hostname=config.get("Hostname") or None,
-        started_at=_optional_time(state.get("StartedAt")),
-        finished_at=_optional_time(state.get("FinishedAt")),
         exit_code=state.get("ExitCode"),
         env=env,
         env_revealed=privileged,

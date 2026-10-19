@@ -129,3 +129,10 @@ def test_image_version_label(image: str, labels: dict[str, str], expected: str |
 def test_missing_container() -> None:
     with pytest.raises(docker_service.DockerUnavailable):
         docker_service.get_container_detail("nope", privileged=True)
+
+
+def test_list_view_carries_start_and_stop_times() -> None:
+    # The containers list shows uptime, so the summary schema needs the times too.
+    container = docker_service.get_container("abc")
+    assert container.started_at is not None and container.started_at.second == 6
+    assert container.finished_at is None

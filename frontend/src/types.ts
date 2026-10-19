@@ -145,6 +145,9 @@ export interface Container {
   restart_count: number;
   /** Health check result: "healthy", "unhealthy" or "starting"; null without a check. */
   health: string | null;
+  /** Last start and stop; null when it never happened. */
+  started_at: string | null;
+  finished_at: string | null;
 }
 
 export interface ContainerActionResult {
@@ -180,8 +183,6 @@ export interface ContainerDetail extends Container {
   working_dir: string | null;
   user: string | null;
   hostname: string | null;
-  started_at: string | null;
-  finished_at: string | null;
   exit_code: number | null;
   env: EnvVar[];
   env_revealed: boolean;

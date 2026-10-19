@@ -142,5 +142,9 @@
   "Severity": "Gravité",
   "Fixed in": "Corrigée en",
   "no fix": "pas de correctif",
-  "From the image's {label} label": "D'après le label {label} de l'image"
+  "From the image's {label} label": "D'après le label {label} de l'image",
+  "Created {date}": "Créé le {date}",
+  "Started {date}": "Démarré le {date}",
+  "Stopped {date}": "Arrêté le {date}",
+  "stopped {duration} ago": "arrêté depuis {duration}"
 }

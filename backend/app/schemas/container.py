@@ -29,6 +29,9 @@ class Container(BaseModel):
     restart_count: int = 0
     # Health check result: "healthy", "unhealthy" or "starting"; None without a check.
     health: str | None = None
+    # Last start and stop; None when it never happened. Uptime is now - started_at.
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
 
 
 class ContainerRename(BaseModel):
@@ -65,8 +68,6 @@ class ContainerDetail(Container):
     working_dir: str | None = None
     user: str | None = None
     hostname: str | None = None
-    started_at: datetime | None = None
-    finished_at: datetime | None = None
     exit_code: int | None = None
     env: list[EnvVar] = []
     # False when env values were masked for a non-admin viewer.

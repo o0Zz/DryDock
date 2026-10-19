@@ -29,6 +29,11 @@ export function formatPorts(ports: ContainerPort[]): string {
   return [...new Set(mappings)].join(", ") || "—";
 }
 
+/** Seconds from an API timestamp to now, or null when there is none. */
+export function secondsSince(value: string | null | undefined): number | null {
+  return value ? Math.max(0, (Date.now() - Date.parse(value)) / 1000) : null;
+}
+
 /** Rough length of a span of seconds, e.g. `3d 4h` or `12m`. */
 export function formatDuration(seconds: number): string {
   const days = Math.floor(seconds / 86400);

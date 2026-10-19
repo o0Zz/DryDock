@@ -11,6 +11,7 @@ import Meter from "../components/Meter";
 import ScanBadge from "../components/ScanBadge";
 import SortHeader from "../components/SortHeader";
 import UpdateAction from "../components/UpdateAction";
+import Uptime from "../components/Uptime";
 import { useContainerStats } from "../hooks/useContainerStats";
 import {
   CONTAINER_ACTION_ICONS,
@@ -20,7 +21,7 @@ import {
   containerStateLabel,
   containerStateRank,
 } from "../containerActions";
-import { formatBytes, formatDate, formatPorts } from "../format";
+import { formatBytes, formatDate, formatPorts, secondsSince } from "../format";
 import { isActive, useJobs } from "../hooks/useJobs";
 import { useSort } from "../hooks/useSort";
 import { useT } from "../i18n";
@@ -53,6 +54,8 @@ export default function Containers() {
       name: (container) => container.name,
       image: (container) => container.image,
       status: (container) => containerStateRank(container.state),
+      uptime: (container) =>
+        ["running", "paused"].includes(container.state) ? secondsSince(container.started_at) : null,
       cpu: (container) => stats[container.id]?.cpu_percent,
       memory: (container) => stats[container.id]?.memory_usage,
       compose: (container) =>
@@ -60,7 +63,7 @@ export default function Containers() {
         `${container.compose_project} / ${container.compose_service ?? ""}`,
     },
     initial: { column: "name", descending: false },
-    descendingFirst: ["cpu", "memory"],
+    descendingFirst: ["uptime", "cpu", "memory"],
   });
 
   const refresh = useCallback((): void => {
@@ -214,6 +217,9 @@ export default function Containers() {
               <SortHeader sorting={sorting} column="status">
                 {t("Status")}
               </SortHeader>
+              <SortHeader sorting={sorting} column="uptime">
+                {t("Uptime")}
+              </SortHeader>
               <SortHeader sorting={sorting} column="cpu">
                 CPU
               </SortHeader>
@@ -279,6 +285,9 @@ export default function Containers() {
                         : t("{count} restarts", { count: container.restart_count })}
                     </div>
                   )}
+                </td>
+                <td>
+                  <Uptime container={container} />
                 </td>
                 <StatsCells stats={stats[container.id]} />
                 <td>

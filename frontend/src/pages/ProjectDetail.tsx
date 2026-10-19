@@ -20,12 +20,14 @@ import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom"
 import { api } from "../api";
 import { useAuth } from "../auth";
 import { useConfirm, type ConfirmOptions } from "../components/ConfirmDialog";
+import HealthBadge from "../components/HealthBadge";
 import ImageName from "../components/ImageName";
 import { JOB_STATUS_TEXT } from "../components/JobList";
 import LogPanel from "../components/LogPanel";
 import SortHeader from "../components/SortHeader";
+import Uptime from "../components/Uptime";
 import { containerStateLabel, containerStateRank } from "../containerActions";
-import { formatPorts } from "../format";
+import { formatDate, formatPorts, secondsSince } from "../format";
 import { isActive, useJobs } from "../hooks/useJobs";
 import { useSort } from "../hooks/useSort";
 import { msg, useT } from "../i18n";
@@ -87,8 +89,11 @@ export default function ProjectDetail() {
       service: (container) => container.compose_service,
       image: (container) => container.image,
       status: (container) => containerStateRank(container.state),
+      uptime: (container) =>
+        ["running", "paused"].includes(container.state) ? secondsSince(container.started_at) : null,
     },
     initial: { column: "name", descending: false },
+    descendingFirst: ["uptime"],
   });
   const [compose, setCompose] = useState<string>("");
   const [originalCompose, setOriginalCompose] = useState<string>("");
@@ -150,6 +155,8 @@ export default function ProjectDetail() {
       const saved = await api.putCompose(id, compose);
       setOriginalCompose(compose);
       setSavedAt(t("Saved. Backup: {path}", { path: saved.backup_path }));
+      // Picks up the new modified time for the "changed since deployed" hint.
+      reloadProject().catch(() => undefined);
       return true;
     } catch (error) {
       setSaveError((error as Error).message);
@@ -157,7 +164,7 @@ export default function ProjectDetail() {
     } finally {
       setSaving(false);
     }
-  }, [id, compose, t]);
+  }, [id, compose, t, reloadProject]);
 
   // Compose actions run as background jobs. Container state almost always
   // changes, so the project reloads when one ends.
@@ -279,6 +286,13 @@ export default function ProjectDetail() {
 
   const dirty = compose !== originalCompose;
   const running = project.containers.filter((container) => container.state === "running").length;
+  // `up` recreates the containers of services whose config changed, so a file
+  // newer than every container was most likely not deployed yet.
+  const newestContainer = Math.max(
+    ...project.containers.map((container) => Date.parse(container.created_at)),
+  );
+  const changedSinceDeploy =
+    project.containers.length > 0 && Date.parse(project.modified_at) > newestContainer;
   // useJobs also re-attaches to unrelated jobs (scans); keep this stack's own.
   const actionJobs = jobs.filter(
     (job) =>
@@ -388,6 +402,19 @@ export default function ProjectDetail() {
             {t("{running} of {total} running", { running, total: project.containers.length })}
           </span>
         </h2>
+        {changedSinceDeploy && (
+          <div
+            className="notice"
+            title={t("Compose file saved {saved}. Newest container created {created}.", {
+              saved: formatDate(project.modified_at),
+              created: formatDate(new Date(newestContainer).toISOString()),
+            })}
+          >
+            {t(
+              "The Compose file changed after these containers were created. Run up to apply it.",
+            )}
+          </div>
+        )}
         {project.containers.length === 0 ? (
           <div className="empty">
             {t("No containers for this stack. Deploy it with")} <strong>up</strong>.
@@ -408,6 +435,9 @@ export default function ProjectDetail() {
                 <SortHeader sorting={sorting} column="status">
                   {t("Status")}
                 </SortHeader>
+                <SortHeader sorting={sorting} column="uptime">
+                  {t("Uptime")}
+                </SortHeader>
                 <th>{t("Ports")}</th>
               </tr>
             </thead>
@@ -426,7 +456,18 @@ export default function ProjectDetail() {
                   <td>
                     <span className={`badge ${container.state}`}>
                       <Circle size={8} fill="currentColor" /> {t(containerStateLabel(container.state))}
-                    </span>
+                    </span>{" "}
+                    <HealthBadge health={container.health} />
+                    {container.restart_count > 0 && (
+                      <div className="muted" title={t("Restarts since the container was created")}>
+                        {container.restart_count === 1
+                          ? t("1 restart")
+                          : t("{count} restarts", { count: container.restart_count })}
+                      </div>
+                    )}
+                  </td>
+                  <td>
+                    <Uptime container={container} />
                   </td>
                   <td>
                     {formatPorts(container.ports)}
