@@ -61,7 +61,7 @@ def _action_result(
     calls: list[tuple[Path, str]] = []
 
     def run_action(
-        compose_path: Path, action: str, *, project_name: str | None = None
+        compose_path: Path, action: str, *, project_name: str | None = None, ctx: object = None
     ) -> dict[str, str | int]:
         calls.append((compose_path, action))
         return {"action": action, "exit_code": exit_code, "stdout": stdout, "stderr": stderr}

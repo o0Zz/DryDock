@@ -2,15 +2,18 @@ from __future__ import annotations
 
 import logging
 import re
+import shlex
 import shutil
 import subprocess
 from datetime import UTC, datetime
 from pathlib import Path
 
 import yaml
+from docker.types import Mount
 
 from app.core.config import settings
-from app.services import host_path_service, registry_auth_service
+from app.services import docker_service, host_path_service, job_service, registry_auth_service
+from app.services.job_service import JobContext
 from app.services.repo_service import COMPOSE_FILENAMES
 
 logger = logging.getLogger(__name__)
@@ -182,7 +185,104 @@ def _compose(
 PULL_TIMEOUT = 1800
 
 
-def run_action(compose_path: Path, action: str, *, project_name: str | None = None) -> dict:
+def _timeout(args: list[str]) -> int:
+    # `up` pulls missing images and builds take long on a Pi: same budget as a pull.
+    return PULL_TIMEOUT if args[0] in ("up", "pull", "build") else 300
+
+
+def _helper_parent(ctx: JobContext | None) -> str | None:
+    """DryDock's own container, when a copy of it should run this job's Compose commands.
+
+    A job runs Compose in a helper container (see `_run_in_helper`), so the
+    run survives DryDock stopping. Outside Docker (dev) and outside a job,
+    Compose runs as a plain subprocess.
+    """
+    if ctx is None:
+        return None
+    container_id = host_path_service.own_container_id()
+    try:
+        if container_id and docker_service.container_image(container_id):
+            return container_id
+    except docker_service.DockerUnavailable as exc:
+        raise ComposeError(f"Docker is unavailable: {exc}") from exc
+    return None
+
+
+def _run_in_helper(
+    compose_path: Path,
+    steps: list[list[str]],
+    *,
+    project_name: str | None,
+    ctx: JobContext,
+    parent: str,
+) -> subprocess.CompletedProcess[str]:
+    """Run Compose steps one after the other in a helper container, until one fails.
+
+    Compose stops a container before it creates its replacement. When that
+    container is DryDock, a Compose process inside it dies with it and the
+    stack stays down. The helper is a separate container, so it carries on.
+    """
+    script = " && ".join(shlex.join(_command(compose_path, args, project_name)) for args in steps)
+    # The helper lacks DryDock's host-path symlink: mount the repo at that path instead.
+    host_repo = host_path_service.to_host(settings.repo_path)
+    mounts = []
+    if host_repo != settings.repo_path:
+        path = host_repo.as_posix()
+        mounts.append(Mount(target=path, source=path, type="bind", read_only=True))
+    env = registry_auth_service.subprocess_env() or {}
+    environment = {"DOCKER_CONFIG": env["DOCKER_CONFIG"]} if "DOCKER_CONFIG" in env else {}
+    logger.info("Running in a helper container: %s", script)
+    try:
+        helper = docker_service.start_compose_helper(
+            script,
+            job_id=ctx.job.id,
+            parent_id=parent,
+            mounts=mounts,
+            working_dir=host_path_service.to_host(compose_path).parent.as_posix(),
+            environment=environment,
+        )
+    except (docker_service.DockerNotFound, docker_service.DockerUnavailable) as exc:
+        raise ComposeError(f"Could not start the docker compose helper: {exc}") from exc
+    exit_code, output = follow(helper, ctx, timeout=sum(_timeout(args) for args in steps))
+    # docker logs mixes both streams; Compose writes its progress to stderr.
+    return subprocess.CompletedProcess(script, exit_code, stdout="", stderr=output)
+
+
+def follow(helper_id: str, ctx: JobContext, *, timeout: int = PULL_TIMEOUT) -> tuple[int, str]:
+    """Wait for a Compose helper, keeping the job output up to date. Removes it at the end.
+
+    Returns the exit code and the output. Raises job_service.Interrupted when
+    DryDock shuts down first: the helper goes on, and the next start resumes the job.
+    """
+    output = ""
+
+    def show(text: str) -> None:
+        nonlocal output
+        output = text
+        ctx.set_output(text)
+
+    try:
+        exit_code = docker_service.follow_helper(
+            helper_id, show, timeout=timeout, stop=job_service.stopping
+        )
+    except TimeoutError as exc:
+        docker_service.remove_helper(helper_id)
+        raise ComposeError(f"`docker compose` timed out after {timeout}s") from exc
+    except (docker_service.DockerNotFound, docker_service.DockerUnavailable) as exc:
+        raise ComposeError(f"Lost track of the docker compose helper: {exc}") from exc
+    if exit_code is None:
+        raise job_service.Interrupted(f"DryDock stopped while helper {helper_id} ran")
+    docker_service.remove_helper(helper_id)
+    return exit_code, output
+
+
+def run_action(
+    compose_path: Path,
+    action: str,
+    *,
+    project_name: str | None = None,
+    ctx: JobContext | None = None,
+) -> dict:
     if action not in ALLOWED_ACTIONS:
         raise ComposeError(f"Unsupported action: {action}")
 
@@ -201,13 +301,23 @@ def run_action(compose_path: Path, action: str, *, project_name: str | None = No
     else:
         steps = [[action]]
 
+    parent = _helper_parent(ctx)
+    if ctx is not None and parent is not None:
+        result = _run_in_helper(
+            compose_path, steps, project_name=project_name, ctx=ctx, parent=parent
+        )
+        return {
+            "action": action,
+            "exit_code": result.returncode,
+            "stdout": result.stdout,
+            "stderr": result.stderr,
+        }
+
     stdout: list[str] = []
     stderr: list[str] = []
     exit_code = 0
     for args in steps:
-        # `up` pulls missing images and builds take long on a Pi: same budget as a pull.
-        timeout = PULL_TIMEOUT if args[0] in ("up", "pull", "build") else 300
-        result = _compose(compose_path, args, project_name=project_name, timeout=timeout)
+        result = _compose(compose_path, args, project_name=project_name, timeout=_timeout(args))
         stdout.append(result.stdout)
         stderr.append(result.stderr)
         exit_code = result.returncode
@@ -228,13 +338,28 @@ def _check(result: subprocess.CompletedProcess[str], step: str) -> None:
         raise ComposeError(f"`docker compose {step}` failed (exit {result.returncode}): {detail}")
 
 
+def _run_one(
+    compose_path: Path, args: list[str], *, project_name: str | None, ctx: JobContext | None
+) -> subprocess.CompletedProcess[str]:
+    parent = _helper_parent(ctx)
+    if ctx is not None and parent is not None:
+        return _run_in_helper(
+            compose_path, [args], project_name=project_name, ctx=ctx, parent=parent
+        )
+    return _compose(compose_path, args, project_name=project_name)
+
+
 def down(
-    compose_path: Path, *, remove_volumes: bool = False, project_name: str | None = None
+    compose_path: Path,
+    *,
+    remove_volumes: bool = False,
+    project_name: str | None = None,
+    ctx: JobContext | None = None,
 ) -> str:
     """`docker compose down`, with `-v` to remove the stack's named volumes too.
     Returns the command output; raises ComposeError when it fails."""
     args = ["down", "--remove-orphans", *(["--volumes"] if remove_volumes else [])]
-    result = _compose(compose_path, args, project_name=project_name)
+    result = _run_one(compose_path, args, project_name=project_name, ctx=ctx)
     _check(result, "down")
     # docker compose writes its progress to stderr, so keep both streams.
     return "\n".join(text for text in (result.stdout, result.stderr) if text)
@@ -248,9 +373,16 @@ def pull_service(compose_path: Path, service: str, *, project_name: str | None =
     _check(result, "pull")
 
 
-def recreate_service(compose_path: Path, service: str, *, project_name: str | None = None) -> None:
+def recreate_service(
+    compose_path: Path,
+    service: str,
+    *,
+    project_name: str | None = None,
+    ctx: JobContext | None = None,
+) -> None:
     """Recreate one service on its current image, leaving the rest of the stack alone."""
-    result = _compose(compose_path, ["up", "-d", "--no-deps", service], project_name=project_name)
+    args = ["up", "-d", "--no-deps", service]
+    result = _run_one(compose_path, args, project_name=project_name, ctx=ctx)
     _check(result, "up")
 
 

@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable
+import threading
+from collections.abc import Callable, Collection
 from concurrent.futures import ThreadPoolExecutor
 from uuid import uuid4
 
@@ -24,6 +25,18 @@ ACTIVE_STATUSES = (JobStatus.PENDING, JobStatus.RUNNING)
 
 # Only the tail of command output is kept: the end is where errors are.
 MAX_OUTPUT = 20_000
+
+# Set when DryDock shuts down, so job bodies that wait on something outside
+# this process (a Compose helper container) can let go of it.
+stopping = threading.Event()
+
+
+class Interrupted(Exception):
+    """Raised by a job body that lets go because DryDock shuts down.
+
+    The work goes on outside this process, so the job stays active for
+    `resume` to pick up at the next start.
+    """
 
 
 class JobContext:
@@ -82,15 +95,30 @@ def _find_active(kind: str, label: str) -> Job | None:
         )
 
 
-def fail_interrupted() -> int:
+def resume(job_id: str, runner: JobRunner) -> bool:
+    """Run a new body for a job an earlier process left active. False when it is not."""
+    with SessionLocal() as db:
+        job = db.get(Job, job_id)
+        if job is None or job.status not in ACTIVE_STATUSES:
+            return False
+    _executor.submit(_run, job_id, runner)
+    return True
+
+
+def fail_interrupted(keep: Collection[str] = ()) -> int:
     """Mark jobs left pending or running by an earlier process as failed.
 
     Jobs run in this process's threads, so after a restart (an image update, a
     recreate) nothing runs them any more. Without this they show as running
-    forever and block an identical job from being queued. Call once at startup.
+    forever and block an identical job from being queued. `keep` names the jobs
+    `resume` picked up. Call once at startup.
     """
     with SessionLocal() as db:
-        jobs = list(db.scalars(select(Job).where(Job.status.in_(ACTIVE_STATUSES))))
+        jobs = list(
+            db.scalars(
+                select(Job).where(Job.status.in_(ACTIVE_STATUSES), Job.id.notin_(list(keep)))
+            )
+        )
         for job in jobs:
             job.status = JobStatus.ERROR
             job.error = "Interrupted: DryDock restarted while this job ran"
@@ -126,11 +154,15 @@ def _run(job_id: str, runner: JobRunner) -> None:
             logger.warning("Job %s vanished before it started", job_id)
             return
         job.status = JobStatus.RUNNING
-        job.started_at = utcnow()
+        # A resumed job keeps the start of its first run.
+        job.started_at = job.started_at or utcnow()
         db.commit()
 
         try:
             runner(JobContext(db, job))
+        except Interrupted:
+            logger.info("Job %s (%s) left to resume after the restart", job_id, job.kind)
+            return
         except Exception as exc:  # noqa: BLE001 - a job failure must not kill the worker
             logger.exception("Job %s (%s) failed", job_id, job.kind)
             db.rollback()
@@ -148,4 +180,5 @@ def _run(job_id: str, runner: JobRunner) -> None:
 
 
 def shutdown() -> None:
+    stopping.set()
     _executor.shutdown(wait=False, cancel_futures=True)

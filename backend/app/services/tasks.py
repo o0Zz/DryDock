@@ -21,6 +21,7 @@ from app.services import (
     compose_service,
     docker_service,
     host_updates_service,
+    job_service,
     notify_service,
     repo_service,
     settings_service,
@@ -257,7 +258,7 @@ def container_update_runner(
         ctx.set_total(3, f"Pulling {image}")
         compose_service.pull_service(compose_path, service, project_name=project_name)
         ctx.advance(f"Recreating {service}")
-        compose_service.recreate_service(compose_path, service, project_name=project_name)
+        compose_service.recreate_service(compose_path, service, project_name=project_name, ctx=ctx)
         # Refresh the stored check so the "update available" badge clears.
         ctx.advance(f"Re-checking {image}")
         store_update_check(ctx.db, image)
@@ -273,7 +274,9 @@ def project_action_runner(
 
     def run(ctx: JobContext) -> None:
         ctx.set_total(1, f"docker compose {action}")
-        result = compose_service.run_action(compose_path, action, project_name=project_name)
+        result = compose_service.run_action(
+            compose_path, action, project_name=project_name, ctx=ctx
+        )
         # docker compose writes its progress to stderr, so keep both streams.
         ctx.set_output("\n".join(text for text in (result["stdout"], result["stderr"]) if text))
         if result["exit_code"] != 0:
@@ -284,6 +287,45 @@ def project_action_runner(
         ctx.advance(f"docker compose {action} done")
 
     return run
+
+
+def _resume_runner(helper_id: str) -> JobRunner:
+    """Job body that waits for a Compose helper started by an earlier DryDock process."""
+
+    def run(ctx: JobContext) -> None:
+        ctx.note("Waiting for docker compose, started before DryDock restarted")
+        exit_code, output = compose_service.follow(helper_id, ctx)
+        if exit_code != 0:
+            raise compose_service.ComposeError(
+                f"`docker compose` failed (exit {exit_code}): {output.strip()[-1000:]}"
+            )
+        # Steps after the Compose run (a container update's re-check) are skipped.
+        ctx.job.done = ctx.job.total
+        ctx.note("docker compose done; DryDock restarted meanwhile")
+
+    return run
+
+
+def resume_compose_jobs() -> set[str]:
+    """Pick up jobs whose Compose helper outlived the last DryDock process.
+
+    DryDock updating itself always ends like this: Compose stops it halfway
+    through the job. Helpers of jobs that are no longer active are removed.
+    Returns the IDs of the resumed jobs. Call once at startup.
+    """
+    try:
+        helpers = docker_service.compose_helpers()
+    except docker_service.DockerUnavailable:
+        return set()
+    resumed: set[str] = set()
+    for job_id, helper_id in helpers.items():
+        if job_service.resume(job_id, _resume_runner(helper_id)):
+            resumed.add(job_id)
+        else:
+            docker_service.remove_helper(helper_id)
+    if resumed:
+        logger.info("Resumed %d job(s) whose docker compose run outlived the restart", len(resumed))
+    return resumed
 
 
 def stack_delete_runner(
@@ -300,6 +342,7 @@ def stack_delete_runner(
                     Path(project.compose_path),
                     remove_volumes=remove_volumes,
                     project_name=project_name,
+                    ctx=ctx,
                 )
             )
         ctx.advance("Backing up and deleting files")
@@ -322,7 +365,7 @@ def stack_rename_runner(
         if stop:
             ctx.note("docker compose down")
             ctx.set_output(
-                compose_service.down(Path(project.compose_path), project_name=project_name)
+                compose_service.down(Path(project.compose_path), project_name=project_name, ctx=ctx)
             )
         ctx.advance(f"Renaming to {new_name}")
         stack_service.rename(project, new_name)

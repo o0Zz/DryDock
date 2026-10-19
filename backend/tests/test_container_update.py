@@ -238,7 +238,7 @@ def steps(monkeypatch: pytest.MonkeyPatch) -> list[tuple[Any, ...]]:
     monkeypatch.setattr(
         compose_service,
         "recreate_service",
-        lambda compose_path, service, project_name: log.append(
+        lambda compose_path, service, project_name, ctx: log.append(
             ("up", compose_path, service, project_name)
         ),
     )

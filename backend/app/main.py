@@ -41,6 +41,7 @@ from app.services import (
     host_path_service,
     job_service,
     scheduler_service,
+    tasks,
 )
 
 logging.basicConfig(level=logging.INFO, format=log_buffer.LOG_FORMAT)
@@ -69,7 +70,7 @@ def _seed_admin() -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     init_db()
-    job_service.fail_interrupted()
+    job_service.fail_interrupted(keep=tasks.resume_compose_jobs())
     _seed_admin()
     host_path_service.setup()
     scheduler_service.start()

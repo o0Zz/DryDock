@@ -6,7 +6,9 @@ import logging
 import posixpath
 import stat
 import tarfile
-from collections.abc import Iterator
+import threading
+import time
+from collections.abc import Callable, Iterator
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -883,6 +885,107 @@ def _host_helper_options(source: str, image: str, purpose: str) -> dict[str, Any
         "network_mode": "none",
         "labels": {"drydock.helper": purpose},
     }
+
+
+COMPOSE_HELPER = "compose"
+
+
+def start_compose_helper(
+    script: str,
+    *,
+    job_id: str,
+    parent_id: str,
+    mounts: list[Mount],
+    working_dir: str,
+    environment: dict[str, str],
+) -> str:
+    """Start `sh -c script` in a detached copy of container `parent_id`; returns its ID.
+
+    The copy has the parent's image, mounts (Docker socket, repo, data) and
+    user, and lives on its own. A Compose run that recreates the parent (DryDock
+    updating itself) stops the parent halfway, so it cannot run inside it. The
+    `drydock.job` label lets a restarted DryDock find the helper again.
+    """
+    attrs = _get_container(parent_id).attrs or {}
+    try:
+        helper = _client().containers.run(
+            image=attrs.get("Image"),
+            entrypoint=["sh", "-c"],
+            command=[script],
+            volumes_from=[parent_id],
+            mounts=mounts,
+            working_dir=working_dir,
+            environment=environment,
+            user=(attrs.get("Config") or {}).get("User") or "",
+            group_add=(attrs.get("HostConfig") or {}).get("GroupAdd") or None,
+            labels={"drydock.helper": COMPOSE_HELPER, "drydock.job": job_id},
+            log_config=LogConfig(type=LogConfig.types.JSON),
+            detach=True,
+        )
+    except DockerException as exc:
+        raise DockerUnavailable(str(exc)) from exc
+    return helper.id or ""
+
+
+def follow_helper(
+    helper_id: str,
+    on_output: Callable[[str], None],
+    *,
+    timeout: float,
+    stop: threading.Event,
+) -> int | None:
+    """Wait for a helper to exit, passing its output on as it grows; returns its exit code.
+
+    Returns None as soon as `stop` is set, leaving the helper running. Past
+    `timeout` seconds it kills the helper and raises TimeoutError.
+    """
+    container = _get_container(helper_id)
+    deadline = time.monotonic() + timeout
+    shown: str | None = None
+    while True:
+        try:
+            container.reload()
+            output = container.logs().decode("utf-8", errors="replace")
+        except NotFound as exc:
+            raise DockerNotFound(f"container {helper_id} not found") from exc
+        except DockerException as exc:
+            raise DockerUnavailable(str(exc)) from exc
+        if output != shown:
+            on_output(output)
+            shown = output
+        if container.status in ("exited", "dead"):
+            return (container.attrs.get("State") or {}).get("ExitCode", 1)
+        if time.monotonic() > deadline:
+            with contextlib.suppress(DockerException):
+                container.kill()
+            raise TimeoutError(f"helper {helper_id} still running after {timeout:.0f}s")
+        if stop.wait(2):
+            return None
+
+
+def compose_helpers() -> dict[str, str]:
+    """Compose helpers in any state, as job ID -> container ID."""
+    try:
+        helpers = _client().containers.list(
+            all=True, filters={"label": f"drydock.helper={COMPOSE_HELPER}"}
+        )
+    except DockerException as exc:
+        raise DockerUnavailable(str(exc)) from exc
+    return {
+        helper.labels["drydock.job"]: helper.id or ""
+        for helper in helpers
+        if helper.labels.get("drydock.job")
+    }
+
+
+def remove_helper(helper_id: str) -> None:
+    """Remove a helper container, running or not. Best effort: it is only clutter."""
+    try:
+        _client().containers.get(helper_id).remove(force=True)
+    except NotFound:
+        pass
+    except (DockerException, DockerUnavailable) as exc:
+        logger.warning("Could not remove helper container %s: %s", helper_id, exc)
 
 
 def _missing_source(exc: APIError) -> bool:
