@@ -17,8 +17,9 @@ from __future__ import annotations
 import logging
 import shutil
 import tarfile
+from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from functools import partial
 from pathlib import Path
 
 from app.core.config import settings
@@ -90,29 +91,19 @@ def new_project_id(project: Project, new_name: str) -> str:
 # --- Changes, run from background jobs ------------------------------------------------
 
 
-def _backup_dir(project_id: str) -> Path:
-    backup_dir = settings.backups_path / project_id
-    backup_dir.mkdir(parents=True, exist_ok=True)
-    return backup_dir
-
-
-def _stamp() -> str:
-    return datetime.now(tz=UTC).strftime("%Y%m%dT%H%M%SZ")
-
-
 def delete(project: Project) -> str:
     """Back up, then remove the stack's files. Returns where the backup went."""
     stack = layout(project)
-    backup_dir = _backup_dir(project.id)
+    backup_dir = compose_service.backup_dir(project.id)
     if stack.folder is not None:
-        archive = backup_dir / f"{_stamp()}-stack.tar.gz"
+        archive = backup_dir / f"{compose_service.backup_stamp()}-stack.tar.gz"
         # Low compression: the folder can hold data, and this may run on a Pi.
         with tarfile.open(archive, "w:gz", compresslevel=1) as tar:
             tar.add(stack.folder, arcname=stack.folder.name)
         shutil.rmtree(stack.folder)
         logger.info("Deleted stack folder %s (backup %s)", stack.folder, archive)
         return str(archive)
-    stamp = _stamp()
+    stamp = compose_service.backup_stamp()
     for path in stack.files:
         shutil.copy2(path, backup_dir / f"{stamp}-{path.name}")
         path.unlink()
@@ -120,37 +111,37 @@ def delete(project: Project) -> str:
     return str(backup_dir)
 
 
-def rename(project: Project, new_name: str) -> Path:
-    """Move the stack's folder or files to `new_name`. Returns the new Compose path."""
+def _transfer(
+    project: Project,
+    new_name: str,
+    folder_op: Callable[[Path, Path], object],
+    file_op: Callable[[Path, Path], object],
+) -> Path:
+    """Move or copy the stack's folder or files to `new_name`. Returns the new Compose path."""
     target = check_new_name(project, new_name)
     stack = layout(project)
     moves = target_paths(stack, new_name)
     if stack.folder is not None:
         new_folder = moves.pop(stack.folder)
-        shutil.move(stack.folder, new_folder)
+        folder_op(stack.folder, new_folder)
         # The files now live in the new folder; rename them there if their name changes.
         moves = {new_folder / old.name: new for old, new in moves.items()}
+        file_op = Path.rename
     for old, new in moves.items():
         if old != new:
-            old.rename(new)
+            file_op(old, new)
+    return target
+
+
+def rename(project: Project, new_name: str) -> Path:
+    """Move the stack's folder or files to `new_name`. Returns the new Compose path."""
+    target = _transfer(project, new_name, shutil.move, Path.rename)
     logger.info("Renamed stack %s to %s", project.name, new_name)
     return target
 
 
 def duplicate(project: Project, new_name: str) -> Path:
     """Copy the stack's folder or files under `new_name`. Returns the new Compose path."""
-    target = check_new_name(project, new_name)
-    stack = layout(project)
-    moves = target_paths(stack, new_name)
-    if stack.folder is not None:
-        new_folder = moves.pop(stack.folder)
-        shutil.copytree(stack.folder, new_folder, symlinks=True)
-        moves = {new_folder / old.name: new for old, new in moves.items()}
-        for old, new in moves.items():
-            if old != new:
-                old.rename(new)
-    else:
-        for old, new in moves.items():
-            shutil.copy2(old, new)
+    target = _transfer(project, new_name, partial(shutil.copytree, symlinks=True), shutil.copy2)
     logger.info("Duplicated stack %s as %s", project.name, new_name)
     return target

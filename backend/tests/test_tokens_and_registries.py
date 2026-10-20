@@ -147,41 +147,32 @@ def test_credentials_round_trip_through_a_docker_config(data_path: Path) -> None
     assert registry_auth_service.credentials("ghcr.io") is None
 
 
-@pytest.fixture
-def admin() -> Iterator[TestClient]:
-    app.dependency_overrides[get_current_user] = lambda: SimpleNamespace(id=1, is_admin=True)
-    try:
-        yield TestClient(app)
-    finally:
-        app.dependency_overrides.clear()
-
-
 def test_add_checks_the_login_and_never_returns_the_password(
-    admin: TestClient, data_path: Path, monkeypatch: pytest.MonkeyPatch
+    client: TestClient, data_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     logins: list[tuple[str, str, str]] = []
     monkeypatch.setattr(docker_service, "registry_login", lambda *args: logins.append(args))
 
-    response = admin.post(
+    response = client.post(
         "/api/registries", json={"registry": "ghcr.io", "username": "bot", "password": "secret"}
     )
 
     assert response.status_code == 201
     assert response.json() == {"registry": "ghcr.io", "username": "bot"}
     assert logins == [("ghcr.io", "bot", "secret")]
-    assert admin.get("/api/registries").json() == [{"registry": "ghcr.io", "username": "bot"}]
-    assert admin.delete("/api/registries", params={"registry": "ghcr.io"}).status_code == 204
+    assert client.get("/api/registries").json() == [{"registry": "ghcr.io", "username": "bot"}]
+    assert client.delete("/api/registries", params={"registry": "ghcr.io"}).status_code == 204
 
 
 def test_rejected_login_stores_nothing(
-    admin: TestClient, data_path: Path, monkeypatch: pytest.MonkeyPatch
+    client: TestClient, data_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     def refuse(*args: str) -> None:
         raise docker_service.RegistryLoginFailed("login to ghcr.io failed: denied")
 
     monkeypatch.setattr(docker_service, "registry_login", refuse)
 
-    response = admin.post(
+    response = client.post(
         "/api/registries", json={"registry": "ghcr.io", "username": "bot", "password": "bad"}
     )
 

@@ -1,6 +1,5 @@
 """docker_service networks, against a fake Docker client, and the routes."""
 
-from collections.abc import Iterator
 from types import SimpleNamespace
 from typing import Any
 
@@ -8,8 +7,6 @@ import pytest
 from docker.errors import NotFound
 from fastapi.testclient import TestClient
 
-from app.core.security import get_current_user
-from app.main import app
 from app.services import docker_service
 
 
@@ -101,15 +98,6 @@ def test_remove_refuses_used_and_predefined_networks(networks: dict[str, _FakeNe
 def test_prune_keeps_networks_of_stopped_stacks(networks: dict[str, _FakeNetwork]) -> None:
     assert docker_service.prune_networks() == ["orphan"]
     assert [name for name, network in networks.items() if network.removed] == ["orphan"]
-
-
-@pytest.fixture
-def client() -> Iterator[TestClient]:
-    app.dependency_overrides[get_current_user] = lambda: SimpleNamespace(id=1, is_admin=True)
-    try:
-        yield TestClient(app)
-    finally:
-        app.dependency_overrides.clear()
 
 
 def test_delete_route_maps_in_use_to_conflict(

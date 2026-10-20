@@ -44,11 +44,18 @@ def _validate_yaml(content: str) -> None:
         raise ComposeError("Compose file must contain a 'services' mapping")
 
 
+def backup_dir(project_id: str) -> Path:
+    path = settings.backups_path / project_id
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def backup_stamp() -> str:
+    return datetime.now(tz=UTC).strftime("%Y%m%dT%H%M%SZ")
+
+
 def _backup(project_id: str, path: Path, extension: str) -> Path:
-    backup_dir = settings.backups_path / project_id
-    backup_dir.mkdir(parents=True, exist_ok=True)
-    stamp = datetime.now(tz=UTC).strftime("%Y%m%dT%H%M%SZ")
-    backup_path = backup_dir / f"{stamp}{extension}"
+    backup_path = backup_dir(project_id) / f"{backup_stamp()}{extension}"
     shutil.copy2(path, backup_path)
     logger.info("Backed up %s to %s", path, backup_path)
     return backup_path
@@ -332,10 +339,16 @@ def run_action(
     }
 
 
-def _check(result: subprocess.CompletedProcess[str], step: str) -> None:
-    if result.returncode != 0:
-        detail = (result.stderr or result.stdout or "").strip()[-1000:]
-        raise ComposeError(f"`docker compose {step}` failed (exit {result.returncode}): {detail}")
+def check(step: str, exit_code: int, stdout: str, stderr: str) -> None:
+    """Raise ComposeError when `docker compose <step>` failed."""
+    if exit_code != 0:
+        detail = (stderr or stdout or "").strip()[-1000:]
+        raise ComposeError(f"`docker compose {step}` failed (exit {exit_code}): {detail}")
+
+
+def joined_output(stdout: str, stderr: str) -> str:
+    # docker compose writes its progress to stderr, so keep both streams.
+    return "\n".join(text for text in (stdout, stderr) if text)
 
 
 def _run_one(
@@ -360,9 +373,8 @@ def down(
     Returns the command output; raises ComposeError when it fails."""
     args = ["down", "--remove-orphans", *(["--volumes"] if remove_volumes else [])]
     result = _run_one(compose_path, args, project_name=project_name, ctx=ctx)
-    _check(result, "down")
-    # docker compose writes its progress to stderr, so keep both streams.
-    return "\n".join(text for text in (result.stdout, result.stderr) if text)
+    check("down", result.returncode, result.stdout, result.stderr)
+    return joined_output(result.stdout, result.stderr)
 
 
 def pull_service(compose_path: Path, service: str, *, project_name: str | None = None) -> None:
@@ -373,7 +385,7 @@ def pull_service(compose_path: Path, service: str, *, project_name: str | None =
         project_name=project_name,
         timeout=PULL_TIMEOUT,
     )
-    _check(result, "pull")
+    check("pull", result.returncode, result.stdout, result.stderr)
 
 
 def build_service(compose_path: Path, service: str, *, project_name: str | None = None) -> None:
@@ -384,7 +396,7 @@ def build_service(compose_path: Path, service: str, *, project_name: str | None 
     result = _compose(
         compose_path, ["build", "--pull", service], project_name=project_name, timeout=PULL_TIMEOUT
     )
-    _check(result, "build")
+    check("build", result.returncode, result.stdout, result.stderr)
 
 
 def recreate_service(
@@ -397,7 +409,7 @@ def recreate_service(
     """Recreate one service on its current image, leaving the rest of the stack alone."""
     args = ["up", "-d", "--no-deps", service]
     result = _run_one(compose_path, args, project_name=project_name, ctx=ctx)
-    _check(result, "up")
+    check("up", result.returncode, result.stdout, result.stderr)
 
 
 def stream_logs(

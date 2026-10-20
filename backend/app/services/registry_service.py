@@ -34,16 +34,21 @@ class RegistryError(Exception):
 # --- References --------------------------------------------------------------
 
 
-def parse_reference(image: str) -> tuple[str, str, str]:
-    """Split an image reference into (registry host, repository, tag)."""
+def split_tag(image: str) -> tuple[str, str]:
+    """Split an image reference into (name, tag), dropping any digest.
+    The tag defaults to "latest"."""
     name = image.split("@", 1)[0]
-    tag = "latest"
     slash = name.rfind("/")
     colon = name.rfind(":")
     # A colon before the last slash belongs to a registry port, not a tag.
     if colon > slash:
-        name, tag = name[:colon], name[colon + 1 :]
+        return name[:colon], name[colon + 1 :]
+    return name, "latest"
 
+
+def parse_reference(image: str) -> tuple[str, str, str]:
+    """Split an image reference into (registry host, repository, tag)."""
+    name, tag = split_tag(image)
     first, _, rest = name.partition("/")
     if rest and ("." in first or ":" in first or first == "localhost"):
         registry, repository = first, rest

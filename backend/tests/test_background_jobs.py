@@ -1,6 +1,5 @@
 """Compose actions and prunes run as background jobs: routes and job bodies."""
 
-from collections.abc import Iterator
 from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
@@ -17,7 +16,6 @@ from app.api import images as images_api
 from app.api import projects as projects_api
 from app.api import volumes as volumes_api
 from app.core.database import Base
-from app.core.security import get_current_user
 from app.main import app
 from app.models.job import Job, JobKind, JobStatus
 from app.schemas.common import PruneResult
@@ -134,15 +132,6 @@ def test_prune_runner_propagates_docker_down(monkeypatch: pytest.MonkeyPatch) ->
 
 
 # --- routes -----------------------------------------------------------------------
-
-
-@pytest.fixture
-def client() -> Iterator[TestClient]:
-    app.dependency_overrides[get_current_user] = lambda: SimpleNamespace(id=1, is_admin=True)
-    try:
-        yield TestClient(app)
-    finally:
-        app.dependency_overrides.clear()
 
 
 @pytest.fixture

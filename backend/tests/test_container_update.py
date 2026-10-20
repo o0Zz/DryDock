@@ -1,7 +1,7 @@
 """One-click container update: compose helpers, job body and API route."""
 
 import subprocess
-from collections.abc import Callable, Iterator
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
@@ -11,7 +11,6 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.api import containers as containers_api
-from app.core.security import get_current_user
 from app.main import app
 from app.models.job import JobKind
 from app.schemas.container import Container
@@ -318,15 +317,6 @@ def test_project_for_container_docker_down(monkeypatch: pytest.MonkeyPatch) -> N
 
 
 # --- API -------------------------------------------------------------------------
-
-
-@pytest.fixture
-def client() -> Iterator[TestClient]:
-    app.dependency_overrides[get_current_user] = lambda: SimpleNamespace(id=1, is_admin=True)
-    try:
-        yield TestClient(app)
-    finally:
-        app.dependency_overrides.clear()
 
 
 @pytest.fixture

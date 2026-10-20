@@ -38,6 +38,7 @@ from app.schemas.dashboard import HostInfo
 from app.schemas.image import ContainerRef, Image
 from app.schemas.network import Network, NetworkUser
 from app.schemas.volume import Volume, VolumeEntry, VolumeUser
+from app.services import registry_service
 
 logger = logging.getLogger(__name__)
 
@@ -119,21 +120,10 @@ def _get_volume(name: str) -> DockerVolume:
 def _parse_created(raw: str | int | float) -> datetime:
     if isinstance(raw, (int, float)):
         return datetime.fromtimestamp(float(raw), tz=UTC)
-    # Docker's API returns e.g. "2024-01-02T03:04:05.6789Z" — trim beyond microseconds
-    text = str(raw).replace("Z", "+00:00")
-    if "." in text:
-        head, tail = text.split(".", 1)
-        # keep at most 6 fractional digits, drop the rest before the timezone
-        tz_start = max(tail.find("+"), tail.find("-"))
-        if tz_start == -1:
-            fraction = tail[:6]
-            tz_suffix = ""
-        else:
-            fraction = tail[:tz_start][:6]
-            tz_suffix = tail[tz_start:]
-        text = f"{head}.{fraction}{tz_suffix}"
+    # Docker returns e.g. "2024-01-02T03:04:05.123456789Z". Since Python 3.11,
+    # fromisoformat takes the `Z` and cuts the nanoseconds to microseconds.
     try:
-        return datetime.fromisoformat(text)
+        return datetime.fromisoformat(str(raw))
     except ValueError:
         return datetime.now(tz=UTC)
 
@@ -177,7 +167,7 @@ def _image_version(image: str, labels: dict[str, str]) -> str | None:
     if not version:
         return None
     ref_name = labels.get("org.opencontainers.image.ref.name") or ""
-    repo = _repo_of(image).rsplit("/", 1)[-1]
+    repo = registry_service.split_tag(image)[0].rsplit("/", 1)[-1]
     if ref_name and not any(char.isdigit() for char in ref_name) and ref_name != repo:
         return None
     return version
@@ -315,7 +305,7 @@ def perform_action(container_id: str, action: str) -> None:
         getattr(container, action)()
     except APIError as exc:
         # 409 Conflict: e.g. kill or pause on a container that is not running.
-        if exc.response is not None and exc.response.status_code == 409:
+        if exc.status_code == 409:
             raise ContainerConflict(f"cannot {action} {container.name}: {exc.explanation}") from exc
         raise DockerUnavailable(str(exc)) from exc
 
@@ -327,7 +317,7 @@ def rename_container(container_id: str, name: str) -> Container:
         container.reload()
     except APIError as exc:
         # 409 Conflict: another container already has the name.
-        if exc.response is not None and exc.response.status_code == 409:
+        if exc.status_code == 409:
             raise ContainerConflict(f"cannot rename {container.name}: {exc.explanation}") from exc
         raise DockerUnavailable(str(exc)) from exc
     except DockerException as exc:
@@ -342,7 +332,7 @@ def remove_container(container_id: str) -> None:
         container.remove()
     except APIError as exc:
         # Docker returns 409 Conflict when the container is still running.
-        if exc.response is not None and exc.response.status_code == 409:
+        if exc.status_code == 409:
             raise ContainerRunning(f"container {container.name} is running; stop it first") from exc
         raise DockerUnavailable(str(exc)) from exc
 
@@ -594,7 +584,7 @@ def remove_volume(name: str, *, force: bool = False) -> None:
         volume.remove(force=force)
     except APIError as exc:
         # Docker returns 409 Conflict when the volume is still attached.
-        if exc.response is not None and exc.response.status_code == 409:
+        if exc.status_code == 409:
             raise VolumeInUse(f"volume {name} is in use") from exc
         raise DockerUnavailable(str(exc)) from exc
 
@@ -690,7 +680,7 @@ def remove_network(network_id: str) -> None:
         network.remove()
     except APIError as exc:
         # 403 or 409 when a container is attached after all.
-        if exc.response is not None and exc.response.status_code in (403, 409):
+        if exc.status_code in (403, 409):
             raise NetworkInUse(f"cannot remove {network.name}: {exc.explanation}") from exc
         raise DockerUnavailable(str(exc)) from exc
     except DockerException as exc:
@@ -1091,17 +1081,6 @@ def registry_login(registry: str, username: str, password: str) -> None:
 # --- Images ------------------------------------------------------------------
 
 
-def _repo_of(reference: str) -> str:
-    """Strip the tag and/or digest off an image reference, keeping the repo."""
-    reference = reference.split("@", 1)[0]
-    slash = reference.rfind("/")
-    colon = reference.rfind(":")
-    # A colon before the last slash belongs to a registry port, not a tag.
-    if colon > slash:
-        reference = reference[:colon]
-    return reference
-
-
 def local_repo_digest(image: str) -> str | None:
     """Return the registry digest recorded for a locally-present image.
 
@@ -1119,7 +1098,7 @@ def local_repo_digest(image: str) -> str | None:
     if not repo_digests:
         return None
 
-    wanted = _repo_of(image)
+    wanted = registry_service.split_tag(image)[0]
     for entry in repo_digests:
         repo, _, digest = entry.partition("@")
         if not digest:
@@ -1208,7 +1187,7 @@ def remove_image(image: str, *, force: bool = False) -> None:
         raise ImageNotFound(image) from exc
     except APIError as exc:
         # Docker returns 409 Conflict when a stopped container still references it.
-        if exc.response is not None and exc.response.status_code == 409:
+        if exc.status_code == 409:
             raise ImageInUse(exc.explanation or f"image {image} is in use") from exc
         raise DockerUnavailable(str(exc)) from exc
     except DockerException as exc:

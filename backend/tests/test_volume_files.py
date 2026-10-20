@@ -130,15 +130,6 @@ def test_open_file_errors_remove_the_helper(
     assert helper.removed
 
 
-@pytest.fixture
-def client() -> Iterator[TestClient]:
-    app.dependency_overrides[get_current_user] = lambda: SimpleNamespace(id=1, is_admin=True)
-    try:
-        yield TestClient(app)
-    finally:
-        app.dependency_overrides.clear()
-
-
 def test_download_sends_an_attachment(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
     file = docker_service.VolumeFile(name="my file.txt", size=5, chunks=iter([b"he", b"llo"]))
     monkeypatch.setattr(volume_files_service, "open_file", lambda volume, path: file)

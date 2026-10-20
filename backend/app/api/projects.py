@@ -17,11 +17,11 @@ from app.services import compose_service, job_service, repo_service, stack_servi
 router = APIRouter(prefix="/api/projects", tags=["projects"])
 
 
-def _find_project(project_id: str) -> Project:
+def _find_project(project_id: str, *, containers: bool = False) -> Project:
     project = repo_service.find_project(project_id)
     if project is None:
         raise HTTPException(status_code=404, detail="Project not found")
-    return project
+    return repo_service.attach_containers([project])[0] if containers else project
 
 
 @router.get("", response_model=list[Project])
@@ -37,7 +37,7 @@ def create_project(body: ProjectCreate) -> Project:
 
 @router.get("/{project_id}", response_model=Project)
 def get_project(project_id: str) -> Project:
-    return repo_service.attach_containers([_find_project(project_id)])[0]
+    return _find_project(project_id, containers=True)
 
 
 @router.get("/{project_id}/compose", response_model=ComposeContent)
@@ -72,7 +72,7 @@ def put_env(project_id: str, body: EnvContent) -> EnvWriteResponse:
 @router.delete("/{project_id}", response_model=JobRead, status_code=status.HTTP_202_ACCEPTED)
 def delete_project(project_id: str, remove_volumes: bool = Query(default=False)) -> Job:
     """Queue `down` (with `-v` on request), a backup, then removal of the stack's files."""
-    project = repo_service.attach_containers([_find_project(project_id)])[0]
+    project = _find_project(project_id, containers=True)
     return job_service.submit(
         JobKind.STACK_CHANGE,
         f"Delete {project.name}",
@@ -91,7 +91,7 @@ def delete_project(project_id: str, remove_volumes: bool = Query(default=False))
 )
 def rename_project(project_id: str, body: StackRename) -> StackChangeAccepted:
     """Queue `down`, then a move to the new name. The stack is left down."""
-    project = repo_service.attach_containers([_find_project(project_id)])[0]
+    project = _find_project(project_id, containers=True)
     new_id = stack_service.new_project_id(project, body.name)
     job = job_service.submit(
         JobKind.STACK_CHANGE,
@@ -128,7 +128,7 @@ def run_action(project_id: str, action: str) -> Job:
     """Queue `docker compose <action>`; a pull or first `up` can take minutes."""
     if action not in compose_service.ALLOWED_ACTIONS:
         raise HTTPException(status_code=400, detail=f"Unsupported action: {action}")
-    project = repo_service.attach_containers([_find_project(project_id)])[0]
+    project = _find_project(project_id, containers=True)
     return job_service.submit(
         JobKind.PROJECT_ACTION,
         f"{action.capitalize()} {project.name}",

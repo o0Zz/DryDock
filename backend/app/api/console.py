@@ -62,6 +62,42 @@ async def _close(websocket: WebSocket, code: int, reason: str) -> None:
         await websocket.close(code=code, reason=short)
 
 
+async def _authorize(websocket: WebSocket) -> User | None:
+    """The admin behind the session, or None once the socket is closed with the reason."""
+    if not _origin_allowed(websocket):
+        await _close(websocket, CLOSE_FORBIDDEN, "Origin not allowed")
+        return None
+    user = _session_user(websocket)
+    if user is None:
+        await _close(websocket, CLOSE_UNAUTHORIZED, "Not authenticated")
+        return None
+    if user.must_change_password:
+        await _close(websocket, CLOSE_FORBIDDEN, PASSWORD_CHANGE_REQUIRED)
+        return None
+    if not user.is_admin:
+        await _close(websocket, CLOSE_FORBIDDEN, "Administrator privileges required")
+        return None
+    return user
+
+
+async def _pump_input(websocket: WebSocket, session: docker_service.ExecSession) -> None:
+    while True:
+        try:
+            message = json.loads(await websocket.receive_text())
+        except WebSocketDisconnect:
+            return
+        except (ValueError, TypeError):
+            continue
+        if not isinstance(message, dict):
+            continue
+        if message.get("type") == "input" and isinstance(message.get("data"), str):
+            await run_in_threadpool(session.write, message["data"].encode("utf-8"))
+        elif message.get("type") == "resize":
+            with contextlib.suppress(TypeError, ValueError):
+                new_cols, new_rows = int(message["cols"]), int(message["rows"])
+                await run_in_threadpool(session.resize, new_cols, new_rows)
+
+
 @router.websocket("/{container_id}/exec")
 async def container_console(
     websocket: WebSocket,
@@ -71,18 +107,8 @@ async def container_console(
 ) -> None:
     # Accept first so the close code and reason actually reach the browser.
     await websocket.accept()
-    if not _origin_allowed(websocket):
-        await _close(websocket, CLOSE_FORBIDDEN, "Origin not allowed")
-        return
-    user = _session_user(websocket)
+    user = await _authorize(websocket)
     if user is None:
-        await _close(websocket, CLOSE_UNAUTHORIZED, "Not authenticated")
-        return
-    if user.must_change_password:
-        await _close(websocket, CLOSE_FORBIDDEN, PASSWORD_CHANGE_REQUIRED)
-        return
-    if not user.is_admin:
-        await _close(websocket, CLOSE_FORBIDDEN, "Administrator privileges required")
         return
 
     try:
@@ -103,24 +129,10 @@ async def container_console(
                 return  # shell exited
             await websocket.send_bytes(data)
 
-    async def pump_input() -> None:
-        while True:
-            try:
-                message = json.loads(await websocket.receive_text())
-            except WebSocketDisconnect:
-                return
-            except (ValueError, TypeError):
-                continue
-            if not isinstance(message, dict):
-                continue
-            if message.get("type") == "input" and isinstance(message.get("data"), str):
-                await run_in_threadpool(session.write, message["data"].encode("utf-8"))
-            elif message.get("type") == "resize":
-                with contextlib.suppress(TypeError, ValueError):
-                    new_cols, new_rows = int(message["cols"]), int(message["rows"])
-                    await run_in_threadpool(session.resize, new_cols, new_rows)
-
-    tasks = {asyncio.create_task(pump_output()), asyncio.create_task(pump_input())}
+    tasks = {
+        asyncio.create_task(pump_output()),
+        asyncio.create_task(_pump_input(websocket, session)),
+    }
     try:
         await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
     finally:

@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 
 from app.models.scan import Scan, ScanFinding
 from app.models.update import UpdateCheck
+from app.schemas.common import PruneResult
 from app.schemas.project import Project
 from app.services import (
     compose_service,
@@ -49,13 +50,9 @@ def store_scan(db: Session, image: str) -> Scan:
     except trivy_service.TrivyError as exc:
         logger.warning("Scan of %s failed: %s", image, exc)
         scan = Scan(image=image, error=str(exc)[:1000])
-        db.add(scan)
-        db.commit()
-        db.refresh(scan)
-        return scan
-
-    scan = Scan(image=image, **result.counts)
-    scan.findings = [ScanFinding(**asdict(finding)) for finding in result.findings]
+    else:
+        scan = Scan(image=image, **result.counts)
+        scan.findings = [ScanFinding(**asdict(finding)) for finding in result.findings]
     db.add(scan)
     db.commit()
     db.refresh(scan)
@@ -155,15 +152,20 @@ def _summarise_scans(scans: Sequence[Scan]) -> str:
     return ", ".join(parts)
 
 
-def _maybe_notify_scans(db: Session, scans: Sequence[Scan]) -> None:
+def _notify(db: Session, flag: str, event: str, payload: dict[str, object]) -> None:
+    """Send a webhook event when its setting is on."""
     config = settings_service.get_all(db)
-    if not config["notify_on_critical"]:
-        return
+    if config[flag]:
+        notify_service.send(config["notify_webhook_url"], event, payload)
+
+
+def _maybe_notify_scans(db: Session, scans: Sequence[Scan]) -> None:
     offenders = [scan for scan in scans if scan.critical > 0]
     if not offenders:
         return
-    notify_service.send(
-        config["notify_webhook_url"],
+    _notify(
+        db,
+        "notify_on_critical",
         "scan.critical",
         {
             "images": [
@@ -181,14 +183,12 @@ def _maybe_notify_scans(db: Session, scans: Sequence[Scan]) -> None:
 
 
 def _maybe_notify_updates(db: Session, checks: Sequence[UpdateCheck]) -> None:
-    config = settings_service.get_all(db)
-    if not config["notify_on_update"]:
-        return
     available = [check for check in checks if check.has_update]
     if not available:
         return
-    notify_service.send(
-        config["notify_webhook_url"],
+    _notify(
+        db,
+        "notify_on_update",
         "update.available",
         {
             "images": [check.image for check in available],
@@ -282,17 +282,16 @@ def host_update_check_runner(*, notify: bool = False) -> JobRunner:
             message += ", reboot required"
         ctx.advance(message)
         if notify and row.security:
-            config = settings_service.get_all(ctx.db)
-            if config["notify_on_update"]:
-                notify_service.send(
-                    config["notify_webhook_url"],
-                    "host.updates",
-                    {
-                        "upgradable": row.upgradable,
-                        "security": row.security,
-                        "reboot_required": row.reboot_required,
-                    },
-                )
+            _notify(
+                ctx.db,
+                "notify_on_update",
+                "host.updates",
+                {
+                    "upgradable": row.upgradable,
+                    "security": row.security,
+                    "reboot_required": row.reboot_required,
+                },
+            )
 
     return run
 
@@ -332,13 +331,8 @@ def project_action_runner(
         result = compose_service.run_action(
             compose_path, action, project_name=project_name, ctx=ctx
         )
-        # docker compose writes its progress to stderr, so keep both streams.
-        ctx.set_output("\n".join(text for text in (result["stdout"], result["stderr"]) if text))
-        if result["exit_code"] != 0:
-            detail = (result["stderr"] or result["stdout"] or "").strip()[-1000:]
-            raise compose_service.ComposeError(
-                f"`docker compose {action}` failed (exit {result['exit_code']}): {detail}"
-            )
+        ctx.set_output(compose_service.joined_output(result["stdout"], result["stderr"]))
+        compose_service.check(action, result["exit_code"], result["stdout"], result["stderr"])
         if action == "pull":
             # "Pull & build" rebuilt the git services: their current commit is now built.
             for built_image, source in git_images(compose_path).items():
@@ -453,17 +447,20 @@ def _format_bytes(size: int) -> str:
     return f"{value:.1f} TB"
 
 
-def image_prune_runner() -> JobRunner:
-    """Build a job body that prunes every image no container uses."""
-
+def _prune_runner(prune: Callable[[], PruneResult], noun: str) -> JobRunner:
     def run(ctx: JobContext) -> None:
-        result = docker_service.prune_images()
+        result = prune()
         ctx.note(
-            f"Pruned {len(result.deleted)} image(s), "
+            f"Pruned {len(result.deleted)} {noun}(s), "
             f"reclaimed {_format_bytes(result.space_reclaimed)}"
         )
 
     return run
+
+
+def image_prune_runner() -> JobRunner:
+    """Build a job body that prunes every image no container uses."""
+    return _prune_runner(docker_service.prune_images, "image")
 
 
 def network_prune_runner() -> JobRunner:
@@ -480,12 +477,4 @@ def network_prune_runner() -> JobRunner:
 
 def volume_prune_runner() -> JobRunner:
     """Build a job body that removes every volume no container uses."""
-
-    def run(ctx: JobContext) -> None:
-        result = docker_service.prune_volumes()
-        ctx.note(
-            f"Pruned {len(result.deleted)} volume(s), "
-            f"reclaimed {_format_bytes(result.space_reclaimed)}"
-        )
-
-    return run
+    return _prune_runner(docker_service.prune_volumes, "volume")

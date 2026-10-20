@@ -1,24 +1,12 @@
 """Service exceptions map to HTTP statuses through the handlers in app.main."""
 
-from collections.abc import Callable, Iterator
-from types import SimpleNamespace
+from collections.abc import Callable
 from typing import Any, NoReturn
 
 import pytest
 from fastapi.testclient import TestClient
 
-from app.core.security import get_current_user
-from app.main import app
 from app.services import compose_service, docker_service
-
-
-@pytest.fixture
-def client() -> Iterator[TestClient]:
-    app.dependency_overrides[get_current_user] = lambda: SimpleNamespace(id=1, is_admin=True)
-    try:
-        yield TestClient(app)
-    finally:
-        app.dependency_overrides.clear()
 
 
 def _raise(exc: Exception) -> Callable[..., NoReturn]:
