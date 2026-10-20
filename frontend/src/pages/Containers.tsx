@@ -361,6 +361,8 @@ function StatsCells({ stats, history }: { stats?: ContainerStats; history: Stats
       </>
     );
   }
+  const cpu = history.map((sample) => sample.cpu_percent);
+  const memory = history.map((sample) => sample.memory_usage);
   return (
     <>
       <td
@@ -372,14 +374,14 @@ function StatsCells({ stats, history }: { stats?: ContainerStats; history: Stats
       >
         {stats.cpu_percent.toFixed(1)}%
         <Sparkline
-          values={history.map((sample) => sample.cpu_percent)}
+          values={cpu}
           // Below 5% the line stays near the bottom: idle noise is not a trend.
           floor={5}
           hot={stats.cpu_percent >= 80}
           label={t("CPU over the last {minutes} min: {min}% to {max}%", {
             minutes: spanMinutes(history),
-            min: Math.min(...history.map((sample) => sample.cpu_percent)).toFixed(1),
-            max: Math.max(...history.map((sample) => sample.cpu_percent)).toFixed(1),
+            min: Math.min(...cpu).toFixed(1),
+            max: Math.max(...cpu).toFixed(1),
           })}
         />
       </td>
@@ -392,12 +394,12 @@ function StatsCells({ stats, history }: { stats?: ContainerStats; history: Stats
         {formatBytes(stats.memory_usage)}
         <span className="muted"> / {formatBytes(stats.memory_limit)}</span>
         <Sparkline
-          values={history.map((sample) => sample.memory_usage)}
+          values={memory}
           hot={stats.memory_percent >= 80}
           label={t("Memory over the last {minutes} min: {min} to {max}", {
             minutes: spanMinutes(history),
-            min: formatBytes(Math.min(...history.map((sample) => sample.memory_usage))),
-            max: formatBytes(Math.max(...history.map((sample) => sample.memory_usage))),
+            min: formatBytes(Math.min(...memory)),
+            max: formatBytes(Math.max(...memory)),
           })}
         />
       </td>
