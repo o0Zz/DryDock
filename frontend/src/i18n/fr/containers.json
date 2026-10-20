@@ -148,5 +148,16 @@
   "Stopped {date}": "Arrêté le {date}",
   "stopped {duration} ago": "arrêté depuis {duration}",
   "CPU over the last {minutes} min: {min}% to {max}%": "CPU sur les {minutes} dernières min : de {min} % à {max} %",
-  "Memory over the last {minutes} min: {min} to {max}": "Mémoire sur les {minutes} dernières min : de {min} à {max}"
+  "Memory over the last {minutes} min: {min} to {max}": "Mémoire sur les {minutes} dernières min : de {min} à {max}",
+  "New commit on {source}: {from} → {to}": "Nouveau commit sur {source} : {from} → {to}",
+  "Update the container, or run \"Pull & build\" on the project, to rebuild it.": "Mettez à jour le conteneur, ou lancez « Pull & build » sur le projet, pour la reconstruire.",
+  "A new commit is on {source}.": "Un nouveau commit est sur {source}.",
+  "Rebuild & recreate": "Reconstruire et recréer",
+  "Rebuild the image from commit {commit}": "Reconstruire l'image depuis le commit {commit}",
+  "New commit on {source} — rebuild and recreate {name}": "Nouveau commit sur {source} — reconstruire et recréer {name}",
+  "Git source": "Source git",
+  "Built commit": "Commit construit",
+  "Latest commit": "Dernier commit",
+  "New commit": "Nouveau commit",
+  "yes — update to rebuild": "oui — mettez à jour pour reconstruire"
 }

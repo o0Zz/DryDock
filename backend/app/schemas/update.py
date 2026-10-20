@@ -20,3 +20,5 @@ class UpdateSummary(BaseModel):
     newest_tag: str | None = None
     newest_same_major_tag: str | None = None
     tag_error: str | None = None
+    # `url#ref` for an image built from git: the digests above are then commits.
+    git_source: str | None = None

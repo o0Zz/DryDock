@@ -34,6 +34,11 @@ export function secondsSince(value: string | null | undefined): number | null {
   return value ? Math.max(0, (Date.now() - Date.parse(value)) / 1000) : null;
 }
 
+/** First 7 characters of a git commit, as git shows it. */
+export function shortCommit(commit: string | null | undefined): string {
+  return commit ? commit.slice(0, 7) : "—";
+}
+
 /** Rough length of a span of seconds, e.g. `3d 4h` or `12m`. */
 export function formatDuration(seconds: number): string {
   const days = Math.floor(seconds / 86400);

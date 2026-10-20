@@ -25,6 +25,9 @@ class UpdateCheck(Base):
     newest_tag: Mapped[str | None] = mapped_column(String, nullable=True)
     newest_same_major_tag: Mapped[str | None] = mapped_column(String, nullable=True)
     tag_error: Mapped[str | None] = mapped_column(String, nullable=True)
+    # Set for images built from a git repo (`url#ref`). The digests are then
+    # commits: the one last built, and the one the ref points to now.
+    git_source: Mapped[str | None] = mapped_column(String, nullable=True)
 
     @property
     def has_update(self) -> bool:

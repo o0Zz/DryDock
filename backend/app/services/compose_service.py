@@ -366,11 +366,25 @@ def down(
 
 
 def pull_service(compose_path: Path, service: str, *, project_name: str | None = None) -> None:
-    """Pull the image of one service."""
+    """Pull the image of one service. A service with `build:` is left to `build_service`."""
     result = _compose(
-        compose_path, ["pull", service], project_name=project_name, timeout=PULL_TIMEOUT
+        compose_path,
+        ["pull", "--ignore-buildable", service],
+        project_name=project_name,
+        timeout=PULL_TIMEOUT,
     )
     _check(result, "pull")
+
+
+def build_service(compose_path: Path, service: str, *, project_name: str | None = None) -> None:
+    """Rebuild one service on a fresh base image; a no-op for a service without `build:`.
+
+    A git build context is fetched again, so a new commit on its ref goes in.
+    """
+    result = _compose(
+        compose_path, ["build", "--pull", service], project_name=project_name, timeout=PULL_TIMEOUT
+    )
+    _check(result, "build")
 
 
 def recreate_service(

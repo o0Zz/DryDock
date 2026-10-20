@@ -21,6 +21,8 @@ export interface UserPatch {
 export interface ProjectService {
   name: string;
   image: string | null;
+  /** `url#ref` when the service builds from a git repo. */
+  git_source: string | null;
 }
 
 export interface Project {
@@ -235,6 +237,8 @@ export interface UpdateSummary {
   /** Newest tag within the current major, when it differs from newest_tag. */
   newest_same_major_tag: string | null;
   tag_error: string | null;
+  /** `url#ref` for an image built from git: the digests are then the built and the latest commit. */
+  git_source: string | null;
 }
 
 export type JobStatus = "pending" | "running" | "success" | "error";

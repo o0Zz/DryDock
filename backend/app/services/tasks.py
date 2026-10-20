@@ -12,6 +12,7 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import TypeVar
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.scan import Scan, ScanFinding
@@ -20,6 +21,7 @@ from app.schemas.project import Project
 from app.services import (
     compose_service,
     docker_service,
+    git_service,
     host_updates_service,
     job_service,
     notify_service,
@@ -60,8 +62,31 @@ def store_scan(db: Session, image: str) -> Scan:
     return scan
 
 
-def store_update_check(db: Session, image: str) -> UpdateCheck:
-    result = update_service.check_image(image)
+def _last_built_commit(db: Session, image: str) -> str | None:
+    """Commit of the last git check of an image, which carries the commit it was built from."""
+    last = db.scalar(
+        select(UpdateCheck).where(UpdateCheck.image == image).order_by(UpdateCheck.id.desc())
+    )
+    return last.local_digest if last is not None and last.git_source else None
+
+
+def store_update_check(
+    db: Session,
+    image: str,
+    *,
+    git: git_service.GitSource | None = None,
+    built: bool = False,
+) -> UpdateCheck:
+    """Check one image and store the result.
+
+    `git` is the repo the image builds from, if any; `built` means it was just
+    built, so the current commit is what it runs.
+    """
+    if git is not None:
+        baseline = None if built else _last_built_commit(db, image)
+        result = update_service.check_git(image, git, baseline)
+    else:
+        result = update_service.check_image(image)
     row = UpdateCheck(
         image=result.image,
         local_digest=result.local_digest,
@@ -71,6 +96,7 @@ def store_update_check(db: Session, image: str) -> UpdateCheck:
         newest_tag=result.newest_tag,
         newest_same_major_tag=result.newest_same_major_tag,
         tag_error=result.tag_error[:1000] if result.tag_error else None,
+        git_source=result.git_source,
     )
     db.add(row)
     db.commit()
@@ -87,6 +113,34 @@ def running_images() -> list[str]:
 
 def compose_images() -> list[str]:
     return repo_service.referenced_images()
+
+
+def git_images(compose_path: Path | None = None) -> dict[str, git_service.GitSource]:
+    """Images built from a git repo, with that repo, optionally for one Compose file.
+
+    A service without `image:` gets a name Compose picks, so it is read from the
+    service's containers.
+    """
+    projects = repo_service.discover_projects()
+    if compose_path is not None:
+        projects = [project for project in projects if Path(project.compose_path) == compose_path]
+    try:
+        projects = repo_service.attach_containers(projects)
+    except docker_service.DockerUnavailable as exc:
+        logger.warning("Could not match containers to git builds: %s", exc)
+    sources: dict[str, git_service.GitSource] = {}
+    for project in projects:
+        for service in project.services:
+            source = git_service.parse_build(service.git_source)
+            if source is None:
+                continue
+            if service.image:
+                sources[service.image] = source
+                continue
+            for container in project.containers:
+                if container.compose_service == service.name:
+                    sources[container.image] = source
+    return sources
 
 
 def all_known_images() -> list[str]:
@@ -201,8 +255,13 @@ def update_check_runner(resolve: ImageResolver, *, notify: bool = False) -> JobR
     """Build a job body that compares local vs registry digests."""
 
     def run(ctx: JobContext) -> None:
+        sources = git_images()
         checks = _each_image(
-            ctx, resolve, store_update_check, progress="Checking", empty="No images to check"
+            ctx,
+            resolve,
+            lambda db, image: store_update_check(db, image, git=sources.get(image)),
+            progress="Checking",
+            empty="No images to check",
         )
         if not checks:
             return
@@ -252,16 +311,23 @@ def host_update_check_runner(*, notify: bool = False) -> JobRunner:
 def container_update_runner(
     compose_path: Path, service: str, image: str, *, project_name: str | None = None
 ) -> JobRunner:
-    """Build a job body that pulls one service's image and recreates its container."""
+    """Build a job body that brings one service's image up to date and recreates its container.
+
+    Pull covers registry images, build covers `build:` services (a git one
+    fetches its ref again); each is a no-op for the other kind.
+    """
 
     def run(ctx: JobContext) -> None:
-        ctx.set_total(3, f"Pulling {image}")
+        ctx.set_total(4, f"Pulling {image}")
         compose_service.pull_service(compose_path, service, project_name=project_name)
+        ctx.advance(f"Building {service}")
+        compose_service.build_service(compose_path, service, project_name=project_name)
         ctx.advance(f"Recreating {service}")
         compose_service.recreate_service(compose_path, service, project_name=project_name, ctx=ctx)
         # Refresh the stored check so the "update available" badge clears.
         ctx.advance(f"Re-checking {image}")
-        store_update_check(ctx.db, image)
+        source = git_images(compose_path).get(image)
+        store_update_check(ctx.db, image, git=source, built=source is not None)
         ctx.advance(f"{service} updated to the latest {image}")
 
     return run
@@ -284,6 +350,10 @@ def project_action_runner(
             raise compose_service.ComposeError(
                 f"`docker compose {action}` failed (exit {result['exit_code']}): {detail}"
             )
+        if action == "pull":
+            # "Pull & build" rebuilt the git services: their current commit is now built.
+            for built_image, source in git_images(compose_path).items():
+                store_update_check(ctx.db, built_image, git=source, built=True)
         ctx.advance(f"docker compose {action} done")
 
     return run

@@ -1,6 +1,7 @@
-import { ArrowUpCircle, Download, HardDrive, RotateCw } from "lucide-react";
+import { ArrowUpCircle, Download, GitCommitHorizontal, HardDrive, RotateCw } from "lucide-react";
 import { Link } from "react-router-dom";
 import { api } from "../api";
+import { shortCommit } from "../format";
 import { useT } from "../i18n";
 import { useConfirm } from "./ConfirmDialog";
 import type { Container, Job, Project, UpdateSummary } from "../types";
@@ -73,23 +74,39 @@ export default function UpdateAction({
     );
   }
 
+  // Built from git: the update is a new commit, and the job rebuilds the image.
+  const gitSource = update.git_source;
+
   async function run(): Promise<void> {
-    // The image name is set in <code> wherever the translation puts it.
-    const [beforeImage, afterImage = ""] = t("A newer {image} was published.").split("{image}");
+    // The image name or the repo is set in <code> wherever the translation puts it.
+    const [before, after = ""] = gitSource
+      ? t("A new commit is on {source}.").split("{source}")
+      : t("A newer {image} was published.").split("{image}");
     const confirmed = await confirm({
       title: t("Update {name}?", { name: container.name }),
       icon: ArrowUpCircle,
-      confirmLabel: t("Pull & recreate"),
+      confirmLabel: gitSource ? t("Rebuild & recreate") : t("Pull & recreate"),
       message: (
         <>
           <p>
-            {beforeImage}
-            <code>{container.image}</code>
-            {afterImage}
+            {before}
+            <code>{gitSource ?? container.image}</code>
+            {after}
           </p>
           <ol className="confirm-steps">
             <li>
-              <Download size={15} /> {t("Pull the new image")}
+              {gitSource ? (
+                <>
+                  <GitCommitHorizontal size={15} />{" "}
+                  {t("Rebuild the image from commit {commit}", {
+                    commit: shortCommit(update?.remote_digest),
+                  })}
+                </>
+              ) : (
+                <>
+                  <Download size={15} /> {t("Pull the new image")}
+                </>
+              )}
             </li>
             <li>
               <RotateCw size={15} /> {t("Recreate the container (brief downtime)")}
@@ -114,10 +131,17 @@ export default function UpdateAction({
       type="button"
       className="badge paused badge-button"
       disabled={pending}
-      title={t("A newer {image} was published — pull it and recreate {name}", {
-        image: container.image,
-        name: container.name,
-      })}
+      title={
+        gitSource
+          ? t("New commit on {source} — rebuild and recreate {name}", {
+              source: gitSource,
+              name: container.name,
+            })
+          : t("A newer {image} was published — pull it and recreate {name}", {
+              image: container.image,
+              name: container.name,
+            })
+      }
       onClick={run}
     >
       <ArrowUpCircle size={12} /> {pending ? t("updating…") : t("update")}

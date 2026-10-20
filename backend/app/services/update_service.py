@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 
-from app.services import docker_service, registry_auth_service, registry_service
+from app.services import docker_service, git_service, registry_auth_service, registry_service
 
 logger = logging.getLogger(__name__)
 
@@ -19,6 +19,28 @@ class UpdateResult:
     newest_tag: str | None = None
     newest_same_major_tag: str | None = None
     tag_error: str | None = None
+    git_source: str | None = None
+
+
+def check_git(image: str, source: git_service.GitSource, built: str | None) -> UpdateResult:
+    """Compare the commit an image was built from with the one its git ref points to now.
+
+    `built` is the commit recorded at the last build. Without one (built before
+    DryDock tracked it), the current commit becomes the baseline: the next
+    commit pushed shows as an update.
+    """
+    try:
+        remote = git_service.remote_commit(source)
+    except git_service.GitError as exc:
+        return UpdateResult(image=image, local_digest=built, error=str(exc), git_source=str(source))
+    local = built or remote
+    return UpdateResult(
+        image=image,
+        local_digest=local,
+        remote_digest=remote,
+        update_available=local != remote,
+        git_source=str(source),
+    )
 
 
 def check_image(image: str) -> UpdateResult:

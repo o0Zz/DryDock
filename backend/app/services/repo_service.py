@@ -12,7 +12,7 @@ import yaml
 from app.core.config import settings
 from app.schemas.container import Container
 from app.schemas.project import Project, ProjectService
-from app.services import docker_service
+from app.services import docker_service, git_service
 
 logger = logging.getLogger(__name__)
 
@@ -46,10 +46,18 @@ def _parse_services(compose_path: Path) -> list[ProjectService]:
     services = data.get("services") if isinstance(data, dict) else None
     if not isinstance(services, dict):
         return []
-    return [
-        ProjectService(name=str(name), image=spec.get("image") if isinstance(spec, dict) else None)
-        for name, spec in services.items()
-    ]
+    result = []
+    for name, spec in services.items():
+        spec = spec if isinstance(spec, dict) else {}
+        source = git_service.parse_build(spec.get("build"))
+        result.append(
+            ProjectService(
+                name=str(name),
+                image=spec.get("image"),
+                git_source=str(source) if source else None,
+            )
+        )
+    return result
 
 
 def _project_from_compose(compose_path: Path, repo_root: Path) -> Project:

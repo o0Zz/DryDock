@@ -37,7 +37,7 @@ import {
   containerActionsFor,
   containerStateLabel,
 } from "../containerActions";
-import { formatBytes, formatDate } from "../format";
+import { formatBytes, formatDate, shortCommit } from "../format";
 import { useContainerStats } from "../hooks/useContainerStats";
 import { useJobs } from "../hooks/useJobs";
 import { msg, useT } from "../i18n";
@@ -677,15 +677,38 @@ function UpdatesTab({
         <div className="empty">{t("No update check recorded for this image yet.")}</div>
       ) : (
         <Facts
-          rows={[
-            [t("Checked"), formatDate(update.checked_at)],
-            [t("Local digest"), update.local_digest ? <code>{update.local_digest}</code> : "—"],
-            [t("Remote digest"), update.remote_digest ? <code>{update.remote_digest}</code> : "—"],
-            [t("Same tag rebuilt"), update.update_available ? t("yes — pull to update") : t("no")],
-            [t("Newest tag"), update.newest_tag ?? "—"],
-            [t("Newest in current major"), update.newest_same_major_tag ?? "—"],
-            [t("Error"), update.error ?? update.tag_error ?? "—"],
-          ]}
+          rows={
+            update.git_source
+              ? [
+                  [t("Checked"), formatDate(update.checked_at)],
+                  [t("Git source"), <code key="source">{update.git_source}</code>],
+                  [t("Built commit"), <code key="built">{shortCommit(update.local_digest)}</code>],
+                  [
+                    t("Latest commit"),
+                    <code key="latest">{shortCommit(update.remote_digest)}</code>,
+                  ],
+                  [t("New commit"), update.update_available ? t("yes — update to rebuild") : t("no")],
+                  [t("Error"), update.error ?? "—"],
+                ]
+              : [
+                  [t("Checked"), formatDate(update.checked_at)],
+                  [
+                    t("Local digest"),
+                    update.local_digest ? <code>{update.local_digest}</code> : "—",
+                  ],
+                  [
+                    t("Remote digest"),
+                    update.remote_digest ? <code>{update.remote_digest}</code> : "—",
+                  ],
+                  [
+                    t("Same tag rebuilt"),
+                    update.update_available ? t("yes — pull to update") : t("no"),
+                  ],
+                  [t("Newest tag"), update.newest_tag ?? "—"],
+                  [t("Newest in current major"), update.newest_same_major_tag ?? "—"],
+                  [t("Error"), update.error ?? update.tag_error ?? "—"],
+                ]
+          }
         />
       )}
 

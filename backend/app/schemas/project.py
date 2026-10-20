@@ -9,6 +9,8 @@ from app.schemas.job import JobRead
 class ProjectService(BaseModel):
     name: str
     image: str | None = None
+    # `url#ref` when the service builds from a git repo; update checks follow its commits.
+    git_source: str | None = None
 
 
 class Project(BaseModel):

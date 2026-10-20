@@ -1,5 +1,5 @@
 import { ArrowUpCircle, CheckCircle2 } from "lucide-react";
-import { formatDate } from "../format";
+import { formatDate, shortCommit } from "../format";
 import { useT } from "../i18n";
 import type { UpdateSummary } from "../types";
 
@@ -55,12 +55,23 @@ export default function UpdateBadge({ update }: { update: UpdateSummary | undefi
   return (
     <span
       className="badge paused"
-      title={[
-        t("Checked {date}", { date: checked }),
-        t("local  {digest}", { digest: update.local_digest ?? "" }),
-        t("remote {digest}", { digest: update.remote_digest ?? "" }),
-        t('Same tag was rebuilt. Run "pull" on the project to update.'),
-      ].join("\n")}
+      title={(update.git_source
+        ? [
+            t("Checked {date}", { date: checked }),
+            t("New commit on {source}: {from} → {to}", {
+              source: update.git_source,
+              from: shortCommit(update.local_digest),
+              to: shortCommit(update.remote_digest),
+            }),
+            t('Update the container, or run "Pull & build" on the project, to rebuild it.'),
+          ]
+        : [
+            t("Checked {date}", { date: checked }),
+            t("local  {digest}", { digest: update.local_digest ?? "" }),
+            t("remote {digest}", { digest: update.remote_digest ?? "" }),
+            t('Same tag was rebuilt. Run "pull" on the project to update.'),
+          ]
+      ).join("\n")}
     >
       <ArrowUpCircle size={12} /> {t("available")}
     </span>

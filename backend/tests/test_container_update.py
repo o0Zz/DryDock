@@ -81,7 +81,9 @@ def test_pull_service_command(runs: SimpleNamespace) -> None:
     compose_service.pull_service(COMPOSE, "nginx", project_name="web")
 
     [(command, kwargs)] = runs.calls
-    assert command == ["docker", "compose", "-f", str(COMPOSE), "-p", "web", "pull", "nginx"]
+    base = ["docker", "compose", "-f", str(COMPOSE), "-p", "web"]
+    # A `build:` service has nothing to pull; build_service handles it.
+    assert command == [*base, "pull", "--ignore-buildable", "nginx"]
     assert kwargs["cwd"] == COMPOSE.parent
     assert kwargs["timeout"] == compose_service.PULL_TIMEOUT
 
@@ -237,12 +239,24 @@ def steps(monkeypatch: pytest.MonkeyPatch) -> list[tuple[Any, ...]]:
     )
     monkeypatch.setattr(
         compose_service,
+        "build_service",
+        lambda compose_path, service, project_name: log.append(
+            ("build", compose_path, service, project_name)
+        ),
+    )
+    monkeypatch.setattr(
+        compose_service,
         "recreate_service",
         lambda compose_path, service, project_name, ctx: log.append(
             ("up", compose_path, service, project_name)
         ),
     )
-    monkeypatch.setattr(tasks, "store_update_check", lambda db, image: log.append(("check", image)))
+    monkeypatch.setattr(tasks, "git_images", lambda compose_path=None: {})
+    monkeypatch.setattr(
+        tasks,
+        "store_update_check",
+        lambda db, image, git=None, built=False: log.append(("check", image, built)),
+    )
     return log
 
 
@@ -252,10 +266,11 @@ def test_runner_pulls_recreates_then_rechecks(steps: list[tuple[Any, ...]]) -> N
 
     assert steps == [
         ("pull", COMPOSE, "nginx", "web"),
+        ("build", COMPOSE, "nginx", "web"),
         ("up", COMPOSE, "nginx", "web"),
-        ("check", "nginx:latest"),
+        ("check", "nginx:latest", False),
     ]
-    assert (ctx.done, ctx.total) == (3, 3)
+    assert (ctx.done, ctx.total) == (4, 4)
     assert ctx.messages[-1] == "nginx updated to the latest nginx:latest"
 
 
