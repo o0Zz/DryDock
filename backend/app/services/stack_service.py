@@ -58,7 +58,7 @@ def _renamed(path: Path, compose_path: Path, new_stem: str) -> str:
     return f"{new_stem}.override{path.suffix}"
 
 
-def target_paths(stack: StackLayout, new_name: str) -> dict[Path, Path]:
+def _target_paths(stack: StackLayout, new_name: str) -> dict[Path, Path]:
     """Where each path of the stack goes for `new_name`: the folder (owned folder), or
     each file. The Compose file is always in the result."""
     compose_path = stack.compose_path
@@ -77,7 +77,7 @@ def check_new_name(project: Project, new_name: str) -> Path:
     """Refuse a name another stack has, or paths that exist. Returns the new Compose path."""
     if any(other.name.lower() == new_name.lower() for other in repo_service.discover_projects()):
         raise compose_service.ComposeExists(f"A stack named '{new_name}' already exists")
-    moves = target_paths(layout(project), new_name)
+    moves = _target_paths(layout(project), new_name)
     taken = [target for target in moves.values() if target.exists()]
     if taken:
         raise compose_service.ComposeExists(f"{taken[0].name} already exists")
@@ -120,7 +120,7 @@ def _transfer(
     """Move or copy the stack's folder or files to `new_name`. Returns the new Compose path."""
     target = check_new_name(project, new_name)
     stack = layout(project)
-    moves = target_paths(stack, new_name)
+    moves = _target_paths(stack, new_name)
     if stack.folder is not None:
         new_folder = moves.pop(stack.folder)
         folder_op(stack.folder, new_folder)

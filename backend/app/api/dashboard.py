@@ -24,7 +24,7 @@ from app.services import (
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 
 # How many images the "needs attention" lists show; the page links to the rest.
-LIST_LIMIT = 5
+_LIST_LIMIT = 5
 
 
 def _needs_attention(container: Container) -> bool:
@@ -75,7 +75,7 @@ def dashboard(db: Session = Depends(get_db)) -> DashboardStats:
     )
     stats.most_vulnerable = [
         ImageRisk(image=scan.image, critical=scan.critical, high=scan.high)
-        for scan in worst[:LIST_LIMIT]
+        for scan in worst[:_LIST_LIMIT]
     ]
 
     checks = [check for check in history_service.update_checks(db) if check.image in tracked]
@@ -83,7 +83,7 @@ def dashboard(db: Session = Depends(get_db)) -> DashboardStats:
     stats.updates_available = len(with_update)
     stats.updates = [
         ImageUpdate(image=check.image, newest_tag=check.newest_tag, rebuilt=check.update_available)
-        for check in with_update[:LIST_LIMIT]
+        for check in with_update[:_LIST_LIMIT]
     ]
     if checks:
         stats.last_update_check_at = max(check.checked_at for check in checks)

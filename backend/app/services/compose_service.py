@@ -76,14 +76,14 @@ _ENV_ASSIGNMENT = re.compile(
 )
 
 
-def env_path(compose_path: Path) -> Path:
+def _env_path(compose_path: Path) -> Path:
     """The `.env` Compose reads for this file: the one in the project folder.
     Stacks that share a folder share it too."""
     return compose_path.parent / ".env"
 
 
 def read_env(compose_path: Path) -> str | None:
-    path = env_path(compose_path)
+    path = _env_path(compose_path)
     return path.read_text(encoding="utf-8") if path.is_file() else None
 
 
@@ -122,7 +122,7 @@ def _validate_env(content: str) -> None:
 def write_env(project_id: str, compose_path: Path, content: str) -> Path | None:
     """Validate, back up the current file if there is one, then write. Returns the backup."""
     _validate_env(content)
-    path = env_path(compose_path)
+    path = _env_path(compose_path)
     backup = _backup(project_id, path, ".env") if path.is_file() else None
     path.write_text(content, encoding="utf-8")
     return backup

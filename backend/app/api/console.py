@@ -29,9 +29,9 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/containers", tags=["containers"])
 
 # Application-defined close codes (4000-4999), mirrored in the frontend.
-CLOSE_UNAUTHORIZED = 4401
-CLOSE_FORBIDDEN = 4403
-CLOSE_UNAVAILABLE = 4404
+_CLOSE_UNAUTHORIZED = 4401
+_CLOSE_FORBIDDEN = 4403
+_CLOSE_UNAVAILABLE = 4404
 
 
 def _origin_allowed(websocket: WebSocket) -> bool:
@@ -65,17 +65,17 @@ async def _close(websocket: WebSocket, code: int, reason: str) -> None:
 async def _authorize(websocket: WebSocket) -> User | None:
     """The admin behind the session, or None once the socket is closed with the reason."""
     if not _origin_allowed(websocket):
-        await _close(websocket, CLOSE_FORBIDDEN, "Origin not allowed")
+        await _close(websocket, _CLOSE_FORBIDDEN, "Origin not allowed")
         return None
     user = _session_user(websocket)
     if user is None:
-        await _close(websocket, CLOSE_UNAUTHORIZED, "Not authenticated")
+        await _close(websocket, _CLOSE_UNAUTHORIZED, "Not authenticated")
         return None
     if user.must_change_password:
-        await _close(websocket, CLOSE_FORBIDDEN, PASSWORD_CHANGE_REQUIRED)
+        await _close(websocket, _CLOSE_FORBIDDEN, PASSWORD_CHANGE_REQUIRED)
         return None
     if not user.is_admin:
-        await _close(websocket, CLOSE_FORBIDDEN, "Administrator privileges required")
+        await _close(websocket, _CLOSE_FORBIDDEN, "Administrator privileges required")
         return None
     return user
 
@@ -116,7 +116,7 @@ async def container_console(
             docker_service.open_exec, container_id, cols=cols, rows=rows
         )
     except docker_service.DockerUnavailable as exc:
-        await _close(websocket, CLOSE_UNAVAILABLE, str(exc))
+        await _close(websocket, _CLOSE_UNAVAILABLE, str(exc))
         return
     logger.info("Console opened on container %s by %s", container_id[:12], user.username)
 

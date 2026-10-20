@@ -30,12 +30,12 @@ DOCKER_HUB_KEY = "https://index.docker.io/v1/"
 _HUB_ALIASES = {DOCKER_HUB, "docker.io", "index.docker.io", DOCKER_HUB_KEY}
 
 
-def config_dir() -> Path:
+def _config_dir() -> Path:
     return settings.data_path / "docker"
 
 
 def _config_path() -> Path:
-    return config_dir() / "config.json"
+    return _config_dir() / "config.json"
 
 
 def normalize(registry: str) -> str:
@@ -122,4 +122,4 @@ def subprocess_env() -> dict[str, str] | None:
     """
     if not _config_path().is_file():
         return None
-    return {**os.environ, "DOCKER_CONFIG": str(config_dir())}
+    return {**os.environ, "DOCKER_CONFIG": str(_config_dir())}

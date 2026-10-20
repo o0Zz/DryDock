@@ -17,8 +17,8 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/logs", tags=["logs"])
 
-SSE_HEADERS = {"Cache-Control": "no-cache", "X-Accel-Buffering": "no"}
-APP_LOG_POLL_SECONDS = 1.0
+_SSE_HEADERS = {"Cache-Control": "no-cache", "X-Accel-Buffering": "no"}
+_APP_LOG_POLL_SECONDS = 1.0
 
 
 def _format_sse(data: str, event: str | None = None) -> bytes:
@@ -96,7 +96,7 @@ async def stream_container_logs(
     return StreamingResponse(
         _container_stream(container_id, tail),
         media_type="text/event-stream",
-        headers=SSE_HEADERS,
+        headers=_SSE_HEADERS,
     )
 
 
@@ -119,7 +119,7 @@ async def stream_project_logs(
     except compose_service.ComposeError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
-    return StreamingResponse(stream, media_type="text/event-stream", headers=SSE_HEADERS)
+    return StreamingResponse(stream, media_type="text/event-stream", headers=_SSE_HEADERS)
 
 
 async def _app_stream(tail: int) -> AsyncIterator[bytes]:
@@ -131,7 +131,7 @@ async def _app_stream(tail: int) -> AsyncIterator[bytes]:
             yield _format_sse(line)
         if entries:
             last_seq = entries[-1][0]
-        await asyncio.sleep(APP_LOG_POLL_SECONDS)
+        await asyncio.sleep(_APP_LOG_POLL_SECONDS)
         entries = log_buffer.buffer.since(last_seq)
 
 
@@ -140,4 +140,6 @@ async def stream_app_logs(
     tail: int = Query(default=500, ge=0, le=log_buffer.MAX_LINES),
 ) -> StreamingResponse:
     """DryDock's own backend logs (scans, jobs, errors), newest lines live."""
-    return StreamingResponse(_app_stream(tail), media_type="text/event-stream", headers=SSE_HEADERS)
+    return StreamingResponse(
+        _app_stream(tail), media_type="text/event-stream", headers=_SSE_HEADERS
+    )

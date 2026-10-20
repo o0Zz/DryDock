@@ -43,7 +43,7 @@ RowT = TypeVar("RowT")
 # --- Persistence -------------------------------------------------------------
 
 
-def store_scan(db: Session, image: str) -> Scan:
+def _store_scan(db: Session, image: str) -> Scan:
     """Scan one image and persist the outcome, successful or not."""
     try:
         result = trivy_service.scan_image(image)
@@ -229,7 +229,7 @@ def scan_runner(resolve: ImageResolver, *, notify: bool = False) -> JobRunner:
 
     def run(ctx: JobContext) -> None:
         scans = _each_image(
-            ctx, resolve, store_scan, progress="Scanning", empty="No images to scan"
+            ctx, resolve, _store_scan, progress="Scanning", empty="No images to scan"
         )
         if not scans:
             return
