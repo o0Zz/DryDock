@@ -241,7 +241,7 @@ def scan_runner(resolve: ImageResolver, *, notify: bool = False) -> JobRunner:
 
 
 def update_check_runner(resolve: ImageResolver, *, notify: bool = False) -> JobRunner:
-    """Build a job body that compares local vs registry digests."""
+    """Build a job body that checks images for updates: digest, newer tags, git commits."""
 
     def run(ctx: JobContext) -> None:
         sources = git_images()

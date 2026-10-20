@@ -34,8 +34,7 @@ import { imageRepo, retagImage } from "../imageRef";
 import { askDelete, askName, waitForJob } from "../stackActions";
 import type { Project, ProjectAction, UpdateSummary } from "../types";
 
-// CodeMirror is by far the heaviest dependency in the bundle and is only
-// needed on this page, so it loads on demand.
+// CodeMirror is by far the heaviest dependency in the bundle, so it loads on demand.
 const YamlEditor = lazy(() => import("../components/YamlEditor"));
 
 const ACTIONS: ProjectAction[] = ["up", "down", "pull", "reload", "stop"];

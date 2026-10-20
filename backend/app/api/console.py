@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 # endpoint checks the session itself.
 router = APIRouter(prefix="/api/containers", tags=["containers"])
 
-# Application-defined close codes (4000-4999), mirrored in the frontend.
+# Application-defined close codes (4000-4999). The frontend shows the close reason.
 _CLOSE_UNAUTHORIZED = 4401
 _CLOSE_FORBIDDEN = 4403
 _CLOSE_UNAVAILABLE = 4404

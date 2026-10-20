@@ -142,10 +142,10 @@ async def _service_error(request: Request, exc: Exception) -> JSONResponse:
 for _exc_type in _ERROR_STATUS:
     app.add_exception_handler(_exc_type, _service_error)
 
-# Public: login/logout/me
+# Login and logout are public; /me and /password check the user themselves.
 app.include_router(auth.router)
 
-# Everything below requires an authenticated session.
+# Everything below requires a session or an API token.
 _auth = [Depends(get_current_user)]
 app.include_router(dashboard.router, dependencies=_auth)
 app.include_router(host.router, dependencies=_auth)

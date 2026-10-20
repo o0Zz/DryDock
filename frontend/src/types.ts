@@ -259,13 +259,13 @@ export interface Job {
   finished_at: string | null;
 }
 
-/** What `useJobs` hands back to a page. */
 /** A queued rename or duplicate, and the stack's ID once it is done. */
 export interface StackChangeAccepted {
   job: Job;
   project_id: string;
 }
 
+/** What `useJobs` hands back to a page. */
 export interface JobTracker {
   jobs: Job[];
   track: (job: Job) => void;

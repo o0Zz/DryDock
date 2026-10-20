@@ -26,7 +26,7 @@ class ComposeError(Exception):
 
 
 class ComposeExists(ComposeError):
-    """Raised when creating a stack in a folder that already has one."""
+    """Raised when a stack's name or target path is already taken."""
 
 
 def read_compose(compose_path: Path) -> str:
