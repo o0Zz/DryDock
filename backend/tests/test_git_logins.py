@@ -148,23 +148,43 @@ def test_secrets_file_covers_git_builds_with_a_login(tmp_path: Path) -> None:
             "db": {"image": "postgres:16"},
         },
     )
-    assert compose_service.git_secrets_file([compose]) is None
+    assert compose_service.git_secrets([compose]) is None
 
     git_auth_service.set_credentials(REPO, "me", "tok")
-    path = compose_service.git_secrets_file([compose])
-    assert path is not None
-    header = git_auth_service.header_path("git.example.com").as_posix()
+    secrets = compose_service.git_secrets([compose])
+    assert secrets is not None
     secret = [{"source": "drydock_git_0", "target": "GIT_AUTH_HEADER.git.example.com"}]
-    assert yaml.safe_load(path.read_text(encoding="utf-8")) == {
-        "secrets": {"drydock_git_0": {"file": header}},
+    # An environment secret: bake needs no `--allow fs.read` for it.
+    assert yaml.safe_load(secrets.file.read_text(encoding="utf-8")) == {
+        "secrets": {"drydock_git_0": {"environment": "DRYDOCK_GIT_AUTH_0"}},
         "services": {
             "app": {"build": {"secrets": secret}},
             "worker": {"build": {"secrets": secret}},
         },
     }
+    header = git_auth_service.auth_header(REPO)
+    assert secrets.environment() == {"DRYDOCK_GIT_AUTH_0": header}
+    path = git_auth_service.header_path("git.example.com").as_posix()
+    assert secrets.exports() == f'export DRYDOCK_GIT_AUTH_0="$(cat {path})"'
 
-    command = compose_service._command(compose, ["build"])
-    assert command[-3:] == ["-f", str(path), "build"]
+    command = compose_service._command(compose, ["build"], secrets=secrets)
+    assert command[-3:] == ["-f", str(secrets.file), "build"]
+
+
+def test_compose_runs_get_the_login(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    compose = _stack(tmp_path, {"app": {"build": f"{REPO}#main"}})
+    git_auth_service.set_credentials(REPO, "me", "tok")
+    runs: list[dict[str, Any]] = []
+
+    def run(command: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        runs.append({"command": command, **kwargs})
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr(compose_service.subprocess, "run", run)
+    compose_service.build_service(compose, "app")
+    [call] = runs
+    assert call["env"]["DRYDOCK_GIT_AUTH_0"] == git_auth_service.auth_header(REPO)
+    assert "GIT_AUTH_HEADER" not in " ".join(call["command"])
 
 
 # --- commit, push, pull ---------------------------------------------------------------
@@ -247,3 +267,30 @@ def test_repo_routes(client: TestClient, checkout: Path) -> None:
     body = client.get("/api/git/repo").json()
     assert body["supported"] and body["branch"] == "main" and body["changes"] == []
     assert client.post("/api/git/repo/merge").status_code == 422
+
+
+def test_helper_script_reads_the_login_from_data(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    from app.services import docker_service, host_path_service
+
+    compose = _stack(tmp_path, {"app": {"build": f"{REPO}#main"}})
+    git_auth_service.set_credentials(REPO, "me", "tok")
+    started: list[tuple[str, dict[str, Any]]] = []
+    monkeypatch.setattr(host_path_service, "own_container_id", lambda: "self")
+    monkeypatch.setattr(docker_service, "container_image", lambda container_id: "sha256:dd")
+    monkeypatch.setattr(
+        docker_service,
+        "start_compose_helper",
+        lambda script, **kwargs: started.append((script, kwargs)) or "helper1",
+    )
+    monkeypatch.setattr(docker_service, "follow_helper", lambda *args, **kwargs: 0)
+    monkeypatch.setattr(docker_service, "remove_helper", lambda helper_id: None)
+    ctx = type("Ctx", (), {"job": type("Job", (), {"id": "job1"})(), "set_output": print})()
+
+    compose_service.run_action(compose, "pull", ctx=ctx)  # type: ignore[arg-type]
+
+    [(script, kwargs)] = started
+    assert script.startswith('export DRYDOCK_GIT_AUTH_0="$(cat ')
+    # The token is read inside the helper: neither its script nor its config holds it.
+    assert "tok" not in script and "DRYDOCK_GIT_AUTH_0" not in kwargs["environment"]

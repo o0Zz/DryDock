@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import logging
+import os
 import re
 import shlex
 import shutil
 import subprocess
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -160,13 +162,36 @@ def override_path(compose_path: Path) -> Path | None:
     return None
 
 
-def git_secrets_file(files: list[Path]) -> Path | None:
+@dataclass(frozen=True)
+class GitSecrets:
+    # The extra Compose file that declares the secrets.
+    file: Path
+    # Environment variable -> file with its value (an `Authorization` header).
+    variables: dict[str, Path]
+
+    def environment(self) -> dict[str, str]:
+        return {name: path.read_text(encoding="utf-8") for name, path in self.variables.items()}
+
+    def exports(self) -> str:
+        """Shell that sets the variables from the files, so the helper container's
+        config never holds a token."""
+        return " && ".join(
+            f'export {name}="$(cat {shlex.quote(path.as_posix())})"'
+            for name, path in self.variables.items()
+        )
+
+
+def git_secrets(files: list[Path]) -> GitSecrets | None:
     """A Compose file that hands git logins to the builds that clone a private repo.
 
     BuildKit fetches a git build context with the `GIT_AUTH_HEADER.<host>`
     build secret when the build has one. This file declares that secret for
     each service built from a host with a stored login, so the user's Compose
     files need no token. None when no service needs one.
+
+    The secrets come from environment variables, not files: bake refuses to
+    read a file outside the project unless it is granted `--allow fs.read`,
+    which older Compose versions do not pass.
     """
     builds: dict[str, str] = {}
     for path in files:
@@ -179,21 +204,26 @@ def git_secrets_file(files: list[Path]) -> Path | None:
     hosts = sorted({host for host in builds.values() if git_auth_service.credentials(host)})
     if not hosts:
         return None
-    secret = {host: f"drydock_git_{index}" for index, host in enumerate(hosts)}
+    index = {host: number for number, host in enumerate(hosts)}
     content = yaml.safe_dump(
         {
             "secrets": {
-                secret[host]: {"file": git_auth_service.header_path(host).as_posix()}
+                f"drydock_git_{index[host]}": {"environment": f"DRYDOCK_GIT_AUTH_{index[host]}"}
                 for host in hosts
             },
             "services": {
                 name: {
                     "build": {
-                        "secrets": [{"source": secret[host], "target": f"GIT_AUTH_HEADER.{host}"}]
+                        "secrets": [
+                            {
+                                "source": f"drydock_git_{index[host]}",
+                                "target": f"GIT_AUTH_HEADER.{host}",
+                            }
+                        ]
                     }
                 }
                 for name, host in builds.items()
-                if host in secret
+                if host in index
             },
         },
         sort_keys=False,
@@ -203,25 +233,37 @@ def git_secrets_file(files: list[Path]) -> Path | None:
     if not path.is_file() or path.read_text(encoding="utf-8") != content:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(content, encoding="utf-8")
-    return path
+    variables = {
+        f"DRYDOCK_GIT_AUTH_{index[host]}": git_auth_service.header_path(host) for host in hosts
+    }
+    return GitSecrets(file=path, variables=variables)
 
 
-def _command(compose_path: Path, args: list[str], project_name: str | None = None) -> list[str]:
-    files = [compose_path]
+def _files(compose_path: Path) -> list[Path]:
     override = override_path(compose_path)
-    if override is not None:
-        files.append(override)
-    command = ["docker", "compose"]
-    for path in files:
-        command += ["-f", str(host_path_service.to_host(path))]
+    return [compose_path] if override is None else [compose_path, override]
+
+
+def _git_secrets(compose_path: Path) -> GitSecrets | None:
     try:
-        secrets = git_secrets_file(files)
+        return git_secrets(_files(compose_path))
     except (OSError, yaml.YAMLError) as exc:
         # Compose reports a broken file itself, with a better message.
         logger.debug("No git secrets for %s: %s", compose_path, exc)
-        secrets = None
+        return None
+
+
+def _command(
+    compose_path: Path,
+    args: list[str],
+    project_name: str | None = None,
+    secrets: GitSecrets | None = None,
+) -> list[str]:
+    command = ["docker", "compose"]
+    for path in _files(compose_path):
+        command += ["-f", str(host_path_service.to_host(path))]
     if secrets is not None:
-        command += ["-f", str(secrets)]
+        command += ["-f", str(secrets.file)]
     if project_name:
         command += ["-p", project_name]
     return command + args
@@ -235,8 +277,13 @@ def _compose(
     timeout: int = 300,
 ) -> subprocess.CompletedProcess[str]:
     # Through the host-path alias, so relative bind mounts resolve on the host.
-    command = _command(compose_path, args, project_name)
+    secrets = _git_secrets(compose_path)
+    command = _command(compose_path, args, project_name, secrets)
     logger.info("Running: %s", " ".join(command))
+    # Registry credentials for pulls, git logins for builds.
+    env = registry_auth_service.subprocess_env()
+    if secrets is not None:
+        env = {**(env or os.environ), **secrets.environment()}
     try:
         return subprocess.run(  # noqa: S603 — args list, no shell
             command,
@@ -244,8 +291,7 @@ def _compose(
             text=True,
             timeout=timeout,
             cwd=host_path_service.to_host(compose_path).parent,
-            # Registry credentials for pulls.
-            env=registry_auth_service.subprocess_env(),
+            env=env,
         )
     except FileNotFoundError as exc:
         raise ComposeError("`docker` CLI not found on PATH") from exc
@@ -294,7 +340,9 @@ def _run_in_helper(
     container is DryDock, a Compose process inside it dies with it and the
     stack stays down. The helper is a separate container, so it carries on.
     """
-    script = " && ".join(shlex.join(_command(compose_path, args, project_name)) for args in steps)
+    secrets = _git_secrets(compose_path)
+    commands = [shlex.join(_command(compose_path, args, project_name, secrets)) for args in steps]
+    script = " && ".join(([secrets.exports()] if secrets else []) + commands)
     # The helper lacks DryDock's host-path symlink: mount the repo at that path instead.
     host_repo = host_path_service.to_host(settings.repo_path)
     mounts = []
