@@ -3,7 +3,10 @@
 # ---------- Stage 0: version ----------
 # CI passes APP_VERSION. A local `docker compose build` does not, so it is
 # computed here from .git with the same rule as CI: release/X.Y.Z gives
-# X.Y.Z+<commit count>, any other branch gives 0.0.0-<branch>+<commit count>.
+# X.Y.Z+<commit count>, a vX.Y.Z tag gives X.Y.Z, any other branch gives
+# 0.0.0-<branch>+<commit count>.
+# A git URL build context has no .git unless the build passes
+# BUILDKIT_CONTEXT_KEEP_GIT_DIR=1. An ARG here cannot turn it on.
 FROM --platform=$BUILDPLATFORM alpine:3.22 AS version
 ARG APP_VERSION
 RUN apk add --no-cache git
@@ -12,11 +15,25 @@ RUN apk add --no-cache git
 # contents, hence --git-dir below.
 COPY backend/pyproject.toml .gi[t] /src/git/
 RUN set -eu; \
+    g() { git --git-dir=/src/git "$@"; }; \
     version="${APP_VERSION:-}"; \
-    if [ -z "$version" ] && count=$(git --git-dir=/src/git rev-list --count HEAD 2>/dev/null); then \
-        branch=$(git --git-dir=/src/git rev-parse --abbrev-ref HEAD); \
+    if [ -z "$version" ] && g rev-parse -q --verify HEAD >/dev/null 2>&1; then \
+        # A git URL context is a shallow clone. Fetch the rest of the history,
+        # commits only, to count them. Offline, the count is the clone's depth.
+        if [ "$(g rev-parse --is-shallow-repository)" = true ]; then \
+            g fetch -q --unshallow --filter=tree:0 origin || true; \
+        fi; \
+        count=$(g rev-list --count HEAD); \
+        branch=$(g rev-parse --abbrev-ref HEAD); \
+        # Its HEAD is also detached, with the ref it was built from as a branch.
+        if [ "$branch" = HEAD ]; then \
+            branch=$(g for-each-ref --points-at HEAD --count 1 --format '%(refname:lstrip=2)' refs/heads); \
+            branch="${branch:-HEAD}"; \
+        fi; \
         release=$(printf '%s' "$branch" | sed -nE 's#^release/([0-9]+\.[0-9]+(\.[0-9]+)?).*#\1#p'); \
-        if [ -n "$release" ]; then \
+        if printf '%s' "$branch" | grep -qE '^v[0-9]+\.[0-9]+\.[0-9]+'; then \
+            version="${branch#v}"; \
+        elif [ -n "$release" ]; then \
             # release/X.Y counts as X.Y.0.
             case "$release" in *.*.*) ;; *) release="$release.0" ;; esac; \
             version="$release+$count"; \

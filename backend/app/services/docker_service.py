@@ -484,12 +484,27 @@ def open_exec(container_id: str, *, cols: int = 80, rows: int = 24) -> ExecSessi
 
 
 def container_image(container_id: str) -> str | None:
-    """Image ID a container was created from, or None when there is no such container."""
+    """A local image to run a copy of a container with, or None.
+
+    That is the image the container was created from, else what its tag points
+    to now: once the tag is rebuilt, the old image can be gone while the
+    container still runs. Never a reference that would need a pull.
+    """
     try:
-        container = _get_container(container_id)
+        attrs = _get_container(container_id).attrs or {}
     except DockerNotFound:
         return None
-    return (container.attrs or {}).get("Image") or None
+    for reference in (attrs.get("Image"), (attrs.get("Config") or {}).get("Image")):
+        if not reference:
+            continue
+        try:
+            _client().images.get(reference)
+        except NotFound:
+            continue
+        except DockerException as exc:
+            raise DockerUnavailable(str(exc)) from exc
+        return reference
+    return None
 
 
 def mount_source(container_id: str, destination: str) -> str | None:
@@ -907,9 +922,14 @@ def start_compose_helper(
     `drydock.job` label lets a restarted DryDock find the helper again.
     """
     attrs = _get_container(parent_id).attrs or {}
+    image = container_image(parent_id)
+    if image is None:
+        raise DockerNotFound(f"no local image to copy container {parent_id} with")
     try:
-        helper = _client().containers.run(
-            image=attrs.get("Image"),
+        # create + start, not run: run pulls an image it cannot find, and an
+        # image ID is not something a registry has.
+        helper = _client().containers.create(
+            image=image,
             entrypoint=["sh", "-c"],
             command=[script],
             volumes_from=[parent_id],
@@ -920,8 +940,8 @@ def start_compose_helper(
             group_add=(attrs.get("HostConfig") or {}).get("GroupAdd") or None,
             labels={"drydock.helper": COMPOSE_HELPER, "drydock.job": job_id},
             log_config=LogConfig(type=LogConfig.types.JSON),
-            detach=True,
         )
+        helper.start()
     except DockerException as exc:
         raise DockerUnavailable(str(exc)) from exc
     return helper.id or ""

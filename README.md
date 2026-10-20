@@ -41,6 +41,15 @@ volumes:
 
 Works on `amd64` and `arm64` (Raspberry Pi 3, 4 and 5 with 64-bit OS).
 
+To build from source instead, replace `image:` with a git URL. The build reads the version from the repo's `.git`, which Docker drops from a git URL unless you keep it:
+
+```yaml
+    build:
+      context: https://github.com/<owner>/<repo>.git#main
+      args:
+        BUILDKIT_CONTEXT_KEEP_GIT_DIR: 1
+```
+
 ## Features
 
 - **Stacks:** every Compose file in your folder shows up as a project. Any `*.yml` file with a `services:` section counts. Start, stop, pull & build, reload or edit each one and its `.env`. **Pull & build** downloads newer images and rebuilds services that have a `build:` section. **Reload** stops the stack and runs `up`, so file changes apply. Create, rename, duplicate or delete a stack; a delete backs the stack up first. A `*.override.yml` next to a Compose file is merged in, like `docker compose up` does.

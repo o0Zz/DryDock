@@ -8,6 +8,7 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
+from docker.errors import NotFound
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
@@ -200,3 +201,80 @@ def test_interrupted_job_stays_running(monkeypatch: pytest.MonkeyPatch) -> None:
 
     with job_service.SessionLocal() as db:
         assert db.get(Job, "a").status == JobStatus.RUNNING
+
+
+# --- helper image -------------------------------------------------------------
+
+
+class FakeDocker:
+    """Docker with one DryDock container and the images in `present`."""
+
+    def __init__(self, present: set[str]) -> None:
+        self.present = present
+        self.created: list[dict[str, Any]] = []
+        self.started = 0
+        self.images = SimpleNamespace(get=self._image)
+        self.containers = SimpleNamespace(get=self._container, create=self._create)
+
+    def _image(self, reference: str) -> object:
+        if reference not in self.present:
+            raise NotFound("no such image")
+        return object()
+
+    def _container(self, container_id: str) -> SimpleNamespace:
+        attrs = {
+            "Image": "sha256:old",
+            "Config": {"Image": "drydock/drydock:latest", "User": ""},
+            "HostConfig": {},
+        }
+        return SimpleNamespace(id=container_id, attrs=attrs)
+
+    def _create(self, **kwargs: Any) -> SimpleNamespace:
+        self.created.append(kwargs)
+
+        def start() -> None:
+            self.started += 1
+
+        return SimpleNamespace(id="helper1", start=start)
+
+
+@pytest.mark.parametrize(
+    ("present", "expected"),
+    [
+        ({"sha256:old", "drydock/drydock:latest"}, "sha256:old"),
+        # The tag was rebuilt and the old image removed while DryDock still runs on it.
+        ({"drydock/drydock:latest"}, "drydock/drydock:latest"),
+        (set(), None),
+    ],
+)
+def test_helper_image_falls_back_to_the_tag(
+    monkeypatch: pytest.MonkeyPatch, present: set[str], expected: str | None
+) -> None:
+    monkeypatch.setattr(docker_service, "_client", lambda: FakeDocker(present))
+    assert docker_service.container_image("self") == expected
+
+
+def test_helper_is_created_never_pulled(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake = FakeDocker({"drydock/drydock:latest"})
+    monkeypatch.setattr(docker_service, "_client", lambda: fake)
+
+    helper = docker_service.start_compose_helper(
+        "docker compose up -d",
+        job_id="j",
+        parent_id="self",
+        mounts=[],
+        working_dir="/repo",
+        environment={},
+    )
+
+    assert helper == "helper1" and fake.started == 1
+    [kwargs] = fake.created
+    assert kwargs["image"] == "drydock/drydock:latest"
+
+
+def test_no_local_image_is_a_clear_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(docker_service, "_client", lambda: FakeDocker(set()))
+    with pytest.raises(docker_service.DockerNotFound, match="no local image"):
+        docker_service.start_compose_helper(
+            "true", job_id="j", parent_id="self", mounts=[], working_dir="/", environment={}
+        )
