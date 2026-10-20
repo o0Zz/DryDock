@@ -122,23 +122,31 @@ export default function Images() {
     };
     running.forEach((image) => rowFor(image));
     composeImages.forEach((image) => rowFor(image));
-    scans.forEach((scan) => {
-      rowFor(scan.image).scan = scan;
-    });
-    updates.forEach((update) => {
-      rowFor(update.image).update = update;
-    });
     // Attach local images to the rows that name them, and list the ones
     // nothing else mentions — those are the usual cleanup candidates.
     const byTag = new Map<string, ImageRow>();
     byImage.forEach((row) => byTag.set(withDefaultTag(row.image), row));
     localImages.forEach((localImage) =>
       localImage.tags.forEach((tag) => {
-        const row = byTag.get(withDefaultTag(tag)) ?? rowFor(tag);
+        let row = byTag.get(withDefaultTag(tag));
+        if (!row) {
+          row = rowFor(tag);
+          byTag.set(withDefaultTag(tag), row);
+        }
         row.local = localImage;
         if (localImage.used_by.some((imageUser) => imageUser.running)) row.inUse = true;
       }),
     );
+    // Scans and update checks outlive their image: a deleted image that nothing
+    // runs or names keeps its history, but gets no row.
+    scans.forEach((scan) => {
+      const row = byTag.get(withDefaultTag(scan.image));
+      if (row) row.scan = scan;
+    });
+    updates.forEach((update) => {
+      const row = byTag.get(withDefaultTag(update.image));
+      if (row) row.update = update;
+    });
 
     const needle = filter.trim().toLowerCase();
     return [...byImage.values()]
