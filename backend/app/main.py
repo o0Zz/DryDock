@@ -30,7 +30,7 @@ from app.api import (
 )
 from app.api import settings as settings_api
 from app.core import log_buffer
-from app.core.config import settings
+from app.core.config import DEFAULT_ADMIN_PASSWORD, settings
 from app.core.database import SessionLocal, init_db
 from app.core.security import get_current_user, hash_password
 from app.models.user import User
@@ -54,17 +54,23 @@ def _seed_admin() -> None:
     with SessionLocal() as db:
         if db.scalar(select(User).limit(1)) is not None:
             return
+        default = settings.admin_password == DEFAULT_ADMIN_PASSWORD
         admin = User(
             username=settings.admin_username,
             hashed_password=hash_password(settings.admin_password),
             is_admin=True,
+            must_change_password=default,
         )
         db.add(admin)
         db.commit()
-        logger.warning(
-            "Created bootstrap admin user %r. Change its password immediately.",
-            settings.admin_username,
-        )
+        if default:
+            logger.warning(
+                "Created bootstrap admin user %r with the default password. "
+                "It must be changed at first sign-in.",
+                settings.admin_username,
+            )
+        else:
+            logger.info("Created bootstrap admin user %r", settings.admin_username)
 
 
 @asynccontextmanager

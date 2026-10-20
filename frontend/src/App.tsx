@@ -30,6 +30,7 @@ import NewProject from "./pages/NewProject";
 import Networks from "./pages/Networks";
 import ProjectDetail from "./pages/ProjectDetail";
 import Projects from "./pages/Projects";
+import ChangeDefaultPassword from "./pages/ChangeDefaultPassword";
 import Settings from "./pages/Settings";
 import Users from "./pages/Users";
 import VolumeFiles from "./pages/VolumeFiles";
@@ -49,6 +50,10 @@ export default function App() {
 
   if (!user) {
     return <Login />;
+  }
+
+  if (user.must_change_password) {
+    return <ChangeDefaultPassword />;
   }
 
   return (

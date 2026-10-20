@@ -16,6 +16,8 @@ class UserRead(BaseModel):
     is_admin: bool
     is_active: bool
     created_at: UtcDatetime
+    # The UI shows only the password change screen while this is set.
+    must_change_password: bool = False
 
 
 class UserCreate(BaseModel):

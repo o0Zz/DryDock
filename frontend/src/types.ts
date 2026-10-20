@@ -4,6 +4,8 @@ export interface User {
   is_admin: boolean;
   is_active: boolean;
   created_at: string;
+  /** Still on the default password: the API refuses everything but a password change. */
+  must_change_password: boolean;
 }
 
 export type ProjectAction = "up" | "down" | "pull" | "reload" | "stop";

@@ -65,8 +65,12 @@ def _token_user(token: str, db: Session) -> User:
     return user
 
 
-def get_current_user(request: Request, db: Session = Depends(get_db)) -> User:
-    """The user of the session cookie, or of an `Authorization: Bearer <token>` header."""
+def get_authenticated_user(request: Request, db: Session = Depends(get_db)) -> User:
+    """The user of the session cookie, or of an `Authorization: Bearer <token>` header.
+
+    Also returns a user who still has to change the default password; only the
+    routes that let them do so use this directly.
+    """
     scheme, _, token = request.headers.get("authorization", "").partition(" ")
     if scheme.lower() == "bearer" and token.strip():
         return _token_user(token.strip(), db)
@@ -77,6 +81,16 @@ def get_current_user(request: Request, db: Session = Depends(get_db)) -> User:
     if user is None or not user.is_active:
         request.session.clear()
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
+    return user
+
+
+PASSWORD_CHANGE_REQUIRED = "Change the default password first"
+
+
+def get_current_user(user: User = Depends(get_authenticated_user)) -> User:
+    """The signed-in user, refused while they still use the default password."""
+    if user.must_change_password:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=PASSWORD_CHANGE_REQUIRED)
     return user
 
 

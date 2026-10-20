@@ -76,5 +76,6 @@
   "Registry": "Registre",
   "Password or access token": "Mot de passe ou jeton d'accès",
   "Checking…": "Vérification…",
-  "Save login": "Enregistrer l'identifiant"
+  "Save login": "Enregistrer l'identifiant",
+  "This account still uses the default password, which anyone can guess. Choose a new one to continue.": "Ce compte utilise encore le mot de passe par défaut, que tout le monde peut deviner. Choisissez-en un nouveau pour continuer."
 }

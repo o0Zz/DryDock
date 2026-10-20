@@ -37,7 +37,7 @@ volumes:
 
 1. Run `docker compose up -d`.
 2. Open <http://localhost:8080>.
-3. Log in with `admin` / `admin`, then change the password.
+3. Log in with `admin` / `admin`. DryDock asks for a new password before anything else.
 
 Works on `amd64` and `arm64` (Raspberry Pi 3, 4 and 5 with 64-bit OS).
 
@@ -69,7 +69,7 @@ Set these environment variables if you need to. Schedules and notifications are 
 | `DRYDOCK_REPO_HOST_PATH`     | *(detected)* | Host path of the repo. Only set it if detection fails (see Troubleshooting) |
 | `DRYDOCK_DATA_PATH`          | `/data`      | Database, backups and session key              |
 | `DRYDOCK_ADMIN_USERNAME`     | `admin`      | First admin, created on first start only       |
-| `DRYDOCK_ADMIN_PASSWORD`     | `admin`      | First admin's password. Change it after login. |
+| `DRYDOCK_ADMIN_PASSWORD`     | `admin`      | First admin's password. `admin` must be changed at first login. |
 | `DRYDOCK_ROOT_PATH`          | *(empty)*    | Set when served under a subpath, e.g. `/drydock` |
 | `DRYDOCK_SESSION_HTTPS_ONLY` | `false`      | Set `true` behind an HTTPS proxy               |
 | `DRYDOCK_SECRET_KEY`         | *(generated)* | Session signing key, saved in `/data` if not set |

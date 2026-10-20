@@ -17,6 +17,11 @@ def _built_version() -> str:
     return version.strip() or DEV_VERSION
 
 
+# Anyone can guess it, so an account that still uses it must change it before
+# doing anything else.
+DEFAULT_ADMIN_PASSWORD = "admin"
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="DRYDOCK_", env_file=".env", extra="ignore")
 
@@ -44,7 +49,7 @@ class Settings(BaseSettings):
     session_https_only: bool = False
     # Bootstrap admin, created on first startup if no users exist.
     admin_username: str = "admin"
-    admin_password: str = "admin"
+    admin_password: str = DEFAULT_ADMIN_PASSWORD
 
     @property
     def backups_path(self) -> Path:

@@ -18,7 +18,7 @@ from starlette.concurrency import run_in_threadpool
 
 from app.core.config import settings
 from app.core.database import SessionLocal
-from app.core.security import SESSION_USER_KEY
+from app.core.security import PASSWORD_CHANGE_REQUIRED, SESSION_USER_KEY
 from app.models.user import User
 from app.services import docker_service
 
@@ -77,6 +77,9 @@ async def container_console(
     user = _session_user(websocket)
     if user is None:
         await _close(websocket, CLOSE_UNAUTHORIZED, "Not authenticated")
+        return
+    if user.must_change_password:
+        await _close(websocket, CLOSE_FORBIDDEN, PASSWORD_CHANGE_REQUIRED)
         return
     if not user.is_admin:
         await _close(websocket, CLOSE_FORBIDDEN, "Administrator privileges required")
