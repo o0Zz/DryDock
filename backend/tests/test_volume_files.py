@@ -13,7 +13,7 @@ from fastapi.testclient import TestClient
 from app.core.security import get_current_user
 from app.main import app
 from app.schemas.volume import VolumeEntry
-from app.services import docker_service, volume_files_service
+from app.services import docker_service, host_path_service, volume_files_service
 
 
 @pytest.mark.parametrize(
@@ -23,6 +23,16 @@ from app.services import docker_service, volume_files_service
 def test_normalize_stays_inside_the_volume(raw: str, expected: str) -> None:
     assert volume_files_service.normalize(raw) == expected
 
+
+
+def test_helper_image_follows_a_rebuilt_tag(monkeypatch: pytest.MonkeyPatch) -> None:
+    # DryDock's image ID stops resolving once its tag is rebuilt: never keep a stale one.
+    monkeypatch.setattr(host_path_service, "own_container_id", lambda: "self")
+    images = iter(["sha256:old", "drydock:latest"])
+    monkeypatch.setattr(docker_service, "container_image", lambda container_id: next(images))
+
+    assert volume_files_service.helper_image() == "sha256:old"
+    assert volume_files_service.helper_image() == "drydock:latest"
 
 def test_parse_entries() -> None:
     output = (
@@ -49,7 +59,7 @@ def test_list_dir_sorts_folders_first_and_truncates(monkeypatch: pytest.MonkeyPa
         VolumeEntry(name="Z", type="dir", size=1),
         VolumeEntry(name="a", type="file", size=1),
     ]
-    monkeypatch.setattr(volume_files_service, "_image", "helper")
+    monkeypatch.setattr(volume_files_service, "helper_image", lambda: "helper")
     monkeypatch.setattr(docker_service, "list_volume_dir", lambda *args, **kwargs: entries)
     monkeypatch.setattr(volume_files_service, "MAX_ENTRIES", 2)
 

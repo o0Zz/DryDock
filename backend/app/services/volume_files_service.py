@@ -19,20 +19,25 @@ from app.services import docker_service, host_path_service
 # Plenty for a browser; a bigger folder is cut and flagged as truncated.
 MAX_ENTRIES = 2000
 
-_image: str | None = None
+_fallback_ready = False
 
 
 def helper_image() -> str:
-    """DryDock's own image when it runs in a container, else the configured fallback."""
-    global _image
-    if _image is None:
-        container_id = host_path_service.own_container_id()
-        image = docker_service.container_image(container_id) if container_id else None
-        if image is None:
-            image = settings.helper_image
-            docker_service.ensure_image(image)
-        _image = image
-    return _image
+    """DryDock's own image when it runs in a container, else the configured fallback.
+
+    Looked up on every call, not cached: rebuilding DryDock's tag can make the
+    image it runs on unresolvable by ID (containerd image store), and
+    `container_image` then answers with the tag.
+    """
+    global _fallback_ready
+    container_id = host_path_service.own_container_id()
+    image = docker_service.container_image(container_id) if container_id else None
+    if image is not None:
+        return image
+    if not _fallback_ready:
+        docker_service.ensure_image(settings.helper_image)
+        _fallback_ready = True
+    return settings.helper_image
 
 
 def normalize(path: str) -> str:

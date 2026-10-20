@@ -37,7 +37,7 @@ def db() -> Iterator[Session]:
 
 @pytest.fixture
 def helper(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(host_updates_service.volume_files_service, "_image", "helper")
+    monkeypatch.setattr(host_updates_service.volume_files_service, "helper_image", lambda: "helper")
 
 
 def test_parse_apt_output() -> None:
