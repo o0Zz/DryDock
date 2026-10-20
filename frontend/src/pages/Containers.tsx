@@ -7,12 +7,12 @@ import HealthBadge from "../components/HealthBadge";
 import ImageName from "../components/ImageName";
 import JobList from "../components/JobList";
 import { useConfirm } from "../components/ConfirmDialog";
-import Meter from "../components/Meter";
 import ScanBadge from "../components/ScanBadge";
 import SortHeader from "../components/SortHeader";
+import Sparkline from "../components/Sparkline";
 import UpdateAction from "../components/UpdateAction";
 import Uptime from "../components/Uptime";
-import { useContainerStats } from "../hooks/useContainerStats";
+import { useContainerStats, useStatsHistory } from "../hooks/useContainerStats";
 import {
   CONTAINER_ACTION_ICONS,
   CONTAINER_ACTION_LABELS,
@@ -31,6 +31,7 @@ import type {
   ContainerStats,
   Project,
   ScanSummary,
+  StatsSample,
   UpdateSummary,
 } from "../types";
 
@@ -44,6 +45,7 @@ export default function Containers() {
   const [consoleFor, setConsoleFor] = useState<Container | null>(null);
   const { user } = useAuth();
   const stats = useContainerStats();
+  const history = useStatsHistory(stats);
   const navigate = useNavigate();
   const [busy, setBusy] = useState<string | null>(null);
   const confirm = useConfirm();
@@ -289,7 +291,7 @@ export default function Containers() {
                 <td>
                   <Uptime container={container} />
                 </td>
-                <StatsCells stats={stats[container.id]} />
+                <StatsCells stats={stats[container.id]} history={history[container.id] ?? []} />
                 <td>
                   {formatPorts(container.ports)}
                 </td>
@@ -361,7 +363,7 @@ export default function Containers() {
   );
 }
 
-function StatsCells({ stats }: { stats?: ContainerStats }) {
+function StatsCells({ stats, history }: { stats?: ContainerStats; history: StatsSample[] }) {
   const t = useT();
   if (!stats) {
     return (
@@ -381,7 +383,17 @@ function StatsCells({ stats }: { stats?: ContainerStats }) {
         })}
       >
         {stats.cpu_percent.toFixed(1)}%
-        <Meter percent={stats.cpu_percent} />
+        <Sparkline
+          values={history.map((sample) => sample.cpu_percent)}
+          // Below 5% the line stays near the bottom: idle noise is not a trend.
+          floor={5}
+          hot={stats.cpu_percent >= 80}
+          label={t("CPU over the last {minutes} min: {min}% to {max}%", {
+            minutes: spanMinutes(history),
+            min: Math.min(...history.map((sample) => sample.cpu_percent)).toFixed(1),
+            max: Math.max(...history.map((sample) => sample.cpu_percent)).toFixed(1),
+          })}
+        />
       </td>
       <td
         title={t("Network rx {rx} / tx {tx}", {
@@ -391,8 +403,23 @@ function StatsCells({ stats }: { stats?: ContainerStats }) {
       >
         {formatBytes(stats.memory_usage)}
         <span className="muted"> / {formatBytes(stats.memory_limit)}</span>
-        <Meter percent={stats.memory_percent} />
+        <Sparkline
+          values={history.map((sample) => sample.memory_usage)}
+          hot={stats.memory_percent >= 80}
+          label={t("Memory over the last {minutes} min: {min} to {max}", {
+            minutes: spanMinutes(history),
+            min: formatBytes(Math.min(...history.map((sample) => sample.memory_usage))),
+            max: formatBytes(Math.max(...history.map((sample) => sample.memory_usage))),
+          })}
+        />
       </td>
     </>
   );
+}
+
+/** Minutes the samples cover, at least 1. */
+function spanMinutes(history: StatsSample[]): number {
+  if (history.length < 2) return 1;
+  const span = Date.parse(history[history.length - 1].at) - Date.parse(history[0].at);
+  return Math.max(1, Math.round(span / 60000));
 }

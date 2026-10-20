@@ -91,3 +91,11 @@ class ContainerStats(BaseModel):
     block_read: int
     block_write: int
     pids: int | None = None
+
+
+class StatsSample(BaseModel):
+    """One point of a container's recent CPU and memory history."""
+
+    at: datetime
+    cpu_percent: float
+    memory_usage: int

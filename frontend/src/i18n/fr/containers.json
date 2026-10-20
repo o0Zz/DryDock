@@ -146,5 +146,7 @@
   "Created {date}": "Créé le {date}",
   "Started {date}": "Démarré le {date}",
   "Stopped {date}": "Arrêté le {date}",
-  "stopped {duration} ago": "arrêté depuis {duration}"
+  "stopped {duration} ago": "arrêté depuis {duration}",
+  "CPU over the last {minutes} min: {min}% to {max}%": "CPU sur les {minutes} dernières min : de {min} % à {max} %",
+  "Memory over the last {minutes} min: {min} to {max}": "Mémoire sur les {minutes} dernières min : de {min} à {max}"
 }

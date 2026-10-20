@@ -26,6 +26,7 @@ import type {
   ScanSummary,
   SettingsPatch,
   StackChangeAccepted,
+  StatsSample,
   UpdateSummary,
   User,
   UserPatch,
@@ -151,6 +152,8 @@ export const api = {
     request<Job>(`/api/projects/${id}/${action}`, { method: "POST" }),
   listContainers: () => request<Container[]>("/api/containers"),
   containerStats: () => request<ContainerStats[]>("/api/containers/stats"),
+  containerStatsHistory: () =>
+    request<Record<string, StatsSample[]>>("/api/containers/stats/history"),
   inspectContainer: (id: string) =>
     request<ContainerDetail>(`/api/containers/${encodeURIComponent(id)}/inspect`),
   containerAction: (id: string, action: ContainerAction) =>

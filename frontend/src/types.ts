@@ -432,6 +432,13 @@ export interface ContainerStats {
   pids: number | null;
 }
 
+/** One point of a container's recent CPU and memory history. */
+export interface StatsSample {
+  at: string;
+  cpu_percent: number;
+  memory_usage: number;
+}
+
 export interface ApiToken {
   id: number;
   name: string;

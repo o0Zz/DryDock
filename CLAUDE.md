@@ -29,7 +29,8 @@ backend/
     services/          logic: docker_service, compose_service, repo_service, trivy_service,
                        registry_service, update_service, job_service, tasks, scheduler_service,
                        settings_service, notify_service, history_service, host_service,
-                       volume_files_service, host_updates_service, fail2ban_service
+                       volume_files_service, host_updates_service, fail2ban_service,
+                       stats_history_service
   migrations/versions/ Alembic revisions
   tests/               pytest
 frontend/src/
@@ -67,7 +68,7 @@ Dockerfile             3-stage build (frontend, backend venv, runtime with docke
   - Running version: `Container.image_version` comes from the `org.opencontainers.image.version` label (container labels include image labels, so no extra inspect). It is dropped when `ref.name` names another image, such as a version inherited from an ubuntu base. Many official Docker Hub images do not set it.
   - Newer tag: `registry_service` lists the registry's tags over the v2 API with a bearer token (anonymous, or logged in with the stored credentials). Only tags of the same shape count (same prefix, same number of parts, same suffix), so prereleases and other variants are ignored. It reports the newest tag and the newest within the current major, and skips outlier majors (a jump of more than 3).
 - **Networks** (`docker_service`): a network's inspect only lists running containers, and `docker network prune` goes by that, so it would remove the networks of stopped stacks. DryDock builds usage from every container's `NetworkSettings.Networks`, keyed by network name (a container that never started has no `NetworkID` yet). Remove and prune refuse used networks and Docker's own (`bridge`, `host`, `none`); prune is a job that removes the free ones one by one.
-- **Live data:** logs use SSE (`/api/logs/...`). Container stats are polled every 5s. The console is a WebSocket (`/api/containers/{id}/exec`).
+- **Live data:** logs use SSE (`/api/logs/...`). Container stats are polled every 5s. Each poll also feeds `stats_history_service`, an in-memory ring buffer (60 samples, about 5 min, lost on restart) behind the CPU and memory sparklines. It has no sampler of its own, so it only fills while a page polls. The console is a WebSocket (`/api/containers/{id}/exec`).
 - **Dashboard:** `/api/dashboard` returns counts and the "needs attention" lists in one call. CVE and update counts only include tracked images (running or named in a Compose file), so replaced tags stop counting. Host facts come from `docker info`.
   - Host load (`/api/dashboard/host`, polled every 5s) comes from `host_service`. It reads `/proc` and `/sys/class/thermal`. These are not namespaced, so inside the container they describe the host. Each value is `null` where missing (Windows dev, VMs without a sensor).
 - **Volume files** (`volume_files_service`): volume data lives under the Docker root on the host, which DryDock cannot see. Each request uses a throwaway helper container with the volume mounted read-only at `/volume` and no network.

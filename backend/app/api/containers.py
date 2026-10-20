@@ -5,9 +5,21 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from app.core.security import get_current_user
 from app.models.job import Job, JobKind
 from app.models.user import User
-from app.schemas.container import Container, ContainerDetail, ContainerRename, ContainerStats
+from app.schemas.container import (
+    Container,
+    ContainerDetail,
+    ContainerRename,
+    ContainerStats,
+    StatsSample,
+)
 from app.schemas.job import JobRead
-from app.services import docker_service, job_service, repo_service, tasks
+from app.services import (
+    docker_service,
+    job_service,
+    repo_service,
+    stats_history_service,
+    tasks,
+)
 
 router = APIRouter(prefix="/api/containers", tags=["containers"])
 
@@ -20,7 +32,15 @@ def list_containers() -> list[Container]:
 # Declared before /{container_id} so "stats" is not taken as a container id.
 @router.get("/stats", response_model=list[ContainerStats])
 def container_stats() -> list[ContainerStats]:
-    return docker_service.running_stats()
+    stats = docker_service.running_stats()
+    stats_history_service.record(stats)
+    return stats
+
+
+@router.get("/stats/history", response_model=dict[str, list[StatsSample]])
+def container_stats_history() -> dict[str, list[StatsSample]]:
+    """Recent samples per container ID, filled by calls to /stats."""
+    return stats_history_service.snapshot()
 
 
 @router.get("/{container_id}", response_model=Container)

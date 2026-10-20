@@ -715,6 +715,22 @@ input:focus {
 }
 .meter.hot > span { background: #cf222e; }
 
+.sparkline {
+  display: block;
+  width: 80px;
+  height: 18px;
+  margin-top: 0.2rem;
+  overflow: visible;
+}
+.sparkline polyline {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 1.5;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+.sparkline.hot polyline { stroke: #cf222e; }
+
 .new-stack-form {
   display: flex;
   flex-direction: column;

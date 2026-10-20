@@ -44,7 +44,7 @@ Works on `amd64` and `arm64` (Raspberry Pi 3, 4 and 5 with 64-bit OS).
 ## Features
 
 - **Stacks:** every Compose file in your folder shows up as a project. Any `*.yml` file with a `services:` section counts. Start, stop, pull & build, reload or edit each one and its `.env`. **Pull & build** downloads newer images and rebuilds services that have a `build:` section. **Reload** stops the stack and runs `up`, so file changes apply. Create, rename, duplicate or delete a stack; a delete backs the stack up first. A `*.override.yml` next to a Compose file is merged in, like `docker compose up` does.
-- **Containers:** start, stop, restart, pause, kill or rename. State, uptime, health check, restart count, CPU and memory, ports, live logs, a detail page, and a shell in the browser.
+- **Containers:** start, stop, restart, pause, kill or rename. State, uptime, health check, restart count, CPU and memory with a 5-minute sparkline, ports, live logs, a detail page, and a shell in the browser.
 - **Images:** see which images are in use, and remove or prune the rest.
 - **CVE scans:** scan one image, all running images, or all images in your Compose files.
 - **Updates:** finds rebuilt tags (`latest`, `stable`) and newer versions (`2025.10.4` → `2026.10.2`). For `postgres:16.2` you see both the newest `16.x` and the newest overall. For a floating tag like `stable`, the containers list shows the version the image declares (`org.opencontainers.image.version` label), when it has one.
