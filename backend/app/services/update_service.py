@@ -64,7 +64,7 @@ def check_image(image: str) -> UpdateResult:
     return result
 
 
-def _check_digest(image: str, auth: registry_service.Credentials = None) -> UpdateResult:
+def _check_digest(image: str, auth: registry_service.Credentials) -> UpdateResult:
     """Compare an image's local digest against the registry's for the same tag.
 
     Uses a registry manifest lookup (``docker manifest inspect`` equivalent), so

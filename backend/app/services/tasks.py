@@ -107,14 +107,6 @@ def store_update_check(
 # --- Image sources -----------------------------------------------------------
 
 
-def running_images() -> list[str]:
-    return docker_service.running_images()
-
-
-def compose_images() -> list[str]:
-    return repo_service.referenced_images()
-
-
 def git_images(compose_path: Path | None = None) -> dict[str, git_service.GitSource]:
     """Images built from a git repo, with that repo, optionally for one Compose file.
 
@@ -124,10 +116,7 @@ def git_images(compose_path: Path | None = None) -> dict[str, git_service.GitSou
     projects = repo_service.discover_projects()
     if compose_path is not None:
         projects = [project for project in projects if Path(project.compose_path) == compose_path]
-    try:
-        projects = repo_service.attach_containers(projects)
-    except docker_service.DockerUnavailable as exc:
-        logger.warning("Could not match containers to git builds: %s", exc)
+    projects = repo_service.attach_containers(projects)
     sources: dict[str, git_service.GitSource] = {}
     for project in projects:
         for service in project.services:
@@ -145,9 +134,9 @@ def git_images(compose_path: Path | None = None) -> dict[str, git_service.GitSou
 
 def all_known_images() -> list[str]:
     """Every image worth tracking: in use by a container, or named in a Compose file."""
-    images = set(compose_images())
+    images = set(repo_service.referenced_images())
     try:
-        images.update(running_images())
+        images.update(docker_service.running_images())
     except docker_service.DockerUnavailable as exc:
         logger.warning("Could not list running images: %s", exc)
     return sorted(images)

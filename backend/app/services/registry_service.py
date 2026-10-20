@@ -201,7 +201,7 @@ def list_tags(registry: str, repository: str, auth: Credentials = None) -> list[
     return tags
 
 
-def newer_tags(image: str, auth: Credentials = None) -> tuple[str | None, str | None]:
+def newer_tags(image: str, auth: Credentials) -> tuple[str | None, str | None]:
     """(newest, newest same major) for `image`, or (None, None) when its tag is
     not a version. Raises RegistryError when the registry cannot be queried."""
     registry, repository, tag = parse_reference(image)

@@ -87,7 +87,7 @@ def project_from_path(compose_path: Path) -> Project:
 
 def discover_projects() -> list[Project]:
     root = settings.repo_path.resolve()
-    if not root.exists() or not root.is_dir():
+    if not root.is_dir():
         logger.info("Repo path %s does not exist or is not a directory", root)
         return []
 

@@ -11,7 +11,7 @@ from apscheduler.triggers.interval import IntervalTrigger
 
 from app.core.database import SessionLocal
 from app.models.job import JobKind
-from app.services import job_service, settings_service, tasks
+from app.services import docker_service, job_service, settings_service, tasks
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +25,7 @@ def _run_scheduled_scan() -> None:
     job_service.submit(
         JobKind.SCAN_RUNNING,
         "Scheduled scan of running images",
-        tasks.scan_runner(tasks.running_images, notify=True),
+        tasks.scan_runner(docker_service.running_images, notify=True),
         trigger="schedule",
     )
 

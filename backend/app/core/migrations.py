@@ -97,7 +97,7 @@ def upgrade_database() -> None:
         migration_engine.dispose()
 
 
-def _backup_database(revision: str | None) -> Path:
+def _backup_database(revision: str | None) -> None:
     """Snapshot the database with SQLite's online backup API (WAL-safe)."""
     backup_dir = settings.backups_path / "db"
     backup_dir.mkdir(parents=True, exist_ok=True)
@@ -114,4 +114,3 @@ def _backup_database(revision: str | None) -> Path:
     # The timestamp prefix makes name order chronological.
     for old_backup in sorted(backup_dir.glob("drydock-*.db"))[:-KEEP_BACKUPS]:
         old_backup.unlink()
-    return target

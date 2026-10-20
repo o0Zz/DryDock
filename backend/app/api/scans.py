@@ -9,7 +9,14 @@ from app.models.job import Job, JobKind
 from app.models.scan import Scan
 from app.schemas.job import JobRead
 from app.schemas.scan import ScanDetail, ScanRequest, ScanSummary
-from app.services import history_service, job_service, tasks, trivy_service
+from app.services import (
+    docker_service,
+    history_service,
+    job_service,
+    repo_service,
+    tasks,
+    trivy_service,
+)
 
 router = APIRouter(prefix="/api/scans", tags=["scans"])
 
@@ -39,7 +46,7 @@ def scan_running() -> Job:
     return job_service.submit(
         JobKind.SCAN_RUNNING,
         "Scan running images",
-        tasks.scan_runner(tasks.running_images),
+        tasks.scan_runner(docker_service.running_images),
     )
 
 
@@ -49,7 +56,7 @@ def scan_compose() -> Job:
     return job_service.submit(
         JobKind.SCAN_COMPOSE,
         "Scan Compose images",
-        tasks.scan_runner(tasks.compose_images),
+        tasks.scan_runner(repo_service.referenced_images),
     )
 
 

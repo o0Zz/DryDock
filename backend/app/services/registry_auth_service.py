@@ -5,7 +5,7 @@ The file is a standard `config.json` (`auths` with base64 `user:password`) at
 
 - `docker compose` (pulls) and `trivy` (remote image fallback) read it through
   `DOCKER_CONFIG`, see `subprocess_env()`;
-- the digest check passes `auth_config()` to the daemon;
+- the digest check passes them to the daemon as `auth_config`;
 - the tag check in registry_service logs in to the token endpoint with it.
 
 Credential helpers (`credsStore`) are not supported: the values must be inline.
@@ -91,12 +91,6 @@ def credentials(registry: str) -> tuple[str, str] | None:
     """(username, password) for a registry, or None to stay anonymous."""
     entry = (_load().get("auths") or {}).get(normalize(registry))
     return _decode(entry) if isinstance(entry, dict) else None
-
-
-def auth_config(registry: str) -> dict[str, str] | None:
-    """Credentials in the shape docker-py's `auth_config` arguments take."""
-    found = credentials(registry)
-    return {"username": found[0], "password": found[1]} if found else None
 
 
 def set_credentials(registry: str, username: str, password: str) -> str:
