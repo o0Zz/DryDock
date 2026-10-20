@@ -222,30 +222,18 @@ export default function Images() {
     [remove, confirm, t],
   );
 
-  const onPrune = useCallback(
-    async (all: boolean): Promise<void> => {
-      const confirmed = await confirm(
-        all
-          ? {
-              title: t("Prune unused images?"),
-              message: t(
-                "Removes every image no container uses, running or stopped. They will need to be pulled again.",
-              ),
-              confirmLabel: t("Prune unused"),
-              tone: "danger",
-            }
-          : {
-              title: t("Prune dangling images?"),
-              message: t("Removes untagged images left behind by pulls and builds."),
-              confirmLabel: t("Prune dangling"),
-              tone: "danger",
-            },
-      );
-      if (!confirmed) return;
-      start(() => api.pruneImages(all));
-    },
-    [start, confirm, t],
-  );
+  const onPrune = useCallback(async (): Promise<void> => {
+    const confirmed = await confirm({
+      title: t("Prune unused images?"),
+      message: t(
+        "Removes every image no container uses, running or stopped. They will need to be pulled again.",
+      ),
+      confirmLabel: t("Prune"),
+      tone: "danger",
+    });
+    if (!confirmed) return;
+    start(api.pruneImages);
+  }, [start, confirm, t]);
 
   const openDetail = useCallback(async (scan: ScanSummary): Promise<void> => {
     try {
@@ -291,19 +279,10 @@ export default function Images() {
             type="button"
             className="secondary"
             disabled={removing || busy}
-            title={t("Remove untagged images left behind by pulls and builds")}
-            onClick={() => onPrune(false)}
-          >
-            <Trash2 size={15} /> {t("Prune dangling")}
-          </button>
-          <button
-            type="button"
-            className="secondary"
-            disabled={removing || busy}
             title={t("Remove every image no container uses")}
-            onClick={() => onPrune(true)}
+            onClick={onPrune}
           >
-            <Trash2 size={15} /> {t("Prune unused")}
+            <Trash2 size={15} /> {t("Prune")}
           </button>
           <button
             type="button"

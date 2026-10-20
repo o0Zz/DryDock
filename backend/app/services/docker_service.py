@@ -1195,10 +1195,11 @@ def remove_image(image: str, *, force: bool = False) -> None:
         raise DockerUnavailable(str(exc)) from exc
 
 
-def prune_images(*, all_unused: bool = False) -> PruneResult:
-    """Prune dangling images, or with ``all_unused`` every image without a container."""
+def prune_images() -> PruneResult:
+    """Prune every image without a container (`docker image prune -a`), dangling ones included."""
     try:
-        result = _client().images.prune(filters={"dangling": not all_unused})
+        # dangling=false is Docker's "all": tagged images go too, not only <none> ones.
+        result = _client().images.prune(filters={"dangling": False})
     except DockerException as exc:
         raise DockerUnavailable(str(exc)) from exc
     entries = result.get("ImagesDeleted") or []

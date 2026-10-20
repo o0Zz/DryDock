@@ -178,10 +178,9 @@ def test_remove_race_where_image_vanishes(fake: SimpleNamespace) -> None:
 # --- prune_images -------------------------------------------------------------
 
 
-@pytest.mark.parametrize(("all_unused", "dangling"), [(False, True), (True, False)])
-def test_prune_filter(fake: SimpleNamespace, all_unused: bool, dangling: bool) -> None:
-    docker_service.prune_images(all_unused=all_unused)
-    assert fake.images.prune_filters == {"dangling": dangling}
+def test_prune_removes_tagged_images_too(fake: SimpleNamespace) -> None:
+    docker_service.prune_images()
+    assert fake.images.prune_filters == {"dangling": False}
 
 
 def test_prune_counts_deleted_layers_not_untags(fake: SimpleNamespace) -> None:
@@ -193,7 +192,7 @@ def test_prune_counts_deleted_layers_not_untags(fake: SimpleNamespace) -> None:
         ],
         "SpaceReclaimed": 4096,
     }
-    result = docker_service.prune_images(all_unused=True)
+    result = docker_service.prune_images()
     assert result.deleted == ["sha256:aaa", "sha256:bbb"]
     assert result.space_reclaimed == 4096
 

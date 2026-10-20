@@ -92,18 +92,15 @@ def test_project_action_runner_fails_on_non_zero_exit(monkeypatch: pytest.Monkey
 
 
 def test_image_prune_runner_summary(monkeypatch: pytest.MonkeyPatch) -> None:
-    calls: list[bool] = []
-
-    def prune(*, all_unused: bool) -> PruneResult:
-        calls.append(all_unused)
-        return PruneResult(deleted=["sha256:a", "sha256:b"], space_reclaimed=3 * 1024 * 1024)
-
-    monkeypatch.setattr(docker_service, "prune_images", prune)
+    monkeypatch.setattr(
+        docker_service,
+        "prune_images",
+        lambda: PruneResult(deleted=["sha256:a", "sha256:b"], space_reclaimed=3 * 1024 * 1024),
+    )
     ctx = FakeJobContext()
 
-    tasks.image_prune_runner(all_unused=True)(ctx)
+    tasks.image_prune_runner()(ctx)
 
-    assert calls == [True]
     assert ctx.messages == ["Pruned 2 image(s), reclaimed 3.0 MB"]
 
 
@@ -133,7 +130,7 @@ def test_prune_runner_propagates_docker_down(monkeypatch: pytest.MonkeyPatch) ->
 
     monkeypatch.setattr(docker_service, "prune_images", down)
     with pytest.raises(docker_service.DockerUnavailable):
-        tasks.image_prune_runner(all_unused=False)(FakeJobContext())
+        tasks.image_prune_runner()(FakeJobContext())
 
 
 # --- routes -----------------------------------------------------------------------
@@ -222,17 +219,11 @@ def test_project_action_unknown_project(
     assert submitted == []
 
 
-@pytest.mark.parametrize(
-    ("query", "label"),
-    [("", "Prune dangling images"), ("?all=true", "Prune unused images")],
-)
-def test_image_prune_queues_job(
-    client: TestClient, submitted: list[tuple[str, str]], query: str, label: str
-) -> None:
-    response = client.post(f"/api/images/prune{query}")
+def test_image_prune_queues_job(client: TestClient, submitted: list[tuple[str, str]]) -> None:
+    response = client.post("/api/images/prune")
 
     assert response.status_code == 202
-    assert submitted == [(JobKind.IMAGE_PRUNE, label)]
+    assert submitted == [(JobKind.IMAGE_PRUNE, "Prune unused images")]
 
 
 def test_volume_prune_queues_job(client: TestClient, submitted: list[tuple[str, str]]) -> None:

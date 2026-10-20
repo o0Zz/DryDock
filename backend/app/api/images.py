@@ -14,16 +14,10 @@ def list_images() -> list[Image]:
 
 
 @router.post("/prune", response_model=JobRead, status_code=status.HTTP_202_ACCEPTED)
-def prune_images(
-    all_unused: bool = Query(
-        default=False,
-        alias="all",
-        description="Remove every image without a container, not only dangling ones",
-    ),
-) -> Job:
-    label = "Prune unused images" if all_unused else "Prune dangling images"
+def prune_images() -> Job:
+    """Remove every image no container uses, dangling ones included."""
     return job_service.submit(
-        JobKind.IMAGE_PRUNE, label, tasks.image_prune_runner(all_unused=all_unused)
+        JobKind.IMAGE_PRUNE, "Prune unused images", tasks.image_prune_runner()
     )
 
 

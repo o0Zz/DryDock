@@ -394,11 +394,11 @@ def _format_bytes(size: int) -> str:
     return f"{value:.1f} TB"
 
 
-def image_prune_runner(*, all_unused: bool) -> JobRunner:
-    """Build a job body that prunes dangling images, or every unused one."""
+def image_prune_runner() -> JobRunner:
+    """Build a job body that prunes every image no container uses."""
 
     def run(ctx: JobContext) -> None:
-        result = docker_service.prune_images(all_unused=all_unused)
+        result = docker_service.prune_images()
         ctx.note(
             f"Pruned {len(result.deleted)} image(s), "
             f"reclaimed {_format_bytes(result.space_reclaimed)}"

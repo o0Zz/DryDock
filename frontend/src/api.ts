@@ -251,6 +251,5 @@ export const api = {
     request<void>(`/api/images?image=${encodeURIComponent(image)}&force=${force}`, {
       method: "DELETE",
     }),
-  pruneImages: (all = false) =>
-    request<Job>(`/api/images/prune?all=${all}`, { method: "POST" }),
+  pruneImages: () => request<Job>("/api/images/prune", { method: "POST" }),
 };
