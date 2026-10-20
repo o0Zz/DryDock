@@ -216,3 +216,37 @@ def test_tag_listing_sends_credentials_to_the_token_endpoint(
 
     assert tags == ["1.0", "1.1"]
     assert seen == ["Basic " + base64.b64encode(b"bot:secret").decode()]
+
+
+def test_edit_keeps_the_password_unless_given(
+    client: TestClient, data_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    logins: list[tuple[str, str, str]] = []
+    monkeypatch.setattr(docker_service, "registry_login", lambda *args: logins.append(args))
+    registry_auth_service.set_credentials("ghcr.io", "bot", "secret")
+
+    # Rename the registry and the user, with the password left empty.
+    response = client.put(
+        "/api/registries",
+        params={"registry": "ghcr.io"},
+        json={"registry": "registry.lan:5000", "username": "bot2", "password": ""},
+    )
+    assert response.status_code == 200
+    assert response.json() == {"registry": "registry.lan:5000", "username": "bot2"}
+    assert registry_auth_service.credentials("registry.lan:5000") == ("bot2", "secret")
+    assert registry_auth_service.credentials("ghcr.io") is None
+
+    client.put(
+        "/api/registries",
+        params={"registry": "registry.lan:5000"},
+        json={"registry": "registry.lan:5000", "username": "bot2", "password": "new"},
+    )
+    assert registry_auth_service.credentials("registry.lan:5000") == ("bot2", "new")
+    assert logins == [("registry.lan:5000", "bot2", "secret"), ("registry.lan:5000", "bot2", "new")]
+
+    missing = client.put(
+        "/api/registries",
+        params={"registry": "ghcr.io"},
+        json={"registry": "ghcr.io", "username": "x", "password": ""},
+    )
+    assert missing.status_code == 404

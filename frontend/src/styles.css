@@ -792,6 +792,17 @@ input:focus {
 .settings-panel .subsection p.muted { margin-top: 0; }
 .settings-save { margin-top: 0; }
 
+/* Logins edited in place: the cells are the fields. */
+.login-table td { vertical-align: middle; }
+.login-table input {
+  width: 100%;
+  min-width: 9rem;
+  box-sizing: border-box;
+  padding: 0.35rem 0.6rem;
+}
+.login-table td:last-child { width: 1%; white-space: nowrap; }
+.login-table tr.login-new td { padding-top: 0.75rem; }
+
 .kv-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(min(260px, 100%), 1fr));

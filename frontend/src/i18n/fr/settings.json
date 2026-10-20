@@ -74,7 +74,6 @@
   "Registry": "Registre",
   "Password or access token": "Mot de passe ou jeton d'accès",
   "Checking…": "Vérification…",
-  "Save login": "Enregistrer l'identifiant",
   "This account still uses the default password, which anyone can guess. Choose a new one to continue.": "Ce compte utilise encore le mot de passe par défaut, que tout le monde peut deviner. Choisissez-en un nouveau pour continuer.",
   "Git logins": "Identifiants git",
   "Used for private git repos over https: builds from a git URL, their update checks, and push and pull of the repo folder. Enter a repo URL to check the login before it is saved, or only a host. Use an access token instead of a password.": "Utilisés pour les dépôts git privés en https : builds depuis une URL git, leurs vérifications de mise à jour, et push et pull du dossier du dépôt. Saisissez l'URL d'un dépôt pour vérifier l'identifiant avant de l'enregistrer, ou seulement un hôte. Utilisez un jeton d'accès plutôt qu'un mot de passe.",
@@ -89,5 +88,7 @@
   "Unsaved changes": "Modifications non enregistrées",
   "Schedules": "Planification",
   "CVE scans": "Scans CVE",
-  "Update checks": "Vérifications de mise à jour"
+  "Update checks": "Vérifications de mise à jour",
+  "Leave empty to keep the stored one": "Laisser vide pour garder celui enregistré",
+  "Undo changes": "Annuler les modifications"
 }

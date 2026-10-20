@@ -15,3 +15,8 @@ class RegistryCredentialCreate(BaseModel):
     username: str = Field(min_length=1, max_length=255)
     # Password or access token. Write-only: never returned by the API.
     password: str = Field(min_length=1, max_length=4096)
+
+
+class RegistryCredentialUpdate(RegistryCredentialCreate):
+    # Empty keeps the stored password: the UI never sees it.
+    password: str = Field(default="", max_length=4096)

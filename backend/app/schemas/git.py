@@ -19,6 +19,11 @@ class GitCredentialCreate(BaseModel):
     token: str = Field(min_length=1, max_length=4096)
 
 
+class GitCredentialUpdate(GitCredentialCreate):
+    # Empty keeps the stored token: the UI never sees it.
+    token: str = Field(default="", max_length=4096)
+
+
 class RepoChange(BaseModel):
     # `git status --porcelain` code, e.g. " M", "??".
     status: str

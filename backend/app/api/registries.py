@@ -1,7 +1,11 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from app.core.security import require_admin
-from app.schemas.registry import RegistryCredentialCreate, RegistryCredentialRead
+from app.schemas.registry import (
+    RegistryCredentialCreate,
+    RegistryCredentialRead,
+    RegistryCredentialUpdate,
+)
 from app.services import docker_service, registry_auth_service
 
 # Credentials reach private images, so only admins manage them.
@@ -25,6 +29,23 @@ def add_registry(body: RegistryCredentialCreate) -> RegistryCredentialRead:
     docker_service.registry_login(registry, body.username, body.password)
     registry_auth_service.set_credentials(registry, body.username, body.password)
     return RegistryCredentialRead(registry=registry, username=body.username)
+
+
+@router.put("", response_model=RegistryCredentialRead)
+def update_registry(
+    body: RegistryCredentialUpdate, registry: str = Query()
+) -> RegistryCredentialRead:
+    """Change a stored login: its registry, username or password (empty keeps it)."""
+    current = registry_auth_service.credentials(registry)
+    if current is None:
+        raise HTTPException(status_code=404, detail=f"No credentials for {registry}")
+    new_registry = registry_auth_service.normalize(body.registry)
+    password = body.password or current[1]
+    docker_service.registry_login(new_registry, body.username, password)
+    if new_registry != registry_auth_service.normalize(registry):
+        registry_auth_service.remove_credentials(registry)
+    registry_auth_service.set_credentials(new_registry, body.username, password)
+    return RegistryCredentialRead(registry=new_registry, username=body.username)
 
 
 @router.delete("", status_code=status.HTTP_204_NO_CONTENT)

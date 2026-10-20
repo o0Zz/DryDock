@@ -294,3 +294,34 @@ def test_helper_script_reads_the_login_from_data(
     assert script.startswith('export DRYDOCK_GIT_AUTH_0="$(cat ')
     # The token is read inside the helper: neither its script nor its config holds it.
     assert "tok" not in script and "DRYDOCK_GIT_AUTH_0" not in kwargs["environment"]
+
+
+def test_edit_login_keeps_the_token_unless_given(
+    client: TestClient, server: dict[str, Any]
+) -> None:
+    git_auth_service.set_credentials("git.example.com", "me", "tok")
+
+    response = client.put(
+        "/api/git/credentials",
+        params={"host": "git.example.com"},
+        json={"url": "git.lan:3000", "username": "me2", "token": ""},
+    )
+    assert response.status_code == 200
+    assert response.json() == {"host": "git.lan:3000", "username": "me2"}
+    assert git_auth_service.list_hosts() == [("git.lan:3000", "me2")]
+    assert git_auth_service.credentials("git.lan:3000") == ("me2", "tok")
+
+    # A repo URL checks the login, here with the stored token.
+    client.put(
+        "/api/git/credentials",
+        params={"host": "git.lan:3000"},
+        json={"url": "https://git.lan:3000/me/app.git", "username": "me2", "token": ""},
+    )
+    assert server["auth"] == [("me2", "tok")]
+
+    missing = client.put(
+        "/api/git/credentials",
+        params={"host": "nope.example.com"},
+        json={"url": "nope.example.com", "username": "x", "token": ""},
+    )
+    assert missing.status_code == 404

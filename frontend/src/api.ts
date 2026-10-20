@@ -219,6 +219,12 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ registry, username, password }),
     }),
+  /** An empty password keeps the stored one. */
+  updateRegistry: (current: string, registry: string, username: string, password: string) =>
+    request<RegistryCredential>(`/api/registries?registry=${encodeURIComponent(current)}`, {
+      method: "PUT",
+      body: JSON.stringify({ registry, username, password }),
+    }),
   removeRegistry: (registry: string) =>
     request<void>(`/api/registries?registry=${encodeURIComponent(registry)}`, {
       method: "DELETE",
@@ -229,6 +235,12 @@ export const api = {
   addGitCredential: (url: string, username: string, token: string) =>
     request<GitCredential>("/api/git/credentials", {
       method: "POST",
+      body: JSON.stringify({ url, username, token }),
+    }),
+  /** An empty token keeps the stored one. */
+  updateGitCredential: (host: string, url: string, username: string, token: string) =>
+    request<GitCredential>(`/api/git/credentials?host=${encodeURIComponent(host)}`, {
+      method: "PUT",
       body: JSON.stringify({ url, username, token }),
     }),
   removeGitCredential: (host: string) =>
