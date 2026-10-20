@@ -125,9 +125,9 @@ RUN set -eux; \
     apt-get purge -y curl; \
     apt-get autoremove -y; \
     rm -rf /var/lib/apt/lists/*; \
-    # The app runs from its own venv. The system setuptools/wheel are unused
-    # and vendor packages with known CVEs.
-    python -m pip uninstall -y setuptools wheel || true
+    # The app runs from its own venv, which has no pip. The system pip,
+    # setuptools and wheel are unused and carry known CVEs.
+    python -m pip uninstall -y setuptools wheel pip || true
 
 WORKDIR /app
 
