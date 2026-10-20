@@ -15,6 +15,7 @@ from app.api import (
     console,
     containers,
     dashboard,
+    git,
     host,
     images,
     jobs,
@@ -161,6 +162,7 @@ app.include_router(settings_api.router, dependencies=_auth)
 app.include_router(logs.router, dependencies=_auth)
 app.include_router(users.router)  # already guarded by require_admin
 app.include_router(registries.router, dependencies=_auth)
+app.include_router(git.router, dependencies=_auth)
 app.include_router(tokens.router, dependencies=_auth)
 app.include_router(console.router)  # WebSocket; checks the session itself
 

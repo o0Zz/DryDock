@@ -498,15 +498,27 @@ def container_image(container_id: str) -> str | None:
 
 
 def mount_source(container_id: str, destination: str) -> str | None:
-    """Host path (or volume path) mounted at `destination` in a container."""
+    """Host path (or volume path) of `destination` in a container.
+
+    `destination` may sit inside a mount: with the git repo root mounted at
+    `/repo`, the Compose folder `/repo/docker` is `<source>/docker`.
+    """
     try:
         container = _get_container(container_id)
     except DockerNotFound:
         return None
+    best: tuple[str, str] | None = None
     for mount in (container.attrs or {}).get("Mounts") or []:
-        if mount.get("Destination") == destination:
-            return mount.get("Source") or None
-    return None
+        target, source = mount.get("Destination") or "", mount.get("Source")
+        if not source or not (destination == target or destination.startswith(target + "/")):
+            continue
+        # Nested mounts: the deepest one holds the path.
+        if best is None or len(target) > len(best[0]):
+            best = (target, source)
+    if best is None:
+        return None
+    target, source = best
+    return source + destination[len(target) :]
 
 
 # --- Volumes -----------------------------------------------------------------

@@ -26,6 +26,8 @@ class JobKind:
     # Delete, rename or duplicate a stack.
     STACK_CHANGE = "stack_change"
     HOST_UPDATE_CHECK = "host_update_check"
+    # Commit, push or pull the repo folder.
+    REPO_GIT = "repo_git"
 
 
 class Job(Base):

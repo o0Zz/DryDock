@@ -2,7 +2,9 @@ import { FolderGit2, Plus, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { api } from "../api";
+import { useAuth } from "../auth";
 import { useConfirm } from "../components/ConfirmDialog";
+import RepoGit from "../components/RepoGit";
 import SortHeader from "../components/SortHeader";
 import { formatDate } from "../format";
 import { useSort } from "../hooks/useSort";
@@ -40,6 +42,7 @@ export default function Projects() {
   const navigate = useNavigate();
   const confirm = useConfirm();
   const t = useT();
+  const { user } = useAuth();
   const sorting = useSort(projects, {
     storageKey: "drydock.sort.projects",
     columns: {
@@ -155,6 +158,7 @@ export default function Projects() {
           </tbody>
         </table>
       )}
+      {user?.is_admin && <RepoGit onPulled={load} />}
     </div>
   );
 }

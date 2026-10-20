@@ -226,5 +226,8 @@ def test_mount_source(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(docker_service, "_client", lambda: client)
 
     assert docker_service.mount_source(CONTAINER_ID, "/repo") == "/home/pi/docker"
+    # A Compose folder inside a mounted git repo.
+    assert docker_service.mount_source(CONTAINER_ID, "/repo/stacks") == "/home/pi/docker/stacks"
+    assert docker_service.mount_source(CONTAINER_ID, "/repository") is None
     assert docker_service.mount_source(CONTAINER_ID, "/nope") is None
     assert docker_service.mount_source("other", "/repo") is None

@@ -4,6 +4,7 @@ import { api } from "../api";
 import { useAuth } from "../auth";
 import ApiTokens from "../components/ApiTokens";
 import ChangePassword from "../components/ChangePassword";
+import GitCredentials from "../components/GitCredentials";
 import RegistryCredentials from "../components/RegistryCredentials";
 import { formatDate } from "../format";
 import { useT } from "../i18n";
@@ -218,6 +219,7 @@ export default function Settings() {
       <ChangePassword title={t("Your password")} />
       <ApiTokens />
       {user?.is_admin && <RegistryCredentials />}
+      {user?.is_admin && <GitCredentials />}
 
       <section className="section">
         <h2>{t("Environment")}</h2>

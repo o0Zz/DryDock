@@ -464,3 +464,32 @@ export interface RegistryCredential {
   registry: string;
   username: string;
 }
+
+export interface GitCredential {
+  /** Host with its port, e.g. `github.com` or `git.lan:3000`. */
+  host: string;
+  username: string;
+}
+
+export interface RepoChange {
+  /** `git status --porcelain` code: index then work tree, e.g. " M", "??". */
+  status: string;
+  /** Relative to the repo folder. */
+  path: string;
+}
+
+/** The git repository the repo folder is part of. */
+export interface RepoGitStatus {
+  supported: boolean;
+  /** Why not, when not supported. */
+  reason: string | null;
+  branch: string | null;
+  upstream: string | null;
+  /** Against the upstream as of the last pull or push. */
+  ahead: number;
+  behind: number;
+  remote_url: string | null;
+  /** A login is stored for the remote's host. */
+  has_login: boolean;
+  changes: RepoChange[];
+}

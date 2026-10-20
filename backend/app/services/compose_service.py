@@ -12,7 +12,15 @@ import yaml
 from docker.types import Mount
 
 from app.core.config import settings
-from app.services import docker_service, host_path_service, job_service, registry_auth_service
+from app.services import (
+    docker_service,
+    git_auth_service,
+    git_service,
+    host_path_service,
+    job_service,
+    registry_auth_service,
+    repo_service,
+)
 from app.services.job_service import JobContext
 from app.services.repo_service import COMPOSE_FILENAMES
 
@@ -152,11 +160,68 @@ def override_path(compose_path: Path) -> Path | None:
     return None
 
 
+def git_secrets_file(files: list[Path]) -> Path | None:
+    """A Compose file that hands git logins to the builds that clone a private repo.
+
+    BuildKit fetches a git build context with the `GIT_AUTH_HEADER.<host>`
+    build secret when the build has one. This file declares that secret for
+    each service built from a host with a stored login, so the user's Compose
+    files need no token. None when no service needs one.
+    """
+    builds: dict[str, str] = {}
+    for path in files:
+        data = yaml.safe_load(path.read_text(encoding="utf-8")) if path.is_file() else None
+        services = data.get("services") if isinstance(data, dict) else None
+        for name, spec in (services or {}).items():
+            source = git_service.parse_build(spec.get("build") if isinstance(spec, dict) else None)
+            if source is not None and source.url.startswith("https://"):
+                builds[str(name)] = git_auth_service.normalize(source.url)
+    hosts = sorted({host for host in builds.values() if git_auth_service.credentials(host)})
+    if not hosts:
+        return None
+    secret = {host: f"drydock_git_{index}" for index, host in enumerate(hosts)}
+    content = yaml.safe_dump(
+        {
+            "secrets": {
+                secret[host]: {"file": git_auth_service.header_path(host).as_posix()}
+                for host in hosts
+            },
+            "services": {
+                name: {
+                    "build": {
+                        "secrets": [{"source": secret[host], "target": f"GIT_AUTH_HEADER.{host}"}]
+                    }
+                }
+                for name, host in builds.items()
+                if host in secret
+            },
+        },
+        sort_keys=False,
+    )
+    # Under /data, which the Compose helper container shares.
+    path = settings.data_path / "git" / "compose" / f"{repo_service.project_id(files[0])}.yml"
+    if not path.is_file() or path.read_text(encoding="utf-8") != content:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content, encoding="utf-8")
+    return path
+
+
 def _command(compose_path: Path, args: list[str], project_name: str | None = None) -> list[str]:
-    command = ["docker", "compose", "-f", str(host_path_service.to_host(compose_path))]
+    files = [compose_path]
     override = override_path(compose_path)
     if override is not None:
-        command += ["-f", str(host_path_service.to_host(override))]
+        files.append(override)
+    command = ["docker", "compose"]
+    for path in files:
+        command += ["-f", str(host_path_service.to_host(path))]
+    try:
+        secrets = git_secrets_file(files)
+    except (OSError, yaml.YAMLError) as exc:
+        # Compose reports a broken file itself, with a better message.
+        logger.debug("No git secrets for %s: %s", compose_path, exc)
+        secrets = None
+    if secrets is not None:
+        command += ["-f", str(secrets)]
     if project_name:
         command += ["-p", project_name]
     return command + args

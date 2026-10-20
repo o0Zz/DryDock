@@ -15,6 +15,7 @@ import type {
   EnvContent,
   EnvSaveResult,
   Fail2banReport,
+  GitCredential,
   HostUpdates,
   HostUsage,
   Job,
@@ -22,6 +23,7 @@ import type {
   Project,
   ProjectAction,
   RegistryCredential,
+  RepoGitStatus,
   ScanDetail,
   ScanSummary,
   SettingsPatch,
@@ -221,6 +223,24 @@ export const api = {
     request<void>(`/api/registries?registry=${encodeURIComponent(registry)}`, {
       method: "DELETE",
     }),
+
+  // git logins and the repo's git (admin)
+  listGitCredentials: () => request<GitCredential[]>("/api/git/credentials"),
+  addGitCredential: (url: string, username: string, token: string) =>
+    request<GitCredential>("/api/git/credentials", {
+      method: "POST",
+      body: JSON.stringify({ url, username, token }),
+    }),
+  removeGitCredential: (host: string) =>
+    request<void>(`/api/git/credentials?host=${encodeURIComponent(host)}`, { method: "DELETE" }),
+  repoGitStatus: () => request<RepoGitStatus>("/api/git/repo"),
+  commitRepo: (message: string, push: boolean) =>
+    request<Job>("/api/git/repo/commit", {
+      method: "POST",
+      body: JSON.stringify({ message, push }),
+    }),
+  pushRepo: () => request<Job>("/api/git/repo/push", { method: "POST" }),
+  pullRepo: () => request<Job>("/api/git/repo/pull", { method: "POST" }),
 
   // networks
   listNetworks: () => request<DockerNetwork[]>("/api/networks"),

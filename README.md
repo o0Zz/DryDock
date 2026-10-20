@@ -56,10 +56,12 @@ To build from source instead, replace `image:` with a git URL. The build reads t
 - **Containers:** start, stop, restart, pause, kill or rename. State, uptime, health check, restart count, CPU and memory with a 5-minute sparkline, ports, live logs, a detail page, and a shell in the browser.
 - **Images:** see which images are in use, and remove or prune the rest.
 - **CVE scans:** scan one image, all running images, or all images in your Compose files.
-- **Updates:** finds rebuilt tags (`latest`, `stable`) and newer versions (`2025.10.4` → `2026.10.2`). A service built from a public git URL (`build: https://github.com/me/app.git#main`) shows an update when its ref gets a new commit, and Update rebuilds it. For `postgres:16.2` you see both the newest `16.x` and the newest overall. For a floating tag like `stable`, the containers list shows the version the image declares (`org.opencontainers.image.version` label), when it has one.
+- **Updates:** finds rebuilt tags (`latest`, `stable`) and newer versions (`2025.10.4` → `2026.10.2`). A service built from a git URL (`build: https://github.com/me/app.git#main`) shows an update when its ref gets a new commit, and Update rebuilds it. For `postgres:16.2` you see both the newest `16.x` and the newest overall. For a floating tag like `stable`, the containers list shows the version the image declares (`org.opencontainers.image.version` label), when it has one.
 - **Background jobs:** scans, update checks, stack actions and prunes run in the background. The top bar shows progress from any page. Compose commands run in a short-lived helper container, so DryDock can update its own stack and come back.
 - **Schedules and alerts:** run scans and update checks on an interval, and send results to a webhook.
 - **Private registries:** admins save a login per registry (Docker Hub, GHCR, your own) on the Settings page. Update checks, pulls and scans use it. DryDock checks the login with the registry before it saves it.
+- **Git logins:** admins save a login per git host (GitHub, Gitea, your own) on the Settings page. Builds from a private git URL and their update checks use it, with no token in your Compose files. Given a repo URL, DryDock checks the login before it saves it.
+- **Git for the repo folder:** when your Compose folder is in a git repo, the Projects page lists the changes and has **Commit & push** and **Pull** (fast-forward only), for admins. See [Git](#git).
 - **API tokens:** each user can create tokens on the Settings page for scripts and CI, e.g. `curl -H "Authorization: Bearer ddt_..." http://drydock:8080/api/containers`. A token has the rights of its user.
 - **Users and volumes:** several users with an admin flag, and named volume management. Admins can browse the files in a volume (read-only) and download them.
 - **Networks:** driver, subnet and attached containers of every network. Remove one, or prune the custom networks no container uses. Networks of stopped stacks are kept, unlike `docker network prune`.
@@ -92,6 +94,23 @@ proxy_http_version 1.1;
 proxy_set_header Upgrade $http_upgrade;
 proxy_set_header Connection "upgrade";
 ```
+
+## Git
+
+DryDock needs the repo's `.git` to commit, push and pull. When your Compose files sit in a sub-folder of the repo, mount the repo root and point `DRYDOCK_REPO_PATH` at the folder:
+
+```yaml
+    volumes:
+      - /home/pi/homelab:/repo         # the git repo root
+    environment:
+      - DRYDOCK_REPO_PATH=/repo/docker # your Compose files
+```
+
+- A commit takes every change in the repo folder, `.env` files included unless `.gitignore` lists them. The Projects page lists them first.
+- git runs as the owner of `.git`, so the files it writes stay yours.
+- Commits use the repo's `user.name`. Without one, the author is the DryDock user.
+- Push and pull use the git login for the remote's host. https remotes only: DryDock has no SSH keys.
+- After a pull, apply the changes with **Reload** on each stack. DryDock never redeploys on its own.
 
 ## Troubleshooting
 

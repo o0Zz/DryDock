@@ -26,6 +26,7 @@ from app.services import (
     host_updates_service,
     job_service,
     notify_service,
+    repo_git_service,
     repo_service,
     settings_service,
     stack_service,
@@ -478,3 +479,25 @@ def network_prune_runner() -> JobRunner:
 def volume_prune_runner() -> JobRunner:
     """Build a job body that removes every volume no container uses."""
     return _prune_runner(docker_service.prune_volumes, "volume")
+
+
+def repo_git_runner(action: str, *, message: str = "", username: str = "") -> JobRunner:
+    """Build a job body that commits (and pushes), pushes or pulls the repo folder."""
+
+    def run(ctx: JobContext) -> None:
+        output: list[str] = []
+        if action in ("commit", "commit_push"):
+            ctx.note("Committing")
+            output.append(repo_git_service.commit(message, username))
+            # Kept when the push fails: the commit is made either way.
+            ctx.set_output("\n".join(output))
+        if action in ("commit_push", "push"):
+            ctx.note("Pushing")
+            output.append(repo_git_service.push())
+        if action == "pull":
+            ctx.note("Pulling")
+            output.append(repo_git_service.pull())
+        ctx.set_output("\n".join(output))
+        ctx.note("Done")
+
+    return run

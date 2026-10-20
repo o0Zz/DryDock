@@ -98,7 +98,8 @@ RUN set -eux; \
     apt-get update; \
     # Pick up Debian security fixes published after the base image was built.
     apt-get upgrade -y; \
-    apt-get install -y --no-install-recommends ca-certificates curl tini; \
+    # git: commit, push and pull of the repo folder (repo_git_service).
+    apt-get install -y --no-install-recommends ca-certificates curl git tini; \
     case "${TARGETARCH:-amd64}" in \
         amd64) DOCKER_ARCH=x86_64;  COMPOSE_ARCH=x86_64;  BUILDX_ARCH=amd64;  TRIVY_ARCH=64bit ;; \
         arm64) DOCKER_ARCH=aarch64; COMPOSE_ARCH=aarch64; BUILDX_ARCH=arm64;  TRIVY_ARCH=ARM64 ;; \

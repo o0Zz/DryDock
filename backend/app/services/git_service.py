@@ -3,7 +3,8 @@
 `build: https://github.com/me/app.git#main` makes Docker clone that ref at build
 time, so no registry knows when it changes. The git smart HTTP protocol lists a
 repo's refs in one request (what `git ls-remote` does), without cloning and
-without a git binary in DryDock's image.
+without a git binary. A private repo is read with the stored login for its host
+(git_auth_service).
 """
 
 from __future__ import annotations
@@ -12,6 +13,8 @@ import re
 from dataclasses import dataclass
 
 import httpx
+
+from app.services import git_auth_service
 
 TIMEOUT = 20.0
 
@@ -72,26 +75,37 @@ def _parse_refs(body: bytes) -> dict[str, str]:
     return refs
 
 
+def list_refs(url: str, auth: tuple[str, str] | None = None) -> dict[str, str]:
+    """Ref name -> commit of a repo. `auth` defaults to the stored login for its host."""
+    if not url.startswith(("https://", "http://")):
+        raise GitError("only http(s) git URLs are checked")
+    if auth is None:
+        auth = git_auth_service.credentials(url)
+    host = git_auth_service.normalize(url)
+    try:
+        response = httpx.get(
+            f"{url.rstrip('/')}/info/refs",
+            params={"service": "git-upload-pack"},
+            timeout=TIMEOUT,
+            follow_redirects=True,
+            auth=auth,
+        )
+    except httpx.HTTPError as exc:
+        raise GitError(f"could not reach {url}: {exc}") from exc
+    if response.status_code in (401, 403):
+        if auth is None:
+            raise GitError(f"the repository needs a login: add one for {host} in Settings")
+        raise GitError(f"{host} refused the login (HTTP {response.status_code})")
+    if response.status_code != 200:
+        raise GitError(f"{url} answered HTTP {response.status_code}")
+    return _parse_refs(response.content)
+
+
 def remote_commit(source: GitSource) -> str:
     """Commit the source's ref points to now."""
     if source.ref and _SHA.match(source.ref):
         return source.ref  # pinned to a commit: never changes
-    if not source.url.startswith(("https://", "http://")):
-        raise GitError("only http(s) git URLs are checked")
-    try:
-        response = httpx.get(
-            f"{source.url.rstrip('/')}/info/refs",
-            params={"service": "git-upload-pack"},
-            timeout=TIMEOUT,
-            follow_redirects=True,
-        )
-    except httpx.HTTPError as exc:
-        raise GitError(f"could not reach {source.url}: {exc}") from exc
-    if response.status_code in (401, 403):
-        raise GitError("the repository needs a login, which DryDock does not support yet")
-    if response.status_code != 200:
-        raise GitError(f"{source.url} answered HTTP {response.status_code}")
-    refs = _parse_refs(response.content)
+    refs = list_refs(source.url)
     ref = source.ref or "HEAD"
     # A tag's peeled entry (^{}) is the commit; the plain one may be a tag object.
     for name in (ref, f"refs/heads/{ref}", f"refs/tags/{ref}^{{}}", f"refs/tags/{ref}"):
