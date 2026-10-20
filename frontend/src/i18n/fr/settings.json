@@ -6,13 +6,11 @@
   "Set with {variables} environment variables; restart to change.": "Définis par les variables d'environnement {variables} ; redémarrer pour les modifier.",
   "Reload": "Recharger",
   "You are signed in as a standard user — these settings are read-only.": "Vous êtes connecté en tant qu'utilisateur standard — ces paramètres sont en lecture seule.",
-  "Scheduled CVE scans": "Analyses CVE planifiées",
   "Runs a Trivy scan across every image used by a running container.": "Lance une analyse Trivy sur chaque image utilisée par un conteneur en marche.",
   "Scan automatically": "Analyser automatiquement",
   "Every (hours)": "Intervalle (heures)",
   "Next run: {date}": "Prochaine exécution : {date}",
   "not scheduled": "non planifiée",
-  "Scheduled update checks": "Vérifications de mises à jour planifiées",
   "Compares each image digest against its registry. No layers are downloaded.": "Compare le digest de chaque image avec son registre. Aucune couche n'est téléchargée.",
   "Check automatically": "Vérifier automatiquement",
   "Notifications": "Notifications",
@@ -83,5 +81,13 @@
   "Repo URL or host": "URL du dépôt ou hôte",
   "Saved the git login for {host} ({username}).": "Identifiant git enregistré pour {host} ({username}).",
   "Remove the git login for {host}?": "Supprimer l'identifiant git de {host} ?",
-  "Builds, update checks, pushes and pulls of its private repos will fail.": "Les builds, vérifications de mise à jour, push et pull de ses dépôts privés échoueront."
+  "Builds, update checks, pushes and pulls of its private repos will fail.": "Les builds, vérifications de mise à jour, push et pull de ses dépôts privés échoueront.",
+  "Schedules & alerts": "Planification et alertes",
+  "Credentials": "Identifiants",
+  "Account": "Compte",
+  "System": "Système",
+  "Unsaved changes": "Modifications non enregistrées",
+  "Schedules": "Planification",
+  "CVE scans": "Scans CVE",
+  "Update checks": "Vérifications de mise à jour"
 }

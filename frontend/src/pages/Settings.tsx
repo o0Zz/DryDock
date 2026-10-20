@@ -1,5 +1,6 @@
-import { RefreshCw, Save } from "lucide-react";
-import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { CalendarClock, KeyRound, RefreshCw, Save, Server, UserRound } from "lucide-react";
+import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from "react";
+import { useSearchParams } from "react-router-dom";
 import { api } from "../api";
 import { useAuth } from "../auth";
 import ApiTokens from "../components/ApiTokens";
@@ -7,12 +8,25 @@ import ChangePassword from "../components/ChangePassword";
 import GitCredentials from "../components/GitCredentials";
 import RegistryCredentials from "../components/RegistryCredentials";
 import { formatDate } from "../format";
-import { useT } from "../i18n";
+import { msg, useT } from "../i18n";
 import type { AppSettings, Job, SettingsPatch } from "../types";
+
+type Tab = "schedules" | "credentials" | "account" | "system";
+
+const TABS: { id: Tab; label: string; icon: ReactNode; adminOnly?: boolean }[] = [
+  { id: "schedules", label: msg("Schedules & alerts"), icon: <CalendarClock size={15} /> },
+  { id: "credentials", label: msg("Credentials"), icon: <KeyRound size={15} />, adminOnly: true },
+  { id: "account", label: msg("Account"), icon: <UserRound size={15} /> },
+  { id: "system", label: msg("System"), icon: <Server size={15} /> },
+];
 
 export default function Settings() {
   const t = useT();
   const { user } = useAuth();
+  // In the URL, so a reload or a shared link opens the same tab.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tabs = TABS.filter((candidate) => !candidate.adminOnly || user?.is_admin);
+  const tab = tabs.find((candidate) => candidate.id === searchParams.get("tab"))?.id ?? "schedules";
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [draft, setDraft] = useState<SettingsPatch>({});
   const [jobs, setJobs] = useState<Job[]>([]);
@@ -90,199 +104,232 @@ export default function Settings() {
           {notice}
         </div>
       )}
-      {!user?.is_admin && (
-        <div className="muted">
-          {t("You are signed in as a standard user — these settings are read-only.")}
+      <div className="tabs" role="tablist">
+        {tabs.map((candidate) => (
+          <button
+            key={candidate.id}
+            type="button"
+            role="tab"
+            aria-selected={tab === candidate.id}
+            className={`tab ${tab === candidate.id ? "active" : ""}`}
+            onClick={() => setSearchParams({ tab: candidate.id }, { replace: true })}
+          >
+            {candidate.icon} {t(candidate.label)}
+            {/* The draft survives a tab change: flag it so it is not forgotten. */}
+            {candidate.id === "schedules" && dirty && (
+              <span className="tab-dot" title={t("Unsaved changes")} />
+            )}
+          </button>
+        ))}
+      </div>
+
+      <div className="settings-panel" hidden={tab !== "schedules"}>
+        {!user?.is_admin && (
+          <p className="muted">
+            {t("You are signed in as a standard user — these settings are read-only.")}
+          </p>
+        )}
+        <form onSubmit={save}>
+          <section className="section">
+            <h2>{t("Schedules")}</h2>
+            <div className="subsection">
+              <h3>{t("CVE scans")}</h3>
+              <p className="muted">
+                {t("Runs a Trivy scan across every image used by a running container.")}
+              </p>
+              <label className="checkbox-label">
+                <input
+                  type="checkbox"
+                  disabled={!user?.is_admin}
+                  checked={formValues.scan_schedule_enabled}
+                  onChange={(event) => edit({ scan_schedule_enabled: event.target.checked })}
+                />
+                {t("Scan automatically")}
+              </label>
+              <div className="field-row">
+                <label>
+                  {t("Every (hours)")}
+                  <input
+                    type="number"
+                    min={1}
+                    max={720}
+                    disabled={!user?.is_admin || !formValues.scan_schedule_enabled}
+                    value={formValues.scan_interval_hours}
+                    onChange={(event) => edit({ scan_interval_hours: Number(event.target.value) })}
+                  />
+                </label>
+                <div className="muted">
+                  {t("Next run: {date}", {
+                    date: formatDate(settings.next_scan_run, t("not scheduled")),
+                  })}
+                </div>
+              </div>
+            </div>
+            <div className="subsection">
+              <h3>{t("Update checks")}</h3>
+              <p className="muted">
+                {t("Compares each image digest against its registry. No layers are downloaded.")}
+              </p>
+              <label className="checkbox-label">
+                <input
+                  type="checkbox"
+                  disabled={!user?.is_admin}
+                  checked={formValues.update_check_enabled}
+                  onChange={(event) => edit({ update_check_enabled: event.target.checked })}
+                />
+                {t("Check automatically")}
+              </label>
+              <div className="field-row">
+                <label>
+                  {t("Every (hours)")}
+                  <input
+                    type="number"
+                    min={1}
+                    max={720}
+                    disabled={!user?.is_admin || !formValues.update_check_enabled}
+                    value={formValues.update_check_interval_hours}
+                    onChange={(event) =>
+                      edit({ update_check_interval_hours: Number(event.target.value) })
+                    }
+                  />
+                </label>
+                <div className="muted">
+                  {t("Next run: {date}", {
+                    date: formatDate(settings.next_update_run, t("not scheduled")),
+                  })}
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section className="section">
+            <h2>{t("Notifications")}</h2>
+            <p className="muted">
+              {notifyBefore}
+              <em>{t("scheduled")}</em>
+              {notifyAfter}
+            </p>
+            <label className="field">
+              {t("Webhook URL")}
+              <input
+                type="text"
+                placeholder="https://example.com/hooks/drydock"
+                disabled={!user?.is_admin}
+                value={formValues.notify_webhook_url}
+                onChange={(event) => edit({ notify_webhook_url: event.target.value })}
+              />
+            </label>
+            <label className="checkbox-label">
+              <input
+                type="checkbox"
+                disabled={!user?.is_admin}
+                checked={formValues.notify_on_critical}
+                onChange={(event) => edit({ notify_on_critical: event.target.checked })}
+              />
+              {t("Notify when a scan finds critical CVEs")}
+            </label>
+            <label className="checkbox-label">
+              <input
+                type="checkbox"
+                disabled={!user?.is_admin}
+                checked={formValues.notify_on_update}
+                onChange={(event) => edit({ notify_on_update: event.target.checked })}
+              />
+              {t("Notify when image updates are available")}
+            </label>
+          </section>
+
+          {user?.is_admin && (
+            <div className="button-row settings-save">
+              <button type="submit" disabled={!dirty || saving}>
+                <Save size={15} /> {saving ? t("Saving…") : t("Save settings")}
+              </button>
+              {dirty && (
+                <button type="button" className="secondary" onClick={() => setDraft({})}>
+                  {t("Discard changes")}
+                </button>
+              )}
+            </div>
+          )}
+        </form>
+      </div>
+
+      {user?.is_admin && (
+        <div className="settings-panel" hidden={tab !== "credentials"}>
+          <RegistryCredentials />
+          <GitCredentials />
         </div>
       )}
 
-      <form onSubmit={save}>
+      <div className="settings-panel" hidden={tab !== "account"}>
+        <ChangePassword title={t("Your password")} />
+        <ApiTokens />
+      </div>
+
+      <div className="settings-panel" hidden={tab !== "system"}>
         <section className="section">
-          <h2>{t("Scheduled CVE scans")}</h2>
+          <h2>{t("Environment")}</h2>
           <p className="muted">
-            {t("Runs a Trivy scan across every image used by a running container.")}
+            {envBefore}
+            <code>DRYDOCK_*</code>
+            {envAfter}
           </p>
-          <label className="checkbox-label">
-            <input
-              type="checkbox"
-              disabled={!user?.is_admin}
-              checked={formValues.scan_schedule_enabled}
-              onChange={(event) => edit({ scan_schedule_enabled: event.target.checked })}
-            />
-            {t("Scan automatically")}
-          </label>
-          <div className="field-row">
-            <label>
-              {t("Every (hours)")}
-              <input
-                type="number"
-                min={1}
-                max={720}
-                disabled={!user?.is_admin || !formValues.scan_schedule_enabled}
-                value={formValues.scan_interval_hours}
-                onChange={(event) => edit({ scan_interval_hours: Number(event.target.value) })}
-              />
-            </label>
-            <div className="muted">
-              {t("Next run: {date}", {
-                date: formatDate(settings.next_scan_run, t("not scheduled")),
-              })}
-            </div>
-          </div>
+          <ul className="fact-list">
+            <li>
+              <span className="muted">{t("Compose repo")}</span>
+              <code>{settings.repo_path}</code>
+            </li>
+            <li>
+              <span className="muted">{t("Data directory")}</span>
+              <code>{settings.data_path}</code>
+            </li>
+          </ul>
         </section>
 
         <section className="section">
-          <h2>{t("Scheduled update checks")}</h2>
-          <p className="muted">
-            {t("Compares each image digest against its registry. No layers are downloaded.")}
-          </p>
-          <label className="checkbox-label">
-            <input
-              type="checkbox"
-              disabled={!user?.is_admin}
-              checked={formValues.update_check_enabled}
-              onChange={(event) => edit({ update_check_enabled: event.target.checked })}
-            />
-            {t("Check automatically")}
-          </label>
-          <div className="field-row">
-            <label>
-              {t("Every (hours)")}
-              <input
-                type="number"
-                min={1}
-                max={720}
-                disabled={!user?.is_admin || !formValues.update_check_enabled}
-                value={formValues.update_check_interval_hours}
-                onChange={(event) => edit({ update_check_interval_hours: Number(event.target.value) })}
-              />
-            </label>
-            <div className="muted">
-              {t("Next run: {date}", {
-                date: formatDate(settings.next_update_run, t("not scheduled")),
-              })}
-            </div>
-          </div>
-        </section>
-
-        <section className="section">
-          <h2>{t("Notifications")}</h2>
-          <p className="muted">
-            {notifyBefore}
-            <em>{t("scheduled")}</em>
-            {notifyAfter}
-          </p>
-          <label className="field">
-            {t("Webhook URL")}
-            <input
-              type="text"
-              placeholder="https://example.com/hooks/drydock"
-              disabled={!user?.is_admin}
-              value={formValues.notify_webhook_url}
-              onChange={(event) => edit({ notify_webhook_url: event.target.value })}
-            />
-          </label>
-          <label className="checkbox-label">
-            <input
-              type="checkbox"
-              disabled={!user?.is_admin}
-              checked={formValues.notify_on_critical}
-              onChange={(event) => edit({ notify_on_critical: event.target.checked })}
-            />
-            {t("Notify when a scan finds critical CVEs")}
-          </label>
-          <label className="checkbox-label">
-            <input
-              type="checkbox"
-              disabled={!user?.is_admin}
-              checked={formValues.notify_on_update}
-              onChange={(event) => edit({ notify_on_update: event.target.checked })}
-            />
-            {t("Notify when image updates are available")}
-          </label>
-        </section>
-
-        {user?.is_admin && (
-          <div className="button-row">
-            <button type="submit" disabled={!dirty || saving}>
-              <Save size={15} /> {saving ? t("Saving…") : t("Save settings")}
-            </button>
-            {dirty && (
-              <button type="button" className="secondary" onClick={() => setDraft({})}>
-                {t("Discard changes")}
-              </button>
-            )}
-          </div>
-        )}
-      </form>
-
-      <ChangePassword title={t("Your password")} />
-      <ApiTokens />
-      {user?.is_admin && <RegistryCredentials />}
-      {user?.is_admin && <GitCredentials />}
-
-      <section className="section">
-        <h2>{t("Environment")}</h2>
-        <p className="muted">
-          {envBefore}
-          <code>DRYDOCK_*</code>
-          {envAfter}
-        </p>
-        <ul className="fact-list">
-          <li>
-            <span className="muted">{t("Compose repo")}</span>
-            <code>{settings.repo_path}</code>
-          </li>
-          <li>
-            <span className="muted">{t("Data directory")}</span>
-            <code>{settings.data_path}</code>
-          </li>
-        </ul>
-      </section>
-
-      <section className="section">
-        <h2>{t("Recent background jobs")}</h2>
-        {jobs.length === 0 ? (
-          <div className="empty">{t("Nothing has run yet.")}</div>
-        ) : (
-          <table className="projects-table">
-            <thead>
-              <tr>
-                <th>{t("Job")}</th>
-                <th>{t("Status")}</th>
-                <th>{t("Trigger")}</th>
-                <th>{t("Result")}</th>
-                <th>{t("Started")}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {jobs.map((job) => (
-                <tr key={job.id}>
-                  <td>{job.label}</td>
-                  <td>
-                    <span
-                      className={`badge ${
-                        job.status === "success"
-                          ? "running"
-                          : job.status === "error"
-                            ? "exited"
-                            : "paused"
-                      }`}
-                    >
-                      {job.status}
-                    </span>
-                  </td>
-                  <td className="muted">{job.trigger}</td>
-                  <td className="muted">{job.error ?? job.message ?? "—"}</td>
-                  <td className="muted">
-                    {formatDate(job.started_at)}
-                  </td>
+          <h2>{t("Recent background jobs")}</h2>
+          {jobs.length === 0 ? (
+            <div className="empty">{t("Nothing has run yet.")}</div>
+          ) : (
+            <table className="projects-table">
+              <thead>
+                <tr>
+                  <th>{t("Job")}</th>
+                  <th>{t("Status")}</th>
+                  <th>{t("Trigger")}</th>
+                  <th>{t("Result")}</th>
+                  <th>{t("Started")}</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </section>
+              </thead>
+              <tbody>
+                {jobs.map((job) => (
+                  <tr key={job.id}>
+                    <td>{job.label}</td>
+                    <td>
+                      <span
+                        className={`badge ${
+                          job.status === "success"
+                            ? "running"
+                            : job.status === "error"
+                              ? "exited"
+                              : "paused"
+                        }`}
+                      >
+                        {job.status}
+                      </span>
+                    </td>
+                    <td className="muted">{job.trigger}</td>
+                    <td className="muted">{job.error ?? job.message ?? "—"}</td>
+                    <td className="muted">
+                      {formatDate(job.started_at)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </section>
+      </div>
     </div>
   );
 }

@@ -761,6 +761,36 @@ input:focus {
   border-bottom-color: var(--accent);
   font-weight: 600;
 }
+.tabs button.tab { display: inline-flex; align-items: center; gap: 0.4rem; }
+.tab-dot {
+  width: 0.45rem;
+  height: 0.45rem;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+/* --- Settings ------------------------------------------------------------ */
+
+/* Each section of a settings tab is a card; the shared components keep their markup. */
+.settings-panel .section {
+  margin-top: 0;
+  margin-bottom: 1rem;
+  padding: 1rem 1.25rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+}
+.settings-panel .subsection + .subsection {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border);
+}
+.settings-panel .subsection h3 {
+  font-size: 0.95rem;
+  margin: 0 0 0.35rem;
+}
+.settings-panel .subsection p.muted { margin-top: 0; }
+.settings-save { margin-top: 0; }
 
 .kv-grid {
   display: grid;
