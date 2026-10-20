@@ -1,8 +1,8 @@
-import { Circle, Network, RefreshCw, Trash2 } from "lucide-react";
+import { Network, RefreshCw, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-import { Link } from "react-router-dom";
 import { api } from "../api";
 import { useConfirm } from "../components/ConfirmDialog";
+import ContainerLink from "../components/ContainerLink";
 import JobList from "../components/JobList";
 import SortHeader from "../components/SortHeader";
 import { formatDate } from "../format";
@@ -47,7 +47,7 @@ export default function Networks() {
   }, [refresh]);
 
   // useJobs also re-attaches to unrelated jobs (scans); only show this page's kind.
-  const { jobs, track, dismiss } = useJobs(refresh);
+  const { jobs, start, dismiss } = useJobs(refresh, setError);
   const pruneJobs = jobs.filter((job) => job.kind === "network_prune");
   const pruning = pruneJobs.some(isActive);
 
@@ -94,7 +94,8 @@ export default function Networks() {
       tone: "danger",
     });
     if (!confirmed) return;
-    run(async () => track(await api.pruneNetworks()));
+    setNotice(null);
+    start(api.pruneNetworks);
   }
 
   return (
@@ -112,7 +113,7 @@ export default function Networks() {
       </div>
 
       {error && <div className="error">{error}</div>}
-      {notice && <div className="output ok" style={{ padding: "0.75rem" }}>{notice}</div>}
+      {notice && <div className="output ok padded">{notice}</div>}
       <JobList jobs={pruneJobs} onDismiss={dismiss} />
 
       {!networks ? (
@@ -178,18 +179,11 @@ export default function Networks() {
                     {inUse ? (
                       network.used_by.map((attachment) => (
                         <div key={attachment.id}>
-                          <Link
-                            className="icon-link"
-                            to={`/containers/${attachment.id}`}
-                            title={attachment.running ? t("running") : t("stopped")}
-                          >
-                            <Circle
-                              size={8}
-                              fill="currentColor"
-                              className={attachment.running ? "dot-running" : "dot-stopped"}
-                            />{" "}
-                            {attachment.name}
-                          </Link>
+                          <ContainerLink
+                            id={attachment.id}
+                            name={attachment.name}
+                            running={attachment.running}
+                          />
                           {attachment.ip_address && (
                             <span className="muted"> {attachment.ip_address}</span>
                           )}

@@ -345,14 +345,14 @@ function OverviewTab({ detail, isAdmin }: { detail: ContainerDetailData; isAdmin
           [t("Created"), formatDate(detail.created_at)],
           [t("Started"), formatDate(detail.started_at)],
           [t("Finished"), formatDate(detail.finished_at)],
-          [t("Exit code"), detail.exit_code ?? "—"],
+          [t("Exit code"), detail.exit_code],
           [t("Restart policy"), detail.restart_policy || "no"],
           [t("Restart count"), detail.restart_count],
           [t("Command"), detail.command ? <code>{detail.command.join(" ")}</code> : "—"],
           [t("Entrypoint"), detail.entrypoint ? <code>{detail.entrypoint.join(" ")}</code> : "—"],
-          [t("Working dir"), detail.working_dir ?? "—"],
-          [t("User"), detail.user ?? "—"],
-          [t("Hostname"), detail.hostname ?? "—"],
+          [t("Working dir"), detail.working_dir],
+          [t("User"), detail.user],
+          [t("Hostname"), detail.hostname],
           [t("Image ID"), detail.image_id ? <code>{detail.image_id.slice(0, 19)}</code> : "—"],
           [t("Container ID"), <code>{detail.id.slice(0, 12)}</code>],
           [
@@ -688,7 +688,7 @@ function UpdatesTab({
                     <code key="latest">{shortCommit(update.remote_digest)}</code>,
                   ],
                   [t("New commit"), update.update_available ? t("yes — update to rebuild") : t("no")],
-                  [t("Error"), update.error ?? "—"],
+                  [t("Error"), update.error],
                 ]
               : [
                   [t("Checked"), formatDate(update.checked_at)],
@@ -704,16 +704,16 @@ function UpdatesTab({
                     t("Same tag rebuilt"),
                     update.update_available ? t("yes — pull to update") : t("no"),
                   ],
-                  [t("Newest tag"), update.newest_tag ?? "—"],
-                  [t("Newest in current major"), update.newest_same_major_tag ?? "—"],
-                  [t("Error"), update.error ?? update.tag_error ?? "—"],
+                  [t("Newest tag"), update.newest_tag],
+                  [t("Newest in current major"), update.newest_same_major_tag],
+                  [t("Error"), update.error ?? update.tag_error],
                 ]
           }
         />
       )}
 
       {outdated && (
-        <div className="output" style={{ padding: "0.75rem" }}>
+        <div className="output padded">
           {project ? (
             <>
               {update?.newest_tag

@@ -1,10 +1,8 @@
 import { api } from "./api";
-import type { ConfirmOptions } from "./components/ConfirmDialog";
+import type { Confirm } from "./components/ConfirmDialog";
 import { isActive, JOBS_CHANGED_EVENT } from "./hooks/useJobs";
 import { translate } from "./i18n";
 import type { Job, Project } from "./types";
-
-type Confirm = (options: ConfirmOptions) => Promise<boolean>;
 
 const POLL_MS = 1500;
 

@@ -2,7 +2,6 @@ import {
   ArrowDownCircle,
   ArrowUpCircle,
   ChevronLeft,
-  Circle,
   Copy,
   Download,
   PenLine,
@@ -20,14 +19,14 @@ import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom"
 import { api } from "../api";
 import { useAuth } from "../auth";
 import { useConfirm, type ConfirmOptions } from "../components/ConfirmDialog";
-import HealthBadge from "../components/HealthBadge";
+import ContainerStatus from "../components/ContainerStatus";
 import ImageName from "../components/ImageName";
 import { JOB_STATUS_TEXT } from "../components/JobList";
 import LogPanel from "../components/LogPanel";
 import SortHeader from "../components/SortHeader";
-import Uptime from "../components/Uptime";
-import { containerStateLabel, containerStateRank } from "../containerActions";
-import { formatDate, formatPorts, secondsSince } from "../format";
+import Uptime, { uptimeSeconds } from "../components/Uptime";
+import { containerStateRank } from "../containerActions";
+import { formatDate, formatPorts } from "../format";
 import { isActive, useJobs } from "../hooks/useJobs";
 import { useSort } from "../hooks/useSort";
 import { msg, useT } from "../i18n";
@@ -89,8 +88,7 @@ export default function ProjectDetail() {
       service: (container) => container.compose_service,
       image: (container) => container.image,
       status: (container) => containerStateRank(container.state),
-      uptime: (container) =>
-        ["running", "paused"].includes(container.state) ? secondsSince(container.started_at) : null,
+      uptime: uptimeSeconds,
     },
     initial: { column: "name", descending: false },
     descendingFirst: ["uptime"],
@@ -349,7 +347,7 @@ export default function ProjectDetail() {
       </div>
 
       {stackNotice && (
-        <div className="output ok" style={{ padding: "0.75rem" }}>
+        <div className="output ok padded">
           {stackNotice}
         </div>
       )}
@@ -454,17 +452,7 @@ export default function ProjectDetail() {
                     <ImageName image={container.image} version={container.image_version} />
                   </td>
                   <td>
-                    <span className={`badge ${container.state}`}>
-                      <Circle size={8} fill="currentColor" /> {t(containerStateLabel(container.state))}
-                    </span>{" "}
-                    <HealthBadge health={container.health} />
-                    {container.restart_count > 0 && (
-                      <div className="muted" title={t("Restarts since the container was created")}>
-                        {container.restart_count === 1
-                          ? t("1 restart")
-                          : t("{count} restarts", { count: container.restart_count })}
-                      </div>
-                    )}
+                    <ContainerStatus container={container} />
                   </td>
                   <td>
                     <Uptime container={container} />
@@ -675,7 +663,7 @@ function RetagPanel({
   }
 
   return (
-    <div className="output" style={{ padding: "0.75rem" }}>
+    <div className="output padded">
       {applied ? (
         <div className="button-row">
           <span>

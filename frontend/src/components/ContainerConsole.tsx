@@ -3,16 +3,9 @@ import { Terminal } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
 import { SquareTerminal, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { msg, translate, useT } from "../i18n";
+import { translate, useT } from "../i18n";
+import { STATUS_LABELS, type Status } from "./connectionStatus";
 
-type Status = "connecting" | "open" | "closed" | "error";
-
-const STATUS_LABELS: Record<Status, string> = {
-  connecting: msg("connecting"),
-  open: msg("open"),
-  closed: msg("closed"),
-  error: msg("error"),
-};
 
 /** Interactive shell in a container, over the /api/containers/{id}/exec WebSocket. */
 export default function ContainerConsole({

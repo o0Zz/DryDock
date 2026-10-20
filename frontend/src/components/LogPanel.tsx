@@ -1,15 +1,8 @@
 import { ScrollText, X } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { msg, useT } from "../i18n";
+import { useT } from "../i18n";
+import { STATUS_LABELS, type Status } from "./connectionStatus";
 
-type Status = "connecting" | "open" | "closed" | "error";
-
-const STATUS_LABELS: Record<Status, string> = {
-  connecting: msg("connecting"),
-  open: msg("open"),
-  closed: msg("closed"),
-  error: msg("error"),
-};
 
 // Older lines are dropped so a long session does not keep growing memory.
 const MAX_LINES = 5000;

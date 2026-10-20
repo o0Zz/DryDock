@@ -20,7 +20,7 @@ export interface ConfirmOptions {
   icon?: LucideIcon;
 }
 
-type Confirm = (options: ConfirmOptions) => Promise<boolean>;
+export type Confirm = (options: ConfirmOptions) => Promise<boolean>;
 
 const ConfirmContext = createContext<Confirm | null>(null);
 

@@ -12,6 +12,7 @@ import {
 import { useEffect, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api";
+import Fact from "../components/Fact";
 import { formatBytes, formatDate, formatDuration } from "../format";
 import { useHostUsage } from "../hooks/useHostUsage";
 import { useT, type Translate } from "../i18n";
@@ -62,15 +63,6 @@ function cveDetail(t: Translate, images: number, scanned: number): string {
 
 // The Raspberry Pi firmware starts throttling at 80 °C.
 const THROTTLE_TEMP_C = 80;
-
-function Fact({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <li>
-      <span className="muted">{label}</span>
-      <strong>{children}</strong>
-    </li>
-  );
-}
 
 /** Live load first (refreshed every few seconds), then the static `docker info` facts.
  * Rows whose value the host does not expose are left out. */
@@ -361,18 +353,13 @@ export default function Dashboard() {
       <section className="section">
         <h2>{t("Security")}</h2>
         <ul className="fact-list">
-          <li>
-            <span className="muted">{t("Last CVE scan")}</span>
-            <strong>{formatDate(stats.last_scan_at, t("never"))}</strong>
-          </li>
-          <li>
-            <span className="muted">{t("Last update check")}</span>
-            <strong>{formatDate(stats.last_update_check_at, t("never"))}</strong>
-          </li>
-          <li>
-            <span className="muted">{t("Last host update check")}</span>
-            <strong>{formatDate(stats.last_host_update_check_at, t("never"))}</strong>
-          </li>
+          <Fact label={t("Last CVE scan")}>{formatDate(stats.last_scan_at, t("never"))}</Fact>
+          <Fact label={t("Last update check")}>
+            {formatDate(stats.last_update_check_at, t("never"))}
+          </Fact>
+          <Fact label={t("Last host update check")}>
+            {formatDate(stats.last_host_update_check_at, t("never"))}
+          </Fact>
         </ul>
         <div className="button-row">
           <Link to="/images">

@@ -48,7 +48,7 @@ export default function ChangePassword({
       {title && <h2>{title}</h2>}
       {error && <div className="error">{error}</div>}
       {notice && (
-        <div className="output ok" style={{ padding: "0.75rem" }}>
+        <div className="output ok padded">
           {notice}
         </div>
       )}

@@ -291,6 +291,7 @@ button:disabled {
 
 .output.ok { border-color: rgba(63, 185, 80, 0.4); }
 .output.fail { border-color: rgba(248, 81, 73, 0.4); }
+.output.padded { padding: 0.75rem; }
 
 .output-header {
   display: flex;
@@ -354,8 +355,8 @@ button.linklike svg {
   gap: 0.3rem;
 }
 .badge.running { background: rgba(63, 185, 80, 0.15); color: #1a7f37; }
-.badge.exited, .badge.dead { background: rgba(248, 81, 73, 0.15); color: #cf222e; }
-.badge.paused, .badge.restarting { background: rgba(210, 153, 34, 0.15); color: #9a6700; }
+.badge.exited, .badge.dead, .badge.sev-critical { background: rgba(248, 81, 73, 0.15); color: #cf222e; }
+.badge.paused, .badge.restarting, .badge.sev-high { background: rgba(210, 153, 34, 0.15); color: #9a6700; }
 
 /* CVE badge doubles as a rescan button */
 button.badge.scan-badge { text-transform: none; cursor: pointer; }
@@ -506,8 +507,6 @@ input:focus {
 .stat-grid-hero .stat-label { font-size: 0.95rem; font-weight: 600; color: var(--text); }
 .stat-danger .stat-value { color: #cf222e; }
 
-.badge.sev-critical { background: rgba(248, 81, 73, 0.15); color: #cf222e; }
-.badge.sev-high { background: rgba(210, 153, 34, 0.15); color: #9a6700; }
 
 .attention-grid {
   display: grid;

@@ -1,9 +1,10 @@
-import { Circle, HardDrive, RefreshCw, Trash2 } from "lucide-react";
+import { HardDrive, RefreshCw, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api";
 import { useAuth } from "../auth";
 import { useConfirm } from "../components/ConfirmDialog";
+import ContainerLink from "../components/ContainerLink";
 import JobList from "../components/JobList";
 import SortHeader from "../components/SortHeader";
 import { formatDate } from "../format";
@@ -50,7 +51,7 @@ export default function Volumes() {
 
   // Prunes run as background jobs; useJobs also re-attaches to unrelated ones
   // (scans), so only this page's own kind is shown.
-  const { jobs, track, dismiss } = useJobs(refresh);
+  const { jobs, start, dismiss } = useJobs(refresh, setError);
   const pruneJobs = jobs.filter((job) => job.kind === "volume_prune");
   const pruning = pruneJobs.some(isActive);
 
@@ -96,7 +97,8 @@ export default function Volumes() {
       tone: "danger",
     });
     if (!confirmed) return;
-    run(async () => track(await api.pruneVolumes()));
+    setNotice(null);
+    start(api.pruneVolumes);
   }
 
   return (
@@ -114,7 +116,7 @@ export default function Volumes() {
       </div>
 
       {error && <div className="error">{error}</div>}
-      {notice && <div className="output ok" style={{ padding: "0.75rem" }}>{notice}</div>}
+      {notice && <div className="output ok padded">{notice}</div>}
       <JobList jobs={pruneJobs} onDismiss={dismiss} />
 
       <div className="section">
@@ -185,18 +187,11 @@ export default function Volumes() {
                     {inUse ? (
                       volume.used_by.map((attachment) => (
                         <div key={`${attachment.id}:${attachment.destination}`}>
-                          <Link
-                            className="icon-link"
-                            to={`/containers/${attachment.id}`}
-                            title={attachment.running ? t("running") : t("stopped")}
-                          >
-                            <Circle
-                              size={8}
-                              fill="currentColor"
-                              className={attachment.running ? "dot-running" : "dot-stopped"}
-                            />{" "}
-                            {attachment.name}
-                          </Link>
+                          <ContainerLink
+                            id={attachment.id}
+                            name={attachment.name}
+                            running={attachment.running}
+                          />
                           <div className="muted">
                             <code>{attachment.destination}</code>
                             {!attachment.rw && ` (${t("ro")})`}

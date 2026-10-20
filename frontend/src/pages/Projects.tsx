@@ -94,7 +94,7 @@ export default function Projects() {
       </div>
       {actionError && <div className="error">{actionError}</div>}
       {notice && (
-        <div className="output ok" style={{ padding: "0.75rem" }}>
+        <div className="output ok padded">
           {notice}
         </div>
       )}

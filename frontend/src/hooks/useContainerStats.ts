@@ -1,38 +1,22 @@
 import { useEffect, useRef, useState } from "react";
 import { api } from "../api";
 import type { ContainerStats, StatsSample } from "../types";
+import { usePoll } from "./usePoll";
 
 const STATS_INTERVAL_MS = 5000;
 // Same size as the backend ring buffer (stats_history_service.MAX_SAMPLES).
 const MAX_SAMPLES = 60;
 
-/** Polls /api/containers/stats while mounted; each call takes ~1s server-side,
- * so the next poll is scheduled only after the previous one returns. */
+const NO_STATS: Record<string, ContainerStats> = {};
+
+async function fetchStats(): Promise<Record<string, ContainerStats>> {
+  const statsList = await api.containerStats();
+  return Object.fromEntries(statsList.map((entry) => [entry.id, entry]));
+}
+
+/** Polls /api/containers/stats while mounted; each call takes ~1s server-side. */
 export function useContainerStats(): Record<string, ContainerStats> {
-  const [stats, setStats] = useState<Record<string, ContainerStats>>({});
-  useEffect(() => {
-    let timer: number | undefined;
-    let cancelled = false;
-    const poll = (): void => {
-      api
-        .containerStats()
-        .then((statsList) => {
-          if (!cancelled) {
-            setStats(Object.fromEntries(statsList.map((entry) => [entry.id, entry])));
-          }
-        })
-        .catch(() => undefined) // stats are best-effort; pages still work without them
-        .finally(() => {
-          if (!cancelled) timer = window.setTimeout(poll, STATS_INTERVAL_MS);
-        });
-    };
-    poll();
-    return () => {
-      cancelled = true;
-      window.clearTimeout(timer);
-    };
-  }, []);
-  return stats;
+  return usePoll(fetchStats, STATS_INTERVAL_MS) ?? NO_STATS;
 }
 
 /** Recent samples per container: the server's history at mount, then each poll of `stats`. */

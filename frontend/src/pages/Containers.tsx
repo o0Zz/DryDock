@@ -1,27 +1,26 @@
-import { ArrowUpCircle, Circle, RefreshCw, ShieldCheck, SquareTerminal, Trash2 } from "lucide-react";
+import { ArrowUpCircle, RefreshCw, ShieldCheck, SquareTerminal, Trash2 } from "lucide-react";
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { api } from "../api";
 import { useAuth } from "../auth";
-import HealthBadge from "../components/HealthBadge";
 import ImageName from "../components/ImageName";
 import JobList from "../components/JobList";
 import { useConfirm } from "../components/ConfirmDialog";
+import ContainerStatus from "../components/ContainerStatus";
 import ScanBadge from "../components/ScanBadge";
 import SortHeader from "../components/SortHeader";
 import Sparkline from "../components/Sparkline";
 import UpdateAction from "../components/UpdateAction";
-import Uptime from "../components/Uptime";
+import Uptime, { uptimeSeconds } from "../components/Uptime";
 import { useContainerStats, useStatsHistory } from "../hooks/useContainerStats";
 import {
   CONTAINER_ACTION_ICONS,
   CONTAINER_ACTION_LABELS,
   ContainerConsole,
   containerActionsFor,
-  containerStateLabel,
   containerStateRank,
 } from "../containerActions";
-import { formatBytes, formatDate, formatPorts, secondsSince } from "../format";
+import { formatBytes, formatDate, formatPorts } from "../format";
 import { isActive, useJobs } from "../hooks/useJobs";
 import { useSort } from "../hooks/useSort";
 import { useT } from "../i18n";
@@ -56,8 +55,7 @@ export default function Containers() {
       name: (container) => container.name,
       image: (container) => container.image,
       status: (container) => containerStateRank(container.state),
-      uptime: (container) =>
-        ["running", "paused"].includes(container.state) ? secondsSince(container.started_at) : null,
+      uptime: uptimeSeconds,
       cpu: (container) => stats[container.id]?.cpu_percent,
       memory: (container) => stats[container.id]?.memory_usage,
       compose: (container) =>
@@ -271,22 +269,12 @@ export default function Containers() {
                   />
                 </td>
                 <td>
-                  <span
-                    className={`badge ${container.state}`}
+                  <ContainerStatus
+                    container={container}
                     title={t("Restart policy: {policy}", {
                       policy: container.restart_policy || "no",
                     })}
-                  >
-                    <Circle size={8} fill="currentColor" /> {t(containerStateLabel(container.state))}
-                  </span>{" "}
-                  <HealthBadge health={container.health} />
-                  {container.restart_count > 0 && (
-                    <div className="muted" title={t("Restarts since the container was created")}>
-                      {container.restart_count === 1
-                        ? t("1 restart")
-                        : t("{count} restarts", { count: container.restart_count })}
-                    </div>
-                  )}
+                  />
                 </td>
                 <td>
                   <Uptime container={container} />

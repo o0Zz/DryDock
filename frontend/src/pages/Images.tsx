@@ -182,23 +182,6 @@ export default function Images() {
     descendingFirst: ["cves", "fixable", "update", "scanned"],
   });
 
-  const remove = useCallback(
-    async (removeImage: () => Promise<string>): Promise<void> => {
-      setRemoving(true);
-      setError(null);
-      setNotice(null);
-      try {
-        setNotice(await removeImage());
-      } catch (removeError) {
-        setError((removeError as Error).message);
-      } finally {
-        setRemoving(false);
-        loadImages();
-      }
-    },
-    [loadImages],
-  );
-
   const onDelete = useCallback(
     async (row: ImageRow): Promise<void> => {
       const stoppedContainers = (row.local?.used_by ?? []).map((imageUser) => imageUser.name);
@@ -214,12 +197,20 @@ export default function Images() {
         tone: "danger",
       });
       if (!confirmed) return;
-      remove(async () => {
+      setRemoving(true);
+      setError(null);
+      setNotice(null);
+      try {
         await api.deleteImage(row.image, stoppedContainers.length > 0);
-        return t("Image \"{name}\" removed.", { name: row.image });
-      });
+        setNotice(t("Image \"{name}\" removed.", { name: row.image }));
+      } catch (removeError) {
+        setError((removeError as Error).message);
+      } finally {
+        setRemoving(false);
+        loadImages();
+      }
     },
-    [remove, confirm, t],
+    [loadImages, confirm, t],
   );
 
   const onPrune = useCallback(async (): Promise<void> => {
@@ -299,7 +290,7 @@ export default function Images() {
 
       <JobList jobs={jobs} onDismiss={dismiss} />
       {error && <div className="error">{error}</div>}
-      {notice && <div className="output ok" style={{ padding: "0.75rem" }}>{notice}</div>}
+      {notice && <div className="output ok padded">{notice}</div>}
 
       <div className="button-row">
         <input

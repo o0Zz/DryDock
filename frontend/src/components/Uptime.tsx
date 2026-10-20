@@ -2,6 +2,16 @@ import { formatDate, formatDuration, secondsSince } from "../format";
 import { useT } from "../i18n";
 import type { Container } from "../types";
 
+/** Seconds a running or paused container has been up, or null when it is not up. */
+export function uptimeSeconds(container: Container): number | null {
+  return isUp(container) ? secondsSince(container.started_at) : null;
+}
+
+// A paused container keeps its processes, so it still counts as up.
+function isUp(container: Container): boolean {
+  return container.state === "running" || container.state === "paused";
+}
+
 /** How long a running container has been up, or how long ago a stopped one stopped. */
 export default function Uptime({ container }: { container: Container }) {
   const t = useT();
@@ -12,8 +22,7 @@ export default function Uptime({ container }: { container: Container }) {
   ]
     .filter(Boolean)
     .join("\n");
-  // A paused container keeps its processes, so it still counts as up.
-  if (container.state === "running" || container.state === "paused") {
+  if (isUp(container)) {
     const seconds = secondsSince(container.started_at);
     return <span title={title}>{seconds === null ? "—" : formatDuration(seconds)}</span>;
   }

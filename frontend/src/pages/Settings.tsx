@@ -85,7 +85,7 @@ export default function Settings() {
 
       {error && <div className="error">{error}</div>}
       {notice && (
-        <div className="output ok" style={{ padding: "0.75rem" }}>
+        <div className="output ok padded">
           {notice}
         </div>
       )}

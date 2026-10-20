@@ -2,9 +2,10 @@ import { Copy, RefreshCw, ShieldBan } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { ApiError, api } from "../api";
 import { useAuth } from "../auth";
+import Fact from "../components/Fact";
 import JobList from "../components/JobList";
 import SortHeader from "../components/SortHeader";
-import { formatDate } from "../format";
+import { formatDate, secondsSince } from "../format";
 import { isActive, useJobs } from "../hooks/useJobs";
 import { useSort } from "../hooks/useSort";
 import { translate, useT } from "../i18n";
@@ -12,10 +13,6 @@ import type { Fail2banBan, Fail2banReport, HostPackage, HostUpdates } from "../t
 
 // Package lists older than this mean the host no longer runs `apt update`.
 const STALE_LISTS_DAYS = 7;
-
-function daysSince(value: string): number {
-  return (Date.now() - new Date(value).getTime()) / 86_400_000;
-}
 
 // Raspberry Pi's documented upgrade. Interactive: apt lists what it removes before asking.
 const UPGRADE_COMMAND = "sudo apt update && sudo apt full-upgrade";
@@ -26,7 +23,7 @@ const AUTO_UPGRADES_COMMAND =
 function Command({ command }: { command: string }) {
   const t = useT();
   return (
-    <div className="output" style={{ padding: "0.75rem" }}>
+    <div className="output padded">
       <div className="row-between">
         <pre style={{ margin: 0 }}>{command}</pre>
         <button
@@ -60,58 +57,33 @@ function Updates({ updates }: { updates: HostUpdates | null }) {
       </p>
     );
   }
-  const stale = updates.lists_updated_at && daysSince(updates.lists_updated_at) > STALE_LISTS_DAYS;
+  const listsAge = secondsSince(updates.lists_updated_at);
+  const stale = listsAge !== null && listsAge > STALE_LISTS_DAYS * 86_400;
   return (
     <>
       <ul className="fact-list">
-        <li>
-          <span className="muted">{t("Pending updates")}</span>
-          <strong>
-            {updates.upgradable}{" "}
-            {updates.security > 0 && (
-              <span className="badge sev-critical">
-                {t("{count} security", { count: updates.security })}
-              </span>
-            )}
-          </strong>
-        </li>
-        <li>
-          <span className="muted">{t("Reboot required")}</span>
-          <strong>
-            {updates.reboot_required ? (
-              <span className="badge sev-high">{t("yes")}</span>
-            ) : (
-              t("no")
-            )}
-          </strong>
-        </li>
-        <li>
-          <span className="muted">{t("Package lists refreshed")}</span>
-          <strong>
-            {formatDate(updates.lists_updated_at, t("never"))}
-            {stale && <span className="stat-detail-warn"> · {t("stale")}</span>}
-          </strong>
-        </li>
+        <Fact label={t("Pending updates")}>
+          {updates.upgradable}{" "}
+          {updates.security > 0 && (
+            <span className="badge sev-critical">
+              {t("{count} security", { count: updates.security })}
+            </span>
+          )}
+        </Fact>
+        <Fact label={t("Reboot required")}>
+          {updates.reboot_required ? <span className="badge sev-high">{t("yes")}</span> : t("no")}
+        </Fact>
+        <Fact label={t("Package lists refreshed")}>
+          {formatDate(updates.lists_updated_at, t("never"))}
+          {stale && <span className="stat-detail-warn"> · {t("stale")}</span>}
+        </Fact>
         {updates.auto_upgrades !== null && (
-          <li>
-            <span className="muted">{t("Automatic security updates")}</span>
-            <strong>
-              {updates.auto_upgrades ? (
-                t("on")
-              ) : (
-                <span className="badge sev-high">{t("off")}</span>
-              )}
-            </strong>
-          </li>
+          <Fact label={t("Automatic security updates")}>
+            {updates.auto_upgrades ? t("on") : <span className="badge sev-high">{t("off")}</span>}
+          </Fact>
         )}
-        <li>
-          <span className="muted">{t("Kernel")}</span>
-          <strong>{updates.kernel ?? "—"}</strong>
-        </li>
-        <li>
-          <span className="muted">{t("Last check")}</span>
-          <strong>{formatDate(updates.checked_at)}</strong>
-        </li>
+        <Fact label={t("Kernel")}>{updates.kernel ?? "—"}</Fact>
+        <Fact label={t("Last check")}>{formatDate(updates.checked_at)}</Fact>
       </ul>
       {stale && (
         <p className="muted">
@@ -231,7 +203,7 @@ function BanTable({ bans, empty }: { bans: Fail2banBan[]; empty: string }) {
             </td>
             <td>{ban.jail}</td>
             <td className="muted">{formatDate(ban.banned_at)}</td>
-            <td className="muted">{ban.expires_at ? formatDate(ban.expires_at) : t("permanent")}</td>
+            <td className="muted">{formatDate(ban.expires_at, t("permanent"))}</td>
             <td>{ban.ban_count}</td>
             <td>
               {ban.matches.length > 0 ? (
@@ -258,7 +230,7 @@ function Fail2ban({ report }: { report: Fail2banReport }) {
     <>
       <p className="muted">
         {t("History since {date}. fail2ban keeps it for", {
-          date: formatDate(report.history_since, "—"),
+          date: formatDate(report.history_since),
         })}{" "}
         <code>dbpurgeage</code> {t("(1 day by default).")}
       </p>

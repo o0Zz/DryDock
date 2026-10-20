@@ -74,7 +74,7 @@ export default function ApiTokens() {
       </p>
       {error && <div className="error">{error}</div>}
       {created && (
-        <div className="output ok" style={{ padding: "0.75rem" }}>
+        <div className="output ok padded">
           <div>{t("Copy the token now. It is not shown again.")}</div>
           <div className="button-row">
             <code style={{ overflowWrap: "anywhere" }}>{created.token}</code>
