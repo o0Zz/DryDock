@@ -675,6 +675,14 @@ def list_networks() -> list[Network]:
     )
 
 
+def network_exists(name: str) -> bool:
+    try:
+        # `names` matches substrings too, so compare exactly.
+        return any(network.name == name for network in _client().networks.list(names=[name]))
+    except DockerException as exc:
+        raise DockerUnavailable(str(exc)) from exc
+
+
 def remove_network(network_id: str) -> None:
     try:
         network = _client().networks.get(network_id)

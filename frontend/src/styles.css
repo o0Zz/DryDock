@@ -1189,3 +1189,25 @@ pre.diff .diff-gap { color: var(--muted); }
   .editor-with-assistant { grid-template-columns: minmax(0, 1fr); }
   .assistant { height: 420px; }
 }
+
+/* --- Exposure panel beside the Compose editor -------------------------- */
+.exposure-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 0.875rem;
+}
+.exposure-row a { display: inline-flex; align-items: center; gap: 0.25rem; overflow-wrap: anywhere; }
+.exposure-row-header { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
+.exposure-row label { display: flex; flex-direction: column; gap: 0.2rem; }
+.exposure-row input[type="text"],
+.exposure-row input[type="number"] { min-width: 0; width: 100%; }
+.exposure-host { display: flex; align-items: center; gap: 0.25rem; }
+.exposure-host input[type="text"] { flex: 1; width: auto; }
+.exposure-host .muted { white-space: nowrap; }
+.exposure-visibility { border: 0; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.2rem; }
+.exposure-visibility .checkbox-label { flex-direction: row; align-items: center; gap: 0.35rem; }
+.badge svg { vertical-align: -2px; }

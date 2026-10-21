@@ -21,7 +21,8 @@ backend/
   app/
     main.py            app setup, router mounting, SPA fallback, logging
     api/               one router per area (projects, containers, console, images,
-                       volumes, networks, scans, updates, jobs, logs, settings, users, auth, dashboard, git, ai)
+                       volumes, networks, scans, updates, jobs, logs, settings, users, auth, dashboard, git, ai,
+                       proxy)
     core/              config (env), database, migrations (Alembic runner), security
                        (sessions, bcrypt), log_buffer (in-memory app log)
     models/            SQLAlchemy models
@@ -31,13 +32,13 @@ backend/
                        settings_service, notify_service, history_service, host_service,
                        volume_files_service, host_updates_service, fail2ban_service,
                        stats_history_service, git_service, git_auth_service, repo_git_service,
-                       ai_service
+                       ai_service, proxy_service
   migrations/versions/ Alembic revisions
   tests/               pytest
 frontend/src/
   pages/               one file per route
   components/          shared UI (LogPanel, JobList, JobsIndicator, ContainerConsole,
-                       ComposeAssistant, AiSettings, ...)
+                       ComposeAssistant, AiSettings, ExposurePanel, ...)
   hooks/               useJobs, useContainerStats, useSort (click-to-sort tables with SortHeader)
   api.ts, types.ts     typed API client and response types
   i18n.tsx, i18n/fr/   translations: English text is the key, one JSON file per UI area
@@ -88,6 +89,15 @@ Dockerfile             3-stage build (frontend, backend venv, runtime with docke
   - Each request sends the system prompt, the last 20 messages and the current editor content in the last user message. Earlier proposals are sent without their file. The model ends a change with one `yaml` block; `edit_compose` takes the last one and runs `compose_service.validate_yaml` on it. An invalid file still comes back, with `error` set.
   - The chat call blocks (up to 180s) instead of being a job: the user waits for the answer. Provider failures map to 502, a missing setup to 400.
   - Only the Compose file is sent, never the `.env`.
+- **Reverse proxy** (`proxy_service`, `/api/proxy`): Traefik routes `https://<host>` to containers; DryDock only writes the labels and lists them. It never carries traffic, so a DryDock restart cuts nothing.
+  - The **Traefik reverse proxy** stack template (`stackTemplates.ts`) has two entrypoints: `lan` (:443, LAN and VPN) and `wan` (:8443, where the router forwards the internet's 443). Private services get `entrypoints=lan`, public ones `lan,wan`, so a missing label never exposes a service. One wildcard certificate per domain (OVH DNS challenge), declared on the entrypoints. The template creates the shared network (`proxy` by default).
+  - The Expose panel (`ExposurePanel`) sends the editor's content to `/api/proxy/projects/{id}/expose` or `/unexpose` and puts the answer back in the editor. Saving stays the normal flow.
+  - Edits go through `ruamel.yaml` round-trip, so comments stay. ruamel writes one indent style per file: `_guess_indent` takes the file's most common one. It also ties the blank line before the next block to the last entry of a block, so `_take_trailing_comment` moves it after the new labels.
+  - Managed labels: `traefik.enable`, `traefik.docker.network`, the router's `rule`, `entrypoints`, `service` and the service's port. An existing router name is kept, other labels stay. A new router is `<project>-<service>` (router names are global in Traefik). Unexpose drops every `traefik.*` label.
+  - The service joins the proxy network and keeps `default` (a service without `networks:` is only on `default`). The top-level network is `external: true`; unexpose removes it when no service uses it and DryDock wrote it.
+  - A router without `entrypoints` counts as public: Traefik puts it on every entrypoint. `network_mode` services cannot be exposed.
+  - The route list reads every Compose file, and resolves `${VAR}` in host names from the stack's `.env`. A host another stack uses is refused (409).
+  - Settings: `proxy_domain` (a bare name gets `.<domain>`) and `proxy_network`.
 - **Networks** (`docker_service`): a network's inspect only lists running containers, and `docker network prune` goes by that, so it would remove the networks of stopped stacks. DryDock builds usage from every container's `NetworkSettings.Networks`, keyed by network name (a container that never started has no `NetworkID` yet). Remove and prune refuse used networks and Docker's own (`bridge`, `host`, `none`); prune is a job that removes the free ones one by one.
 - **Live data:** logs use SSE (`/api/logs/...`). Container stats are polled every 5s. Each poll also feeds `stats_history_service`, an in-memory ring buffer (60 samples, about 5 min, lost on restart) behind the CPU and memory sparklines. It has no sampler of its own, so it only fills while a page polls. The console is a WebSocket (`/api/containers/{id}/exec`).
 - **Dashboard:** `/api/dashboard` returns counts and the "needs attention" lists in one call. CVE and update counts only include tracked images (running or named in a Compose file), so replaced tags stop counting. Host facts come from `docker info`.
@@ -176,7 +186,7 @@ uv run alembic check       # fails if models and migrations differ
 
 ## Non-goals
 
-Kubernetes, Swarm, multi-host, RBAC beyond admin/user, plugins, an auto-update engine, registry mirroring, public internet exposure.
+Kubernetes, Swarm, multi-host, RBAC beyond admin/user, plugins, an auto-update engine, registry mirroring, public internet exposure of DryDock itself (exposing other services through Traefik is fine), DNS record management.
 
 ## Known gaps
 

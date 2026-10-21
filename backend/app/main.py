@@ -23,6 +23,7 @@ from app.api import (
     logs,
     networks,
     projects,
+    proxy,
     registries,
     scans,
     tokens,
@@ -170,6 +171,7 @@ app.include_router(registries.router, dependencies=_auth)
 app.include_router(git.router, dependencies=_auth)
 app.include_router(tokens.router, dependencies=_auth)
 app.include_router(ai.router, dependencies=_auth)
+app.include_router(proxy.router, dependencies=_auth)
 app.include_router(console.router)  # WebSocket; checks the session itself
 
 

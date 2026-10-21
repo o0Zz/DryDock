@@ -282,6 +282,10 @@ export interface AppSettings {
   notify_webhook_url: string;
   notify_on_critical: boolean;
   notify_on_update: boolean;
+  /** Bare sub-domains complete to it in the Exposure panel. */
+  proxy_domain: string;
+  /** Docker network Traefik shares with the stacks it exposes. */
+  proxy_network: string;
   next_scan_run: string | null;
   next_update_run: string | null;
   repo_path: string;
@@ -298,6 +302,8 @@ export type SettingsPatch = Partial<
     | "notify_webhook_url"
     | "notify_on_critical"
     | "notify_on_update"
+    | "proxy_domain"
+    | "proxy_network"
   >
 >;
 
@@ -543,4 +549,46 @@ export interface ComposeAssistReply {
   content: string | null;
   /** Why the proposed file would not save. */
   error: string | null;
+}
+
+export interface ServiceExposure {
+  service: string;
+  exposed: boolean;
+  router: string | null;
+  hosts: string[];
+  /** Container port Traefik forwards to. */
+  port: number | null;
+  /** Reachable from the internet (on the wan entrypoint). */
+  public: boolean;
+  /** Ports the service declares, to suggest one. */
+  ports: number[];
+  /** Why the service cannot be exposed, or null. */
+  blocked: string | null;
+}
+
+export interface ExposeRequest {
+  service: string;
+  /** Full host name, or a bare sub-domain completed with the proxy domain. */
+  host: string;
+  port: number;
+  public: boolean;
+}
+
+export interface ProxyRoute {
+  project_id: string;
+  project_name: string;
+  service: string;
+  hosts: string[];
+  port: number | null;
+  public: boolean;
+  running: boolean;
+}
+
+export interface ProxyOverview {
+  domain: string;
+  network: string;
+  traefik: { id: string; name: string; running: boolean } | null;
+  network_exists: boolean | null;
+  docker_available: boolean;
+  routes: ProxyRoute[];
 }

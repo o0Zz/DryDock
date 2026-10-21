@@ -24,6 +24,10 @@ DEFAULTS: dict[str, Any] = {
     "notify_webhook_url": "",
     "notify_on_critical": True,
     "notify_on_update": True,
+    # Reverse proxy (proxy_service): the domain bare sub-domains complete to, and the
+    # Docker network Traefik shares with the stacks it exposes.
+    "proxy_domain": "",
+    "proxy_network": "proxy",
 }
 
 def get_all(db: Session) -> dict[str, Any]:

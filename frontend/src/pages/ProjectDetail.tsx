@@ -4,6 +4,7 @@ import {
   ChevronLeft,
   Copy,
   Download,
+  Globe,
   PenLine,
   Play,
   RotateCw,
@@ -22,6 +23,7 @@ import { useAuth } from "../auth";
 import { useConfirm, type ConfirmOptions } from "../components/ConfirmDialog";
 import ComposeAssistant from "../components/ComposeAssistant";
 import ContainerStatus from "../components/ContainerStatus";
+import ExposurePanel from "../components/ExposurePanel";
 import ImageName from "../components/ImageName";
 import { JOB_STATUS_TEXT } from "../components/JobList";
 import LogPanel from "../components/LogPanel";
@@ -108,9 +110,10 @@ export default function ProjectDetail() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const [fileTab, setFileTab] = useState<"compose" | "env">("compose");
-  // Mounts on first open and then stays hidden, so closing keeps the conversation.
+  // The assistant mounts on first open and then stays hidden, so closing keeps the
+  // conversation. One side panel shows at a time.
   const [assistantOpened, setAssistantOpened] = useState(false);
-  const [showAssistant, setShowAssistant] = useState(false);
+  const [sidePanel, setSidePanel] = useState<"assistant" | "exposure" | null>(null);
   // The .env editor mounts on first open and then stays, so switching tabs keeps edits.
   const [envOpened, setEnvOpened] = useState(false);
   // `?retag=<image>` arrives from a container's update shortcut: offer the
@@ -514,7 +517,7 @@ export default function ProjectDetail() {
               onDismiss={dismissRetag}
             />
           )}
-          <div className={showAssistant ? "editor-with-assistant" : undefined}>
+          <div className={sidePanel ? "editor-with-assistant" : undefined}>
             <Suspense fallback={<div className="empty">{t("Loading editor…")}</div>}>
               <YamlEditor
                 value={compose}
@@ -525,13 +528,21 @@ export default function ProjectDetail() {
               />
             </Suspense>
             {assistantOpened && (
-              <div hidden={!showAssistant}>
+              <div hidden={sidePanel !== "assistant"}>
                 <ComposeAssistant
                   content={compose}
                   onApply={setCompose}
-                  onClose={() => setShowAssistant(false)}
+                  onClose={() => setSidePanel(null)}
                 />
               </div>
+            )}
+            {sidePanel === "exposure" && (
+              <ExposurePanel
+                projectId={id}
+                content={compose}
+                onApply={setCompose}
+                onClose={() => setSidePanel(null)}
+              />
             )}
           </div>
           <div className="button-row">
@@ -549,13 +560,22 @@ export default function ProjectDetail() {
             <button
               type="button"
               className="secondary"
-              aria-pressed={showAssistant}
+              aria-pressed={sidePanel === "assistant"}
               onClick={() => {
                 setAssistantOpened(true);
-                setShowAssistant(!showAssistant);
+                setSidePanel(sidePanel === "assistant" ? null : "assistant");
               }}
             >
               <Sparkles size={15} /> {t("Ask AI")}
+            </button>
+            <button
+              type="button"
+              className="secondary"
+              aria-pressed={sidePanel === "exposure"}
+              title={t("Give a service a host name behind the Traefik proxy")}
+              onClick={() => setSidePanel(sidePanel === "exposure" ? null : "exposure")}
+            >
+              <Globe size={15} /> {t("Expose")}
             </button>
             {savedAt && !dirty && <span className="muted">{savedAt}</span>}
           </div>

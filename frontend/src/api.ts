@@ -21,6 +21,7 @@ import type {
   DockerNetwork,
   EnvContent,
   EnvSaveResult,
+  ExposeRequest,
   Fail2banReport,
   GitCredential,
   HostUpdates,
@@ -29,10 +30,12 @@ import type {
   LocalImage,
   Project,
   ProjectAction,
+  ProxyOverview,
   RegistryCredential,
   RepoGitStatus,
   ScanDetail,
   ScanSummary,
+  ServiceExposure,
   SettingsPatch,
   StackChangeAccepted,
   StatsSample,
@@ -280,6 +283,24 @@ export const api = {
     request<ComposeAssistReply>("/api/ai/compose", {
       method: "POST",
       body: JSON.stringify({ content, messages }),
+    }),
+
+  // The exposure routes take and return the editor's content; nothing is saved.
+  getProxy: () => request<ProxyOverview>("/api/proxy"),
+  exposureServices: (id: string, content: string) =>
+    request<ServiceExposure[]>(`/api/proxy/projects/${id}/services`, {
+      method: "POST",
+      body: JSON.stringify({ content }),
+    }),
+  exposeService: (id: string, content: string, exposure: ExposeRequest) =>
+    request<ComposeContent>(`/api/proxy/projects/${id}/expose`, {
+      method: "POST",
+      body: JSON.stringify({ content, ...exposure }),
+    }),
+  unexposeService: (id: string, content: string, service: string) =>
+    request<ComposeContent>(`/api/proxy/projects/${id}/unexpose`, {
+      method: "POST",
+      body: JSON.stringify({ content, service }),
     }),
 
   // networks

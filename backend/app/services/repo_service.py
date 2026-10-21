@@ -34,6 +34,11 @@ def _load_yaml(path: Path) -> object:
         return None
 
 
+def load_compose(compose_path: str | Path) -> object:
+    """The parsed Compose file, or None when it cannot be read."""
+    return _load_yaml(Path(compose_path))
+
+
 def _looks_like_compose(path: Path) -> bool:
     """Arbitrary YAML (e.g. `adguard.yml`) counts as a Compose file only if it
     has a top-level `services` mapping."""

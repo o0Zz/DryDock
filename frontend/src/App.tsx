@@ -1,6 +1,7 @@
 import {
   Anchor,
   Container as ContainerIcon,
+  Globe,
   HardDrive,
   Layers,
   LayoutDashboard,
@@ -30,6 +31,7 @@ import NewProject from "./pages/NewProject";
 import Networks from "./pages/Networks";
 import ProjectDetail from "./pages/ProjectDetail";
 import Projects from "./pages/Projects";
+import Proxy from "./pages/Proxy";
 import ChangeDefaultPassword from "./pages/ChangeDefaultPassword";
 import Settings from "./pages/Settings";
 import Users from "./pages/Users";
@@ -106,6 +108,9 @@ export default function App() {
           <NavLink to="/networks">
             <Network size={18} /> {t("Networks")}
           </NavLink>
+          <NavLink to="/proxy">
+            <Globe size={18} /> {t("Proxy")}
+          </NavLink>
           <NavLink to="/images">
             <Layers size={18} /> {t("Images")}
           </NavLink>
@@ -138,6 +143,7 @@ export default function App() {
           <Route path="/volumes" element={<Volumes />} />
           {user.is_admin && <Route path="/volumes/:name" element={<VolumeFiles />} />}
           <Route path="/networks" element={<Networks />} />
+          <Route path="/proxy" element={<Proxy />} />
           <Route path="/images" element={<Images />} />
           <Route path="/scans" element={<Navigate to="/images" replace />} />
           <Route path="/host" element={<Host />} />
