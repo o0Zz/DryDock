@@ -1084,3 +1084,108 @@ button.danger { background: #cf222e; }
 @media (prefers-reduced-motion: reduce) {
   .sidebar { transition: none; }
 }
+
+/* --- AI assistant beside the Compose editor ---------------------------- */
+.editor-with-assistant {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 380px);
+  gap: 0.75rem;
+  align-items: start;
+}
+.assistant {
+  display: flex;
+  flex-direction: column;
+  /* The editor's 480px plus its border. */
+  height: 482px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel);
+  min-width: 0;
+}
+.assistant-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.9rem;
+}
+.assistant-header strong { display: inline-flex; align-items: center; gap: 0.35rem; white-space: nowrap; }
+.assistant-header .button-row { margin-left: auto; flex-wrap: nowrap; gap: 0.25rem; }
+.assistant-model { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; font-size: 0.78rem; }
+.assistant-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+.assistant-body .empty { padding: 1rem 0; }
+.assistant-message { font-size: 0.875rem; line-height: 1.45; }
+.assistant-message.user {
+  align-self: flex-end;
+  max-width: 85%;
+  padding: 0.45rem 0.7rem;
+  border-radius: 10px 10px 2px 10px;
+  background: rgba(9, 105, 218, 0.1);
+}
+.assistant-message.assistant { display: flex; flex-direction: column; gap: 0.4rem; }
+.assistant-message.assistant.muted { flex-direction: row; align-items: center; gap: 0.35rem; }
+.assistant-text { white-space: pre-wrap; overflow-wrap: anywhere; }
+.assistant-proposal {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.assistant-proposal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.35rem 0.5rem;
+  background: var(--bg);
+  font-size: 0.8rem;
+}
+.assistant-proposal-header .muted { display: inline-flex; align-items: center; gap: 0.25rem; font-size: 0.78rem; }
+.assistant-proposal > .error,
+.assistant-proposal > .muted { margin: 0.35rem 0.5rem; font-size: 0.78rem; }
+pre.diff {
+  margin: 0;
+  max-height: 220px;
+  overflow: auto;
+  padding: 0.35rem 0;
+  font-family: "Cascadia Code", Consolas, Menlo, monospace;
+  font-size: 0.75rem;
+}
+pre.diff > div { padding: 0 0.5rem; white-space: pre; }
+.diff-added { color: #1a7f37; }
+.diff-removed { color: #cf222e; }
+pre.diff .diff-added { background: rgba(63, 185, 80, 0.12); }
+pre.diff .diff-removed { background: rgba(248, 81, 73, 0.12); }
+pre.diff .diff-gap { color: var(--muted); }
+.assistant-input {
+  display: flex;
+  gap: 0.5rem;
+  align-items: flex-end;
+  padding: 0.5rem;
+  border-top: 1px solid var(--border);
+}
+.assistant-input textarea {
+  flex: 1;
+  min-width: 0;
+  resize: none;
+  font: inherit;
+  font-size: 0.875rem;
+  padding: 0.4rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.device-code { font-size: 1.1rem; font-weight: 600; letter-spacing: 0.08em; }
+
+@media (max-width: 768px) {
+  /* Below the editor instead of beside it. */
+  .editor-with-assistant { grid-template-columns: minmax(0, 1fr); }
+  .assistant { height: 420px; }
+}

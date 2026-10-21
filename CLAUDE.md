@@ -21,7 +21,7 @@ backend/
   app/
     main.py            app setup, router mounting, SPA fallback, logging
     api/               one router per area (projects, containers, console, images,
-                       volumes, networks, scans, updates, jobs, logs, settings, users, auth, dashboard, git)
+                       volumes, networks, scans, updates, jobs, logs, settings, users, auth, dashboard, git, ai)
     core/              config (env), database, migrations (Alembic runner), security
                        (sessions, bcrypt), log_buffer (in-memory app log)
     models/            SQLAlchemy models
@@ -30,12 +30,14 @@ backend/
                        registry_service, update_service, job_service, tasks, scheduler_service,
                        settings_service, notify_service, history_service, host_service,
                        volume_files_service, host_updates_service, fail2ban_service,
-                       stats_history_service, git_service, git_auth_service, repo_git_service
+                       stats_history_service, git_service, git_auth_service, repo_git_service,
+                       ai_service
   migrations/versions/ Alembic revisions
   tests/               pytest
 frontend/src/
   pages/               one file per route
-  components/          shared UI (LogPanel, JobList, JobsIndicator, ContainerConsole, ...)
+  components/          shared UI (LogPanel, JobList, JobsIndicator, ContainerConsole,
+                       ComposeAssistant, AiSettings, ...)
   hooks/               useJobs, useContainerStats, useSort (click-to-sort tables with SortHeader)
   api.ts, types.ts     typed API client and response types
   i18n.tsx, i18n/fr/   translations: English text is the key, one JSON file per UI area
@@ -79,6 +81,13 @@ Dockerfile             3-stage build (frontend, backend venv, runtime with docke
   - git runs as the owner of `.git` (`subprocess.run(user=...)`), so objects and pulled files stay theirs and git's ownership check passes. `HOME` moves to the temp dir, because root's home is unreadable for that user.
   - Push and pull get the login as `http.<host>.extraheader` through `GIT_CONFIG_*` env vars: out of the process list, and no credential file the owner cannot read. https only. Pull is `--ff-only`.
   - Without `user.name` in the repo config, the author is the DryDock user (`<name>@drydock.local`). The host's global git config is not visible.
+- **AI assistant** (`ai_service`, `/api/ai`): a chat beside the Compose editor (`ComposeAssistant`). It proposes a whole new file; the UI shows a line diff (`lineDiff.ts`) and "Apply" puts it in the editor. Saving stays the normal validate, back up, write flow.
+  - Providers: OpenAI (`/chat/completions`, editable base URL for compatible servers), Anthropic (`/v1/messages`), GitHub Copilot. Plain httpx, no SDK. One is active.
+  - Keys live in `<data>/ai/config.json` (mode 600). The API never returns them; an empty key on `PUT` keeps the stored one. Config is admin only, the chat is open to anyone who can edit a Compose file.
+  - Copilot has no API key. The admin signs in with GitHub's device flow, with Copilot's own OAuth client ID (Copilot only gives tokens to apps it knows). DryDock stores the GitHub token and trades it for a short-lived Copilot token (`copilot_internal/v2/token`, cached until a minute before expiry). That endpoint is not a public API and may change.
+  - Each request sends the system prompt, the last 20 messages and the current editor content in the last user message. Earlier proposals are sent without their file. The model ends a change with one `yaml` block; `edit_compose` takes the last one and runs `compose_service.validate_yaml` on it. An invalid file still comes back, with `error` set.
+  - The chat call blocks (up to 180s) instead of being a job: the user waits for the answer. Provider failures map to 502, a missing setup to 400.
+  - Only the Compose file is sent, never the `.env`.
 - **Networks** (`docker_service`): a network's inspect only lists running containers, and `docker network prune` goes by that, so it would remove the networks of stopped stacks. DryDock builds usage from every container's `NetworkSettings.Networks`, keyed by network name (a container that never started has no `NetworkID` yet). Remove and prune refuse used networks and Docker's own (`bridge`, `host`, `none`); prune is a job that removes the free ones one by one.
 - **Live data:** logs use SSE (`/api/logs/...`). Container stats are polled every 5s. Each poll also feeds `stats_history_service`, an in-memory ring buffer (60 samples, about 5 min, lost on restart) behind the CPU and memory sparklines. It has no sampler of its own, so it only fills while a page polls. The console is a WebSocket (`/api/containers/{id}/exec`).
 - **Dashboard:** `/api/dashboard` returns counts and the "needs attention" lists in one call. CVE and update counts only include tracked images (running or named in a Compose file), so replaced tags stop counting. Host facts come from `docker info`.
@@ -94,7 +103,7 @@ Dockerfile             3-stage build (frontend, backend venv, runtime with docke
 - **Auth:** signed session cookie (Starlette `SessionMiddleware`), users table with an `is_admin` flag. A bootstrap admin is created on first start.
   - Default password: an account on `admin` (`DEFAULT_ADMIN_PASSWORD`) gets `must_change_password`, at bootstrap or at login (older installs). `get_current_user` then answers 403 everywhere, tokens included. Only `/api/auth/me`, `/password` and `/logout` work, through `get_authenticated_user`. The console WebSocket refuses too. The UI shows only `ChangeDefaultPassword` until the change.
   - API tokens (`api_tokens` table, `/api/tokens`): `get_current_user` also accepts `Authorization: Bearer ddt_...`. Only a SHA-256 of the token is stored, and the token acts as its user. `last_used_at` is written at most once a minute.
-  - Admin only: settings writes, users, app logs, console, unmasked env values, `.env` files, volume files, registry credentials, git logins and repo git, fail2ban.
+  - Admin only: settings writes, users, app logs, console, unmasked env values, `.env` files, volume files, registry credentials, git logins and repo git, fail2ban, AI provider setup.
   - The console WebSocket is outside the HTTP auth dependency. It checks the session and the `Origin` header itself. Keep that check: other apps on the same host are same-site, so the browser sends them the cookie too.
 - **Registry credentials** (`registry_auth_service`): stored in a standard Docker `config.json` at `<data>/docker/` (base64 `auths`, mode 600). `docker compose` and `trivy` get `DOCKER_CONFIG` pointing there (`subprocess_env()`), the digest check passes `auth_config` to the daemon, and the tag check logs in to the token endpoint. Saving a login first checks it with `docker login` on a throwaway client. Credential helpers (`credsStore`) are not supported.
 - **Trivy** runs with `--cache-dir <data>/trivy-cache`, so its DB survives the container being recreated.

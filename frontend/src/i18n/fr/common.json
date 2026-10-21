@@ -57,5 +57,6 @@
   "Username": "Nom d'utilisateur",
   "Actions": "Actions",
   "Add": "Ajouter",
-  "Your password and API tokens": "Votre mot de passe et vos jetons d'API"
+  "Your password and API tokens": "Votre mot de passe et vos jetons d'API",
+  "AI assistant": "Assistant IA"
 }

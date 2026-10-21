@@ -493,3 +493,54 @@ export interface RepoGitStatus {
   has_login: boolean;
   changes: RepoChange[];
 }
+
+export type AiProviderId = "openai" | "anthropic" | "copilot";
+
+export interface AiProvider {
+  id: AiProviderId;
+  /** A key (Copilot: a GitHub sign-in) is stored. The key itself never comes back. */
+  configured: boolean;
+  model: string;
+  /** OpenAI only: empty means api.openai.com. */
+  base_url: string;
+  /** Copilot only: the GitHub login. */
+  account: string;
+}
+
+export interface AiConfig {
+  active: AiProviderId | null;
+  providers: AiProvider[];
+}
+
+export interface AiProviderPatch {
+  model: string;
+  /** Empty keeps the stored key. */
+  api_key?: string;
+  base_url?: string;
+}
+
+export interface CopilotDevice {
+  user_code: string;
+  verification_uri: string;
+  /** Seconds between polls, as GitHub asks. */
+  interval: number;
+  expires_in: number;
+}
+
+export interface CopilotPoll {
+  status: "pending" | "done" | "expired" | "denied";
+  account: string | null;
+}
+
+export interface AiMessage {
+  role: "user" | "assistant";
+  content: string;
+}
+
+export interface ComposeAssistReply {
+  reply: string;
+  /** The whole proposed file, or null when the answer changes nothing. */
+  content: string | null;
+  /** Why the proposed file would not save. */
+  error: string | null;
+}

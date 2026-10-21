@@ -1,8 +1,17 @@
-import { CalendarClock, KeyRound, RefreshCw, Save, Server, UserRound } from "lucide-react";
+import {
+  CalendarClock,
+  KeyRound,
+  RefreshCw,
+  Save,
+  Server,
+  Sparkles,
+  UserRound,
+} from "lucide-react";
 import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { useSearchParams } from "react-router-dom";
 import { api } from "../api";
 import { useAuth } from "../auth";
+import AiSettings from "../components/AiSettings";
 import ApiTokens from "../components/ApiTokens";
 import ChangePassword from "../components/ChangePassword";
 import GitCredentials from "../components/GitCredentials";
@@ -11,11 +20,12 @@ import { formatDate } from "../format";
 import { msg, useT } from "../i18n";
 import type { AppSettings, Job, SettingsPatch } from "../types";
 
-type Tab = "schedules" | "credentials" | "account" | "system";
+type Tab = "schedules" | "credentials" | "ai" | "account" | "system";
 
 const TABS: { id: Tab; label: string; icon: ReactNode; adminOnly?: boolean }[] = [
   { id: "schedules", label: msg("Schedules & alerts"), icon: <CalendarClock size={15} /> },
   { id: "credentials", label: msg("Credentials"), icon: <KeyRound size={15} />, adminOnly: true },
+  { id: "ai", label: msg("AI assistant"), icon: <Sparkles size={15} />, adminOnly: true },
   { id: "account", label: msg("Account"), icon: <UserRound size={15} /> },
   { id: "system", label: msg("System"), icon: <Server size={15} /> },
 ];
@@ -258,6 +268,12 @@ export default function Settings() {
         <div className="settings-panel" hidden={tab !== "credentials"}>
           <RegistryCredentials />
           <GitCredentials />
+        </div>
+      )}
+
+      {user?.is_admin && tab === "ai" && (
+        <div className="settings-panel">
+          <AiSettings />
         </div>
       )}
 

@@ -1,8 +1,13 @@
 import type {
+  AiConfig,
+  AiMessage,
+  AiProviderId,
+  AiProviderPatch,
   ApiErrorBody,
   ApiToken,
   ApiTokenCreated,
   AppSettings,
+  ComposeAssistReply,
   ComposeContent,
   ComposeSaveResult,
   Container,
@@ -10,6 +15,8 @@ import type {
   ContainerActionResult,
   ContainerDetail,
   ContainerStats,
+  CopilotDevice,
+  CopilotPoll,
   DashboardStats,
   DockerNetwork,
   EnvContent,
@@ -253,6 +260,27 @@ export const api = {
     }),
   pushRepo: () => request<Job>("/api/git/repo/push", { method: "POST" }),
   pullRepo: () => request<Job>("/api/git/repo/pull", { method: "POST" }),
+
+  // AI assistant: provider setup (admin) and the Compose editor's chat
+  getAi: () => request<AiConfig>("/api/ai"),
+  setAiActive: (provider: AiProviderId | null) =>
+    request<AiConfig>("/api/ai/active", { method: "PUT", body: JSON.stringify({ provider }) }),
+  setAiProvider: (provider: AiProviderId, patch: AiProviderPatch) =>
+    request<AiConfig>(`/api/ai/providers/${provider}`, {
+      method: "PUT",
+      body: JSON.stringify(patch),
+    }),
+  removeAiProvider: (provider: AiProviderId) =>
+    request<AiConfig>(`/api/ai/providers/${provider}`, { method: "DELETE" }),
+  listAiModels: (provider: AiProviderId) =>
+    request<string[]>(`/api/ai/providers/${provider}/models`),
+  startCopilotSignIn: () => request<CopilotDevice>("/api/ai/copilot/device", { method: "POST" }),
+  pollCopilotSignIn: () => request<CopilotPoll>("/api/ai/copilot/poll", { method: "POST" }),
+  assistCompose: (content: string, messages: AiMessage[]) =>
+    request<ComposeAssistReply>("/api/ai/compose", {
+      method: "POST",
+      body: JSON.stringify({ content, messages }),
+    }),
 
   // networks
   listNetworks: () => request<DockerNetwork[]>("/api/networks"),

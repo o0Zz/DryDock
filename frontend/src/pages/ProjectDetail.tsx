@@ -9,6 +9,7 @@ import {
   RotateCw,
   Save,
   ScrollText,
+  Sparkles,
   Square,
   Trash2,
   Undo2,
@@ -19,6 +20,7 @@ import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom"
 import { api } from "../api";
 import { useAuth } from "../auth";
 import { useConfirm, type ConfirmOptions } from "../components/ConfirmDialog";
+import ComposeAssistant from "../components/ComposeAssistant";
 import ContainerStatus from "../components/ContainerStatus";
 import ImageName from "../components/ImageName";
 import { JOB_STATUS_TEXT } from "../components/JobList";
@@ -106,6 +108,9 @@ export default function ProjectDetail() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const [fileTab, setFileTab] = useState<"compose" | "env">("compose");
+  // Mounts on first open and then stays hidden, so closing keeps the conversation.
+  const [assistantOpened, setAssistantOpened] = useState(false);
+  const [showAssistant, setShowAssistant] = useState(false);
   // The .env editor mounts on first open and then stays, so switching tabs keeps edits.
   const [envOpened, setEnvOpened] = useState(false);
   // `?retag=<image>` arrives from a container's update shortcut: offer the
@@ -509,15 +514,26 @@ export default function ProjectDetail() {
               onDismiss={dismissRetag}
             />
           )}
-          <Suspense fallback={<div className="empty">{t("Loading editor…")}</div>}>
-            <YamlEditor
-              value={compose}
-              onChange={setCompose}
-              onSave={() => {
-                if (dirty && !saving) void save();
-              }}
-            />
-          </Suspense>
+          <div className={showAssistant ? "editor-with-assistant" : undefined}>
+            <Suspense fallback={<div className="empty">{t("Loading editor…")}</div>}>
+              <YamlEditor
+                value={compose}
+                onChange={setCompose}
+                onSave={() => {
+                  if (dirty && !saving) void save();
+                }}
+              />
+            </Suspense>
+            {assistantOpened && (
+              <div hidden={!showAssistant}>
+                <ComposeAssistant
+                  content={compose}
+                  onApply={setCompose}
+                  onClose={() => setShowAssistant(false)}
+                />
+              </div>
+            )}
+          </div>
           <div className="button-row">
             <button type="button" onClick={save} disabled={!dirty || saving}>
               <Save size={15} /> {saving ? t("Saving…") : t("Save")}
@@ -529,6 +545,17 @@ export default function ProjectDetail() {
               disabled={!dirty || saving}
             >
               <Undo2 size={15} /> {t("Revert")}
+            </button>
+            <button
+              type="button"
+              className="secondary"
+              aria-pressed={showAssistant}
+              onClick={() => {
+                setAssistantOpened(true);
+                setShowAssistant(!showAssistant);
+              }}
+            >
+              <Sparkles size={15} /> {t("Ask AI")}
             </button>
             {savedAt && !dirty && <span className="muted">{savedAt}</span>}
           </div>

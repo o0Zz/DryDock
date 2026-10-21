@@ -98,5 +98,19 @@
   "deleted": "supprimé",
   "renamed": "renommé",
   "copied": "copié",
-  "conflict": "conflit"
+  "conflict": "conflit",
+  "New conversation": "Nouvelle conversation",
+  "No AI provider is set up yet.": "Aucun fournisseur d'IA n'est configuré.",
+  "Set one up in Settings.": "Configurez-en un dans les paramètres.",
+  "No AI provider is set up yet. Ask an admin to set one up in Settings.": "Aucun fournisseur d'IA n'est configuré. Demandez à un admin d'en configurer un dans les paramètres.",
+  "Ask for a change, for example: \"add a healthcheck to web\" or \"put the database on its own network\". The answer is not saved until you apply it and save.": "Demandez une modification, par exemple : « ajoute un healthcheck à web » ou « mets la base de données sur son propre réseau ». La réponse n'est enregistrée qu'après l'avoir appliquée puis enregistrée.",
+  "Thinking…": "Réflexion…",
+  "Describe the change you want…": "Décrivez la modification voulue…",
+  "Send (Enter). Shift+Enter for a new line.": "Envoyer (Entrée). Maj+Entrée pour un retour à la ligne.",
+  "Proposed file": "Fichier proposé",
+  "In the editor, not saved yet": "Dans l'éditeur, pas encore enregistré",
+  "Apply to editor": "Appliquer dans l'éditeur",
+  "This file will not save: {error}": "Ce fichier ne pourra pas être enregistré : {error}",
+  "The editor changed since this answer. Applying it replaces those edits.": "L'éditeur a changé depuis cette réponse. L'appliquer remplace ces modifications.",
+  "Ask AI": "Demander à l'IA"
 }

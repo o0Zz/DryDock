@@ -43,7 +43,7 @@ def read_compose(compose_path: Path) -> str:
     return compose_path.read_text(encoding="utf-8")
 
 
-def _validate_yaml(content: str) -> None:
+def validate_yaml(content: str) -> None:
     try:
         data = yaml.safe_load(content)
     except yaml.YAMLError as exc:
@@ -72,7 +72,7 @@ def _backup(project_id: str, path: Path, extension: str) -> Path:
 
 
 def write_compose(project_id: str, compose_path: Path, content: str) -> Path:
-    _validate_yaml(content)
+    validate_yaml(content)
     backup = _backup(project_id, compose_path, compose_path.suffix)
     compose_path.write_text(content, encoding="utf-8")
     return backup
@@ -141,7 +141,7 @@ def write_env(project_id: str, compose_path: Path, content: str) -> Path | None:
 def create_compose(name: str, content: str) -> Path:
     """Create `<repo>/<name>/docker-compose.yml`. `name` must already be a safe
     single path segment (the API schema enforces it)."""
-    _validate_yaml(content)
+    validate_yaml(content)
     project_dir = settings.repo_path / name
     if any((project_dir / filename).exists() for filename in COMPOSE_FILENAMES):
         raise ComposeExists(f"A compose file already exists in '{name}/'")
