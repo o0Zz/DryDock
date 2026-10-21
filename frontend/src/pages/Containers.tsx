@@ -1,17 +1,25 @@
-import { ArrowUpCircle, RefreshCw, ShieldCheck, SquareTerminal, Trash2 } from "lucide-react";
+import {
+  ArrowUpCircle,
+  RefreshCw,
+  ScrollText,
+  ShieldCheck,
+  SquareTerminal,
+  Trash2,
+} from "lucide-react";
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { api } from "../api";
 import { useAuth } from "../auth";
 import ImageName from "../components/ImageName";
 import JobList from "../components/JobList";
+import LogPanel from "../components/LogPanel";
 import { useConfirm } from "../components/ConfirmDialog";
 import ContainerStatus from "../components/ContainerStatus";
 import ScanBadge from "../components/ScanBadge";
 import SortHeader from "../components/SortHeader";
 import Sparkline from "../components/Sparkline";
 import UpdateAction from "../components/UpdateAction";
-import Uptime, { uptimeSeconds } from "../components/Uptime";
+import Uptime from "../components/Uptime";
 import { useContainerStats, useStatsHistory } from "../hooks/useContainerStats";
 import {
   CONTAINER_ACTION_ICONS,
@@ -42,6 +50,8 @@ export default function Containers() {
   // Owning Compose project per container id, for the "edit tag" shortcut.
   const [projects, setProjects] = useState<Record<string, Project>>({});
   const [consoleFor, setConsoleFor] = useState<Container | null>(null);
+  // Logs open over the list: no trip to the detail page to read them.
+  const [logsFor, setLogsFor] = useState<Container | null>(null);
   const { user } = useAuth();
   const stats = useContainerStats();
   const history = useStatsHistory(stats);
@@ -55,15 +65,11 @@ export default function Containers() {
       name: (container) => container.name,
       image: (container) => container.image,
       status: (container) => containerStateRank(container.state),
-      uptime: uptimeSeconds,
       cpu: (container) => stats[container.id]?.cpu_percent,
       memory: (container) => stats[container.id]?.memory_usage,
-      compose: (container) =>
-        container.compose_project &&
-        `${container.compose_project} / ${container.compose_service ?? ""}`,
     },
     initial: { column: "name", descending: false },
-    descendingFirst: ["uptime", "cpu", "memory"],
+    descendingFirst: ["cpu", "memory"],
   });
 
   const refresh = useCallback((): void => {
@@ -217,9 +223,6 @@ export default function Containers() {
               <SortHeader sorting={sorting} column="status">
                 {t("Status")}
               </SortHeader>
-              <SortHeader sorting={sorting} column="uptime">
-                {t("Uptime")}
-              </SortHeader>
               <SortHeader sorting={sorting} column="cpu">
                 CPU
               </SortHeader>
@@ -227,9 +230,6 @@ export default function Containers() {
                 {t("Memory")}
               </SortHeader>
               <th>{t("Ports")}</th>
-              <SortHeader sorting={sorting} column="compose">
-                {t("Compose")}
-              </SortHeader>
               <th></th>
             </tr>
           </thead>
@@ -246,19 +246,41 @@ export default function Containers() {
                   >
                     {container.name}
                   </Link>
+                  {container.compose_project && (
+                    <div className="row-sub">
+                      {projects[container.id] ? (
+                        <Link
+                          to={`/projects/${projects[container.id].id}`}
+                          title={t("Open the stack")}
+                        >
+                          {container.compose_project} / {container.compose_service}
+                        </Link>
+                      ) : (
+                        `${container.compose_project} / ${container.compose_service ?? ""}`
+                      )}
+                    </div>
+                  )}
                 </td>
                 <td>
-                  <ImageName image={container.image} version={container.image_version} />{" "}
-                  <UpdateAction
-                    container={container}
-                    update={updates[container.image]}
-                    project={projects[container.id]}
-                    pending={jobs.some(
-                      (job) => job.label === `Update ${container.name}` && isActive(job),
-                    )}
-                    onJob={track}
-                    onError={setError}
-                  />
+                  <Link
+                    className="plain-link"
+                    to={`/containers/${container.id}?tab=updates`}
+                    title={t("Update details")}
+                  >
+                    <ImageName image={container.image} version={container.image_version} />
+                  </Link>
+                  <div className="row-sub">
+                    <UpdateAction
+                      container={container}
+                      update={updates[container.image]}
+                      project={projects[container.id]}
+                      pending={jobs.some(
+                        (job) => job.label === `Update ${container.name}` && isActive(job),
+                      )}
+                      onJob={track}
+                      onError={setError}
+                    />
+                  </div>
                 </td>
                 <td>
                   <ScanBadge
@@ -275,21 +297,25 @@ export default function Containers() {
                       policy: container.restart_policy || "no",
                     })}
                   />
-                </td>
-                <td>
-                  <Uptime container={container} />
+                  <div className="row-sub muted">
+                    <Uptime container={container} />
+                  </div>
                 </td>
                 <StatsCells stats={stats[container.id]} history={history[container.id] ?? []} />
                 <td>
                   {formatPorts(container.ports)}
                 </td>
                 <td>
-                  {container.compose_project
-                    ? `${container.compose_project} / ${container.compose_service ?? ""}`
-                    : "—"}
-                </td>
-                <td>
                   <div className="button-row inline">
+                    <button
+                      type="button"
+                      className="secondary small icon-only"
+                      title={t("Show the logs")}
+                      aria-label={t("logs")}
+                      onClick={() => setLogsFor(container)}
+                    >
+                      <ScrollText size={14} />
+                    </button>
                     {containerActionsFor(container.state).map((action) => {
                       const Icon = CONTAINER_ACTION_ICONS[action];
                       return (
@@ -335,6 +361,15 @@ export default function Containers() {
             ))}
           </tbody>
         </table>
+      )}
+
+      {logsFor && (
+        <LogPanel
+          key={logsFor.id}
+          title={logsFor.name}
+          url={`/api/logs/container/${logsFor.id}?tail=200`}
+          onClose={() => setLogsFor(null)}
+        />
       )}
 
       {consoleFor && (

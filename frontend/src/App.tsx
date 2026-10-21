@@ -14,7 +14,7 @@ import {
   Users as UsersIcon,
 } from "lucide-react";
 import { useEffect, useState } from "react";
-import { Navigate, NavLink, Route, Routes, useLocation } from "react-router-dom";
+import { Link, Navigate, NavLink, Route, Routes, useLocation } from "react-router-dom";
 import { useAuth } from "./auth";
 import JobsIndicator from "./components/JobsIndicator";
 import LanguagePicker from "./components/LanguagePicker";
@@ -75,10 +75,14 @@ export default function App() {
         <div className="topbar-user">
           <JobsIndicator />
           <LanguagePicker />
-          <span className="topbar-user-name">
+          <Link
+            className="topbar-user-name"
+            to="/settings?tab=account"
+            title={t("Your password and API tokens")}
+          >
             {user.username}
             {user.is_admin && <span className="badge admin-badge">admin</span>}
-          </span>
+          </Link>
           <button className="secondary small" onClick={() => logout()}>
             <LogOut size={15} /> <span className="hide-narrow">{t("Sign out")}</span>
           </button>

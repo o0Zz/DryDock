@@ -56,5 +56,6 @@
   "Installed": "Installée",
   "Username": "Nom d'utilisateur",
   "Actions": "Actions",
-  "Add": "Ajouter"
+  "Add": "Ajouter",
+  "Your password and API tokens": "Votre mot de passe et vos jetons d'API"
 }

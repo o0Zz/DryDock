@@ -159,5 +159,9 @@
   "Built commit": "Commit construit",
   "Latest commit": "Dernier commit",
   "New commit": "Nouveau commit",
-  "yes — update to rebuild": "oui — mettez à jour pour reconstruire"
+  "yes — update to rebuild": "oui — mettez à jour pour reconstruire",
+  "Open the stack": "Ouvrir la stack",
+  "Update details": "Détails de mise à jour",
+  "Show the logs": "Afficher les logs",
+  "logs": "logs"
 }

@@ -139,7 +139,9 @@ function Attention({ stats }: { stats: DashboardStats }) {
           <ul className="attention-list">
             {unhealthy_containers.map((container) => (
               <li key={container.id}>
-                <Link to={`/containers/${container.id}`}>{container.name}</Link>
+                <Link to={`/containers/${container.id}?tab=logs`} title={t("Show the logs")}>
+                  {container.name}
+                </Link>
                 <span className="muted">{container.status}</span>
               </li>
             ))}
