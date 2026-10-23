@@ -22,7 +22,6 @@
   "Give a service a host name behind the Traefik proxy": "Donner à un service un nom d'hôte derrière le proxy Traefik",
   "Docker is unreachable: the proxy state is unknown.": "Docker est injoignable : l'état du proxy est inconnu.",
   "no container": "aucun conteneur",
-  "Create the Traefik stack": "Créer la stack Traefik",
   "Exposed services": "Services exposés",
   "Nothing is exposed yet.": "Rien n'est exposé pour l'instant.",
   "Visibility": "Visibilité",
@@ -44,5 +43,9 @@
   "Expose a service from its stack page (Expose, beside the Compose editor). DryDock writes neutral expose.* labels; the proxy sync turns them into your proxy's config. The traffic never goes through DryDock.": "Exposez un service depuis la page de sa stack (Exposer, à côté de l'éditeur Compose). DryDock écrit des labels neutres expose.* ; la synchro du proxy les transforme en config pour votre proxy. Le trafic ne passe jamais par DryDock.",
   "Proxy sync": "Synchro du proxy",
   "created by the proxy stack on up": "créé par la stack du proxy au up",
-  "Exposed services join it so the proxy can reach them. The proxy stack creates it.": "Les services exposés le rejoignent pour que le proxy puisse les joindre. La stack du proxy le crée."
+  "Exposed services join it so the proxy can reach them. The proxy stack creates it.": "Les services exposés le rejoignent pour que le proxy puisse les joindre. La stack du proxy le crée.",
+  "No proxy yet. Pick one: the expose.* labels work with each, so you can switch later without touching your stacks.": "Pas encore de proxy. Choisissez-en un : les labels expose.* marchent avec chacun, vous pourrez changer plus tard sans toucher à vos stacks.",
+  "Caddy logs JSON: set the log format to JSON in the fail2ban jails (Host page).": "Caddy écrit ses logs en JSON : choisissez le format JSON dans les jails fail2ban (page Host).",
+  "SWAG reverse proxy (nginx)": "Reverse proxy SWAG (nginx)",
+  "Caddy reverse proxy": "Reverse proxy Caddy"
 }

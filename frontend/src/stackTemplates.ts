@@ -19,28 +19,58 @@ const BLANK = `services:
       - "8080:80"
 `;
 
-// The proxy sync (app/proxy_sync.py) turns the expose.* labels the Expose panel
-// writes into dynamic/expose.yml. {image} is DryDock's own image, filled in on creation.
-const TRAEFIK = `# Reverse proxy for the services you expose from DryDock (Expose, beside the Compose editor).
-# Fill in the .env tab, stop any other proxy on ports 80 and 443, then up.
-#
-# Your stacks carry neutral labels (expose.host, expose.port, expose.private).
-# proxy-sync, DryDock's own image, reads them from the running containers and writes
-# Traefik's routes to dynamic/expose.yml. Another proxy only needs another writer:
-# the Compose files stay the same.
+// The proxy sync (app/proxy_sync.py) turns the expose.* labels the Expose panel writes
+// into the proxy's own config. {image} is DryDock's own image, filled in on creation.
+function proxySync(proxy: string, output: string): string {
+  return `  # Turns the expose.* labels of running containers into ${proxy}'s config.
+  proxy-sync:
+    image: {image}
+    restart: unless-stopped
+    command: ["python", "-m", "app.proxy_sync"]
+    environment:
+      PROXY: ${proxy}
+      PROXY_CONTAINER: ${proxy}
+      OUTPUT: ${output}
+      ALLOWLIST_FILE: /data/allowlist.txt
+      NETWORK: proxy
+      LAN_RANGES: \${LAN_RANGES:-192.168.0.0/16}
+      TRUSTED_IPS: \${TRUSTED_IPS:-}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - \${PROXY_DATA:-/data/proxy}:/data
+    labels:
+      # DryDock finds the sync by this label.
+      - drydock.proxy-sync=true
+
+networks:
+  proxy:
+    name: proxy
+`;
+}
+
+// What every proxy template says about the labels, the allowlist and PROXY_DATA.
+const COMMON_HELP = `#
+# Your stacks carry neutral labels (expose.host, expose.port, expose.private), so they
+# stay the same whatever proxy runs. proxy-sync, DryDock's own image, reads them from the
+# running containers and writes this proxy's config.
 #
 # Private services only answer an IP allowlist: LAN_RANGES, your current public IP
 # (LAN and VPN clients often come back through it) and TRUSTED_IPS.
 #
-# PROXY_DATA (a host folder) holds the certificates, the routes, the allowlist and the
+# PROXY_DATA (a host folder) holds the certificates, the config, the allowlist and the
 # access log. DryDock's fail2ban jails (Host page) read logs/access.log and
-# allowlist.txt from there, whatever proxy writes them.
+# allowlist.txt from there.
 #
-# One wildcard certificate (*.domain) through the OVH DNS challenge: service names
-# never appear in public certificate logs.
+# One wildcard certificate per domain through the OVH DNS challenge: service names
+# never appear in public certificate logs.`;
+
+const TRAEFIK = `# Reverse proxy: Traefik, for the services you expose from DryDock (Expose, beside the
+# Compose editor). Fill in the .env tab, stop any other proxy on ports 80 and 443, then up.
+${COMMON_HELP}
 services:
   traefik:
     image: traefik:v3
+    container_name: traefik
     restart: unless-stopped
     command:
       - --providers.docker=true
@@ -85,6 +115,7 @@ services:
     networks:
       - proxy
     labels:
+      - drydock.proxy=traefik
       # The dashboard has no login: private only. private@file comes from proxy-sync.
       - traefik.enable=true
       - traefik.http.routers.traefik.rule=Host(\`traefik.\${PROXY_DOMAIN}\`)
@@ -92,31 +123,95 @@ services:
       - traefik.http.routers.traefik.middlewares=private@file,hsts@file
       - traefik.http.routers.traefik.service=api@internal
 
-  # Turns the expose.* labels of running containers into dynamic/expose.yml.
-  proxy-sync:
-    image: {image}
+${proxySync("traefik", "/data/dynamic")}`;
+
+const SWAG = `# Reverse proxy: SWAG (nginx and certbot), for the services you expose from DryDock
+# (Expose, beside the Compose editor). Fill in the .env tab, stop any other proxy on ports
+# 80 and 443, then up. SWAG reads the OVH token from a file, not from .env: after the
+# first up, fill in PROXY_DATA/swag/dns-conf/ovh.ini and restart swag.
+${COMMON_HELP}
+#
+# proxy-sync writes one server block per service to site-confs/drydock-expose.conf,
+# checks it with nginx -t and reloads nginx. A config nginx refuses is put back.
+services:
+  swag:
+    image: lscr.io/linuxserver/swag:latest
+    container_name: swag
     restart: unless-stopped
-    command: ["python", "-m", "app.proxy_sync"]
+    cap_add:
+      - NET_ADMIN
     environment:
-      PROXY: traefik
-      OUTPUT: /data/dynamic
-      ALLOWLIST_FILE: /data/allowlist.txt
-      NETWORK: proxy
-      LAN_RANGES: \${LAN_RANGES:-192.168.0.0/16}
-      TRUSTED_IPS: \${TRUSTED_IPS:-}
+      PUID: "1000"
+      PGID: "1000"
+      TZ: Etc/UTC
+      URL: \${PROXY_DOMAIN}
+      SUBDOMAINS: wildcard
+      VALIDATION: dns
+      DNSPLUGIN: ovh
+      EMAIL: \${ACME_EMAIL}
+    ports:
+      - "80:80"
+      - "443:443"
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-      - \${PROXY_DATA:-/data/proxy}:/data
+      - \${PROXY_DATA:-/data/proxy}/swag:/config
+      # nginx's logs, where DryDock's fail2ban jails read them.
+      - \${PROXY_DATA:-/data/proxy}/logs:/config/log/nginx
+    # Services with network_mode: host are reached through the host's gateway address.
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    networks:
+      - proxy
     labels:
-      # DryDock finds the sync by this label.
-      - drydock.proxy-sync=true
+      - drydock.proxy=swag
 
-networks:
-  proxy:
-    name: proxy
-`;
+${proxySync("swag", "/data/swag/nginx/site-confs")}`;
 
-const TRAEFIK_ENV = `# Host folder for certificates, routes, allowlist and access log.
+const CADDY = `# Reverse proxy: Caddy, for the services you expose from DryDock (Expose, beside the
+# Compose editor). Fill in the .env tab, stop any other proxy on ports 80 and 443, then up.
+# Caddy's official image has no OVH DNS module, so the first up builds one: a few
+# minutes on a Pi.
+${COMMON_HELP}
+#
+# proxy-sync writes the whole Caddyfile (PROXY_DATA/caddy/Caddyfile) and runs caddy
+# reload, which refuses a bad config and keeps the running one. Caddy logs JSON: set
+# the log format to JSON in DryDock's fail2ban jails (Host page).
+services:
+  caddy:
+    build:
+      dockerfile_inline: |
+        FROM caddy:2-builder AS builder
+        RUN xcaddy build --with github.com/caddy-dns/ovh
+        FROM caddy:2
+        COPY --from=builder /usr/bin/caddy /usr/bin/caddy
+    image: caddy-ovh:local
+    container_name: caddy
+    restart: unless-stopped
+    environment:
+      ACME_EMAIL: \${ACME_EMAIL}
+      OVH_ENDPOINT: \${OVH_ENDPOINT:-ovh-eu}
+      OVH_APPLICATION_KEY: \${OVH_APPLICATION_KEY}
+      OVH_APPLICATION_SECRET: \${OVH_APPLICATION_SECRET}
+      OVH_CONSUMER_KEY: \${OVH_CONSUMER_KEY}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - \${PROXY_DATA:-/data/proxy}/caddy:/etc/caddy
+      - \${PROXY_DATA:-/data/proxy}/caddy-data:/data
+      - \${PROXY_DATA:-/data/proxy}/logs:/logs
+    # Services with network_mode: host are reached through the host's gateway address.
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    networks:
+      - proxy
+    labels:
+      - drydock.proxy=caddy
+
+${proxySync("caddy", "/data/caddy")}`;
+
+function proxyEnv(ovhToken: boolean): string {
+  return `# Host folder for certificates, config, allowlist and access log.
 PROXY_DATA=/data/proxy
 # Domain of the wildcard certificate: services get <name>.<domain>.
 PROXY_DOMAIN={domain}
@@ -125,13 +220,22 @@ ACME_EMAIL=
 # Private services allow these networks, your current public IP and these IPs (comma-separated).
 LAN_RANGES=192.168.0.0/16
 TRUSTED_IPS=
-# OVH API token for the DNS challenge: https://eu.api.ovh.com/createToken/
+${
+  ovhToken
+    ? `# OVH API token for the DNS challenge: https://eu.api.ovh.com/createToken/
 # Rights: GET, POST, PUT and DELETE on /domain/zone/<domain>/*
 OVH_ENDPOINT=ovh-eu
 OVH_APPLICATION_KEY=
 OVH_APPLICATION_SECRET=
 OVH_CONSUMER_KEY=
-`;
+`
+    : ""
+}`;
+}
+
+const PROXY_DESCRIPTION = msg(
+  "HTTPS for the services you expose, with a wildcard certificate from the OVH DNS challenge. Private services only answer your LAN, your public IP and trusted IPs.",
+);
 
 export const STACK_TEMPLATES: StackTemplate[] = [
   {
@@ -144,11 +248,28 @@ export const STACK_TEMPLATES: StackTemplate[] = [
   {
     id: "traefik",
     label: msg("Traefik reverse proxy"),
-    description: msg(
-      "HTTPS for the services you expose, with a wildcard certificate from the OVH DNS challenge. Private services only answer your LAN, your public IP and trusted IPs.",
-    ),
+    description: PROXY_DESCRIPTION,
     name: "traefik",
     compose: TRAEFIK,
-    env: TRAEFIK_ENV,
+    env: proxyEnv(true),
+  },
+  {
+    id: "swag",
+    label: msg("SWAG reverse proxy (nginx)"),
+    description: PROXY_DESCRIPTION,
+    name: "swag",
+    compose: SWAG,
+    env: proxyEnv(false),
+  },
+  {
+    id: "caddy",
+    label: msg("Caddy reverse proxy"),
+    description: PROXY_DESCRIPTION,
+    name: "caddy",
+    compose: CADDY,
+    env: proxyEnv(true),
   },
 ];
+
+/** The reverse proxy templates, for the Proxy page. */
+export const PROXY_TEMPLATES = STACK_TEMPLATES.filter((template) => template.id !== "blank");

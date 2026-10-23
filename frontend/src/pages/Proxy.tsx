@@ -5,7 +5,11 @@ import { api } from "../api";
 import { useAuth } from "../auth";
 import { VisibilityBadge } from "../components/ExposurePanel";
 import { useT } from "../i18n";
+import { PROXY_TEMPLATES } from "../stackTemplates";
 import type { ProxyContainer, ProxyOverview } from "../types";
+
+// Product names, the same in every language.
+const PROXY_NAMES: Record<string, string> = { traefik: "Traefik", swag: "SWAG", caddy: "Caddy" };
 
 /** What the reverse proxy exposes, from the labels in the repo, and whether it runs. */
 export default function Proxy() {
@@ -52,7 +56,11 @@ export default function Proxy() {
         ) : (
           <ul className="fact-list">
             <li>
-              <span className="muted">{t("Proxy")}</span>
+              <span className="muted">
+                {proxy.container?.kind
+                  ? (PROXY_NAMES[proxy.container.kind] ?? proxy.container.kind)
+                  : t("Proxy")}
+              </span>
               <ContainerCheck container={proxy.container} />
             </li>
             <li>
@@ -69,10 +77,28 @@ export default function Proxy() {
           </ul>
         )}
         {proxy.docker_available && !proxy.container && (
-          <div className="button-row">
-            <Link className="button" to="/projects/new?template=traefik">
-              <Plus size={15} /> {t("Create the Traefik stack")}
-            </Link>
+          <>
+            <p className="muted">
+              {t(
+                "No proxy yet. Pick one: the expose.* labels work with each, so you can switch later without touching your stacks.",
+              )}
+            </p>
+            <div className="button-row">
+              {PROXY_TEMPLATES.map((template) => (
+                <Link
+                  key={template.id}
+                  className="button secondary"
+                  to={`/projects/new?template=${template.id}`}
+                >
+                  <Plus size={15} /> {t(template.label)}
+                </Link>
+              ))}
+            </div>
+          </>
+        )}
+        {proxy.container?.kind === "caddy" && (
+          <div className="notice">
+            {t("Caddy logs JSON: set the log format to JSON in the fail2ban jails (Host page).")}
           </div>
         )}
       </section>

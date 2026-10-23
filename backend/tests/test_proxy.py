@@ -340,3 +340,37 @@ services:
     routes = client.get("/api/proxy").json()["routes"]
 
     assert [route["hosts"] for route in routes] == [["whoami.example.org"]]
+
+
+def _listed(name: str, image: str, state: str = "running") -> object:
+    return type("C", (), {"id": name, "name": name, "image": image, "state": state})()
+
+
+def test_proxy_found_by_label_then_by_image(monkeypatch: pytest.MonkeyPatch) -> None:
+    def list_containers(*, all_states: bool = True, label: str | None = None) -> list:
+        if label == proxy_service.PROXY_LABEL:
+            return [_listed("edge", "caddy-ovh:local")]
+        if label == proxy_service.SYNC_LABEL:
+            return [_listed("proxy-sync", "drydock")]
+        return []
+
+    detail = type("D", (), {"labels": {"drydock.proxy": "caddy"}})()
+    monkeypatch.setattr(docker_service, "list_containers", list_containers)
+    monkeypatch.setattr(docker_service, "get_container_detail", lambda *a, **k: detail)
+
+    proxy, sync = proxy_service.proxy_containers()
+
+    assert (proxy.name, proxy.kind) == ("edge", "caddy")
+    assert sync.name == "proxy-sync"
+
+    # No label: the image says which proxy it is.
+    monkeypatch.setattr(
+        docker_service,
+        "list_containers",
+        lambda *, all_states=True, label=None: []
+        if label
+        else [_listed("old", "traefik:v3", "exited"), _listed("swag", "lscr.io/linuxserver/swag")],
+    )
+    proxy, sync = proxy_service.proxy_containers()
+    assert (proxy.name, proxy.kind, proxy.running) == ("swag", "swag", True)
+    assert sync is None

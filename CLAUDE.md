@@ -1,6 +1,14 @@
 # DryDock
 
-A small, self-hosted web UI for Docker Compose stacks on a homelab or Raspberry Pi. It is a focused alternative to Portainer. A mounted folder of Compose files is the source of truth. DryDock lists the stacks, edits them, runs them, scans their images for CVEs and checks for image updates.
+A self-hosted control board for one Docker host: a homelab, a NAS, a Raspberry Pi. It is a focused alternative to Portainer, with security built in. A mounted folder of Compose files is the source of truth.
+
+DryDock has three jobs. Every feature belongs to one of them:
+
+- **Run:** list, edit, start and update the stacks, and manage containers, images, volumes and networks.
+- **Expose:** map host names to containers. A service gets `https://<name>.<domain>` through neutral `expose.*` labels, and the Proxy page shows which host name leads to which stack, service and port. A real proxy (Traefik, SWAG or Caddy) carries the traffic.
+- **Secure:** keep what runs and what is exposed safe. CVE scans (Trivy), image and host OS updates, fail2ban jails on the proxy's access log, an IP allowlist for private services, HTTPS with HSTS everywhere, backups before every write, and auth.
+
+A new feature should make one of these better for a single host, and stay cheap enough for a Pi.
 
 The repo folder is named `HarborGuard`, an earlier name. The product, the env prefix (`DRYDOCK_`), the package and the image are all **DryDock**.
 
@@ -20,6 +28,7 @@ The repo folder is named `HarborGuard`, an earlier name. The product, the env pr
 backend/
   app/
     main.py            app setup, router mounting, SPA fallback, logging
+    proxy_sync.py      side container: expose.* labels to the proxy's config
     api/               one router per area (projects, containers, console, images,
                        volumes, networks, scans, updates, jobs, logs, settings, users, auth, dashboard, git, ai,
                        proxy)
@@ -91,14 +100,21 @@ Dockerfile             3-stage build (frontend, backend venv, runtime with docke
   - Only the Compose file is sent, never the `.env`.
 - **Reverse proxy** (`proxy_service`, `/api/proxy`, `proxy_sync`): the proxy routes `https://<host>` to containers. DryDock never carries traffic, so a DryDock restart cuts nothing.
   - The Compose files carry neutral labels that name no proxy: `expose.host` (comma-separated), `expose.port` (container port) and `expose.private` (anything but `false` is private). Every route gets HSTS, no label: everything is HTTPS. They are real Docker labels, so a plain `docker compose up` keeps them.
-  - `app/proxy_sync.py` runs as a side container from DryDock's own image (`python -m app.proxy_sync`, label `drydock.proxy-sync=true`). Every 5s it lists the running containers with `expose.host` (one API call) and writes the proxy's config, only when it changes (temp file, then rename: the proxy watches the folder). `PROXY` picks the writer; only `traefik` exists: `expose.yml` for Traefik's file provider, with the `private` (ipAllowList) and `hsts` middlewares. Another proxy needs another writer, not other labels.
-  - Targets: `http://<container name>:<port>` on the proxy network (a recreate changes the IP, not the name); `network_mode: host` gives `host.docker.internal`, which the template maps with `extra_hosts: host-gateway`. A container off the network, a bad host or port, or a host two containers claim is skipped and logged.
+  - `app/proxy_sync.py` runs as a side container from DryDock's own image (`python -m app.proxy_sync`, label `drydock.proxy-sync=true`). Every 5s it lists the running containers with `expose.host` (one API call) and writes the proxy's config, only when it changes (temp file with a dot name, then rename: the proxy must never read a half-written file). `PROXY` picks the `Writer`. Another proxy needs another writer, not other labels.
+    - `traefik`: `expose.yml` for Traefik's file provider, which Traefik watches, with the `private` (ipAllowList) and `hsts` middlewares.
+    - `swag`: `site-confs/drydock-expose.conf`, one nginx server block per route, built on SWAG's own `ssl.conf` and `proxy.conf`. Upstreams go through `resolver.conf` and variables, so nginx starts while a service is down (except `host.docker.internal`, which nginx only reads from `/etc/hosts` for a fixed name). The sync runs `nginx -t`, then `nginx -s reload`. HSTS is left out when SWAG's own `ssl.conf` already sends it (recent SWAG versions), so it is not sent twice.
+    - `caddy`: the whole Caddyfile, then `caddy reload`. Hosts are grouped under wildcard sites (`*.example.org`), one `handle` per host, and any other name is aborted: Caddy asks for one wildcard certificate per domain. The OVH credentials come from Caddy's env. Caddy logs JSON.
+    - Check and reload run in `PROXY_CONTAINER` (`exec_run`). A failure puts the previous file back, so a bad label never takes the proxy down. A refused config is tried again after `RETRY_SECONDS` (60): SWAG writes its own nginx config on its first start, so a check right after it starts fails. A proxy that is not running yet loads the file when it starts.
+  - Targets: `http://<container name>:<port>` on the proxy network (a recreate changes the IP, not the name); `network_mode: host` gives `host.docker.internal`, which the templates map with `extra_hosts: host-gateway`. A container off the network, a bad host or port, or a host two containers claim is skipped and logged.
   - Private = `LAN_RANGES`, the public IP (ipify, every 5 min, the last known one kept on failure) and `TRUSTED_IPS`. Not separate LAN/WAN entrypoints: without a local DNS, LAN and VPN clients come back through the public IP (hairpin NAT) like the internet.
-  - The **Traefik reverse proxy** stack template (`stackTemplates.ts`): Traefik on `websecure` (:443), one wildcard certificate per domain (OVH DNS challenge), an access log for fail2ban, and the sync. Everything lives under `PROXY_DATA` (`/data/proxy` by default): `letsencrypt/`, `dynamic/`, `logs/access.log`, and `allowlist.txt`, which the sync writes (`ALLOWLIST_FILE`) for fail2ban's `ignorecommand`. `{image}` is DryDock's own image (`/api/proxy` `drydock_image`), filled in when the stack is created. Traefik's Docker provider stays on only for its own dashboard labels.
+  - Proxy stack templates (`stackTemplates.ts`, `PROXY_TEMPLATES` on the Proxy page): Traefik, SWAG and Caddy. Each has the proxy on :443 with one wildcard certificate per domain (OVH DNS challenge), an access log for fail2ban, the sync (`proxySync()`), and `extra_hosts: host-gateway`. The proxy's container carries `drydock.proxy=<kind>`. Everything lives under `PROXY_DATA` (`/data/proxy` by default): the proxy's own folder, `logs/access.log`, and `allowlist.txt`, which the sync writes (`ALLOWLIST_FILE`) for fail2ban's `ignorecommand`. `{image}` is DryDock's own image (`/api/proxy` `drydock_image`), filled in when the stack is created.
+    - Traefik: Docker provider on only for its own dashboard labels.
+    - SWAG reads the OVH token from `dns-conf/ovh.ini`, not from `.env`, so its `.env` has no token.
+    - Caddy's official image has no OVH DNS module: the template builds one with `xcaddy` (`dockerfile_inline`). Its JSON log needs the `json` format in the fail2ban jails; the Proxy page says so.
   - The Expose panel (`ExposurePanel`) sends the editor's content to `/api/proxy/projects/{id}/expose` or `/unexpose` and puts the answer back in the editor. Saving stays the normal flow. Expose drops `traefik.*` and `swag*` labels of an older setup (`legacy` flags them), so no proxy routes a service twice.
   - Edits go through `ruamel.yaml` round-trip, so comments stay. ruamel writes one indent style per file: `_guess_indent` takes the file's most common one. It also ties the blank line before the next block to the last entry of a block, so `_take_trailing_comment` moves it after the new labels. CRLF files stay CRLF (ruamel keeps the `\r` inside comments, so `_load` strips it first).
   - The service joins the proxy network and keeps `default` (a service without `networks:` is only on `default`); a host-network service joins none. The top-level network is `external: true`; unexpose removes it when no service uses it and DryDock wrote it. Other network modes (`service:`, `container:`, `none`) cannot be exposed.
-  - The route list reads every Compose file, and resolves `${VAR}` in host names from the stack's `.env`. A host another stack uses is refused (409). The Proxy page shows the proxy's container (image `traefik`) and the sync's.
+  - The route list reads every Compose file, and resolves `${VAR}` in host names from the stack's `.env`. A host another stack uses is refused (409). The Proxy page shows the proxy's container and the sync's. The proxy is found by its `drydock.proxy` label (its value is the `kind`), else by image name (`traefik`, `swag`, `caddy`); the running one wins over a stopped copy.
   - Settings: `proxy_domain` (a bare name gets `.<domain>`) and `proxy_network`.
 - **Networks** (`docker_service`): a network's inspect only lists running containers, and `docker network prune` goes by that, so it would remove the networks of stopped stacks. DryDock builds usage from every container's `NetworkSettings.Networks`, keyed by network name (a container that never started has no `NetworkID` yet). Remove and prune refuse used networks and Docker's own (`bridge`, `host`, `none`); prune is a job that removes the free ones one by one.
 - **Live data:** logs use SSE (`/api/logs/...`). Container stats are polled every 5s. Each poll also feeds `stats_history_service`, an in-memory ring buffer (60 samples, about 5 min, lost on restart) behind the CPU and memory sparklines. It has no sampler of its own, so it only fills while a page polls. The console is a WebSocket (`/api/containers/{id}/exec`).
@@ -187,11 +203,14 @@ uv run alembic check       # fails if models and migrations differ
 
 - Simple over complete. Local-first. Pi-friendly: few dependencies, cheap polling.
 - Safe defaults: back up before writing, confirm destructive actions, never auto-update.
+- Security is built in, not an add-on: show the risk where the thing is (CVEs on the image, exposure on the route, bans on the host), and make the safe choice the default (private routes, HTTPS, HSTS, read-only host access).
+- DryDock observes and writes config; the real tools do the work. Traefik, SWAG or Caddy carries traffic, fail2ban bans, apt upgrades, Trivy scans. DryDock never sits in the data path.
+- Proxy-neutral: Compose files carry `expose.*` labels, never a proxy's own. Switching proxy changes no stack.
 - Mounting the Docker socket gives root on the host. LAN, VPN or Tailscale only, behind auth.
 
 ## Non-goals
 
-Kubernetes, Swarm, multi-host, RBAC beyond admin/user, plugins, an auto-update engine, registry mirroring, public internet exposure of DryDock itself (exposing other services through Traefik is fine), DNS record management.
+Kubernetes, Swarm, multi-host, RBAC beyond admin/user, plugins, an auto-update engine, registry mirroring, public internet exposure of DryDock itself (exposing other services through the proxy is fine), DNS record management. DryDock shows which host name leads to which container, but it does not create DNS records: a wildcard record points at the public IP once, by hand.
 
 ## Known gaps
 

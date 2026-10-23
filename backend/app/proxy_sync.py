@@ -8,6 +8,18 @@ Compose files stay the same whatever proxy reads them; PROXY picks the writer:
     expose.port     the container port to forward to
     expose.private  "false" makes the service public; anything else keeps it private
 
+Writers:
+
+    traefik  dynamic/expose.yml for Traefik's file provider, which Traefik watches.
+    swag     site-confs/drydock-expose.conf for SWAG's nginx; checked with `nginx -t`,
+             then `nginx -s reload`, both run in PROXY_CONTAINER.
+    caddy    the whole Caddyfile; `caddy reload` in PROXY_CONTAINER checks and loads it.
+             Hosts are grouped under wildcard sites (`*.example.org`), so Caddy asks for one
+             wildcard certificate per domain instead of one per name.
+
+A config the proxy refuses is put back to the previous one, so a bad label never takes
+the proxy down.
+
 Every route sends Strict-Transport-Security: everything is served over HTTPS, so
 browsers may refuse plain HTTP for these names.
 
@@ -32,6 +44,7 @@ import logging
 import os
 import re
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -46,6 +59,10 @@ logger = logging.getLogger("proxy_sync")
 LABEL_PREFIX = "expose."
 HOST_GATEWAY = "host.docker.internal"
 HSTS_SECONDS = 15768000  # six months
+HEADER = "Written by DryDock's proxy sync from expose.* labels. Edits are overwritten."
+# A config the proxy refused is tried again after this long: it may only have been
+# starting (SWAG writes its own nginx config on its first start).
+RETRY_SECONDS = 60
 
 _HOST_NAME = re.compile(r"^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z][a-z0-9-]{0,62}$")
 _IPV4 = re.compile(r"^\d{1,3}(?:\.\d{1,3}){3}$")
@@ -57,6 +74,11 @@ class Route:
     hosts: tuple[str, ...]
     url: str
     private: bool
+
+    @property
+    def target(self) -> str:
+        """`host:port` of the service."""
+        return self.url.removeprefix("http://")
 
 
 @dataclass
@@ -70,12 +92,17 @@ class Config:
     poll_seconds: float = 5
     ip_refresh_seconds: float = 300
     allowlist_file: Path | None = None
+    # The proxy's container, where SWAG and Caddy are told to reload.
+    proxy_container: str = ""
+    # SWAG's own ssl.conf already sends HSTS (recent versions): do not send it twice.
+    ssl_conf_hsts: bool = False
 
     @classmethod
     def from_env(cls) -> Config:
         env = os.environ
+        proxy = env.get("PROXY", "traefik")
         return cls(
-            proxy=env.get("PROXY", "traefik"),
+            proxy=proxy,
             output=Path(env.get("OUTPUT", "/dynamic")),
             network=env.get("NETWORK", "proxy"),
             entrypoint=env.get("ENTRYPOINT", "websecure"),
@@ -84,6 +111,7 @@ class Config:
             poll_seconds=float(env.get("POLL_SECONDS", "5")),
             ip_refresh_seconds=float(env.get("IP_REFRESH_SECONDS", "300")),
             allowlist_file=Path(env["ALLOWLIST_FILE"]) if env.get("ALLOWLIST_FILE") else None,
+            proxy_container=env.get("PROXY_CONTAINER", proxy),
         )
 
 
@@ -141,7 +169,10 @@ def allowlist(config: Config, public_ip: str | None) -> list[str]:
     return list(dict.fromkeys(ranges))
 
 
-def render_traefik(routes: list[Route], sources: list[str], entrypoint: str) -> str:
+# --- Writers --------------------------------------------------------------------------
+
+
+def render_traefik(routes: list[Route], sources: list[str], config: Config) -> str:
     """Traefik's dynamic config: one router and one service per route."""
     routers: dict[str, Any] = {}
     services: dict[str, Any] = {}
@@ -149,12 +180,12 @@ def render_traefik(routes: list[Route], sources: list[str], entrypoint: str) -> 
         middlewares = (["private"] if route.private else []) + ["hsts"]
         routers[route.name] = {
             "rule": " || ".join(f"Host(`{host}`)" for host in route.hosts),
-            "entryPoints": [entrypoint],
+            "entryPoints": [config.entrypoint],
             "service": route.name,
             "middlewares": middlewares,
         }
         services[route.name] = {"loadBalancer": {"servers": [{"url": route.url}]}}
-    config = {
+    dynamic = {
         "http": {
             "routers": routers,
             "services": services,
@@ -165,26 +196,188 @@ def render_traefik(routes: list[Route], sources: list[str], entrypoint: str) -> 
             },
         }
     }
-    header = "# Written by DryDock's proxy sync from expose.* labels. Edits are overwritten.\n"
-    return header + yaml.safe_dump(config, sort_keys=False, default_flow_style=False)
+    return f"# {HEADER}\n" + yaml.safe_dump(dynamic, sort_keys=False, default_flow_style=False)
 
 
-WRITERS = {"traefik": ("expose.yml", render_traefik)}
+def render_nginx(routes: list[Route], sources: list[str], config: Config) -> str:
+    """Server blocks for SWAG, built like its own proxy-confs (ssl.conf, proxy.conf)."""
+    blocks = [f"# {HEADER}"]
+    for route in routes:
+        lines = [
+            "server {",
+            "    listen 443 ssl;",
+            "    listen [::]:443 ssl;",
+            f"    server_name {' '.join(route.hosts)};",
+            "    include /config/nginx/ssl.conf;",
+            # Uploads are the service's business, as with Traefik and Caddy.
+            "    client_max_body_size 0;",
+        ]
+        if not config.ssl_conf_hsts:
+            lines.append(
+                f'    add_header Strict-Transport-Security "max-age={HSTS_SECONDS}" always;'
+            )
+        if route.private:
+            lines += [f"    allow {source};" for source in sources] + ["    deny all;"]
+        lines += ["    location / {", "        include /config/nginx/proxy.conf;"]
+        host, port = route.target.rsplit(":", 1)
+        if host == HOST_GATEWAY:
+            # From /etc/hosts (extra_hosts), which nginx only reads for a fixed name.
+            lines.append(f"        proxy_pass {route.url};")
+        else:
+            # Through Docker's DNS at request time: nginx still starts while a
+            # service is down.
+            lines += [
+                "        include /config/nginx/resolver.conf;",
+                f"        set $upstream_app {host};",
+                f"        set $upstream_port {port};",
+                "        proxy_pass http://$upstream_app:$upstream_port;",
+            ]
+        lines += ["    }", "}"]
+        blocks.append("\n".join(lines))
+    return "\n\n".join(blocks) + "\n"
+
+
+def _site(host: str) -> str:
+    """The Caddy site a host belongs to: `*.example.org` for `a.example.org`."""
+    labels = host.split(".")
+    return "*." + ".".join(labels[1:]) if len(labels) > 2 else host
+
+
+def render_caddy(routes: list[Route], sources: list[str], config: Config) -> str:
+    """A whole Caddyfile. The DNS challenge credentials come from the container's env."""
+    out = [
+        f"# {HEADER}",
+        "{",
+        "\temail {$ACME_EMAIL}",
+        "\tacme_dns ovh {",
+        "\t\tendpoint {$OVH_ENDPOINT}",
+        "\t\tapplication_key {$OVH_APPLICATION_KEY}",
+        "\t\tapplication_secret {$OVH_APPLICATION_SECRET}",
+        "\t\tconsumer_key {$OVH_CONSUMER_KEY}",
+        "\t}",
+        "}",
+        "",
+        "(common) {",
+        "\tlog {",
+        "\t\toutput file /logs/access.log",
+        "\t\tformat json",
+        "\t}",
+        f'\theader Strict-Transport-Security "max-age={HSTS_SECONDS}"',
+        "}",
+    ]
+    sites: dict[str, list[tuple[str, Route]]] = {}
+    for route in routes:
+        for host in route.hosts:
+            sites.setdefault(_site(host), []).append((host, route))
+    for site, entries in sorted(sites.items()):
+        out += ["", f"{site} {{", "\timport common"]
+        for host, route in entries:
+            # One matcher per host: a route with several hosts gets several.
+            matcher = "@" + host.replace(".", "_")
+            out += [f"\t{matcher} host {host}", f"\thandle {matcher} {{"]
+            if route.private:
+                out += [
+                    f"\t\t@blocked not remote_ip {' '.join(sources)}",
+                    "\t\trespond @blocked 403",
+                ]
+            out += [f"\t\treverse_proxy {route.target}", "\t}"]
+        # Any other name of the wildcard: no service behind it.
+        out += ["\thandle {", "\t\tabort", "\t}", "}"]
+    return "\n".join(out) + "\n"
+
+
+@dataclass(frozen=True)
+class Writer:
+    filename: str
+    render: Callable[[list[Route], list[str], Config], str]
+    # Run in the proxy's container after a write; a failure puts the old file back.
+    check: tuple[str, ...] = ()
+    reload: tuple[str, ...] = ()
+
+
+WRITERS = {
+    # Traefik watches its folder.
+    "traefik": Writer("expose.yml", render_traefik),
+    "swag": Writer(
+        "drydock-expose.conf", render_nginx, ("nginx", "-t"), ("nginx", "-s", "reload")
+    ),
+    # `caddy reload` refuses a bad config and keeps the running one.
+    "caddy": Writer(
+        "Caddyfile",
+        render_caddy,
+        reload=("caddy", "reload", "--config", "/etc/caddy/Caddyfile", "--adapter", "caddyfile"),
+    ),
+}
+
+
+# --- Running --------------------------------------------------------------------------
+
+
+def read(path: Path) -> str | None:
+    try:
+        return path.read_text(encoding="utf-8")
+    except OSError:
+        return None
+
+
+def write(path: Path, content: str) -> None:
+    # The sync may start before the proxy has created its folders.
+    path.parent.mkdir(parents=True, exist_ok=True)
+    # A dot name the proxy ignores: it must never read a half-written file.
+    temp = path.with_name(f".{path.name}.tmp")
+    temp.write_text(content, encoding="utf-8")
+    temp.replace(path)
 
 
 def write_if_changed(path: Path, content: str) -> bool:
-    try:
-        if path.read_text(encoding="utf-8") == content:
-            return False
-    except OSError:
-        pass
-    # The sync may start before the proxy has created its folders.
-    path.parent.mkdir(parents=True, exist_ok=True)
-    # Not a .yml name: the proxy watching the folder must never read a half-written file.
-    temp =path.with_name(f".{path.name}.tmp")
-    temp.write_text(content, encoding="utf-8")
-    temp.replace(path)
+    if read(path) == content:
+        return False
+    write(path, content)
     return True
+
+
+def in_proxy(client: Any, config: Config, command: tuple[str, ...]) -> tuple[bool | None, str]:
+    """Run a command in the proxy's container: (succeeded, output).
+
+    None when the container is missing or not running.
+    """
+    try:
+        result = client.containers.get(config.proxy_container).exec_run(list(command))
+    except DockerException as exc:
+        return None, str(exc)
+    return result.exit_code == 0, (result.output or b"").decode("utf-8", errors="replace")
+
+
+def deploy(client: Any, config: Config, writer: Writer, content: str) -> str:
+    """Write the config and have the proxy load it: "changed", "unchanged" or "rejected"."""
+    path = config.output / writer.filename
+    previous = read(path)
+    if previous == content:
+        return "unchanged"
+    write(path, content)
+    for step in (writer.check, writer.reload):
+        if not step:
+            continue
+        ok, output = in_proxy(client, config, step)
+        if ok is None:
+            # Not running yet, or restarting: it reads the file when it starts.
+            logger.info("%s not reachable (%s); it loads the file on start", config.proxy, output)
+            return "changed"
+        if not ok:
+            logger.error("%s failed, previous config put back: %s", " ".join(step), output[-800:])
+            if previous is None:
+                path.unlink(missing_ok=True)
+            else:
+                write(path, previous)
+            return "rejected"
+    return "changed"
+
+
+def ssl_conf_sets_hsts(path: Path) -> bool:
+    return any(
+        line.strip().startswith("add_header Strict-Transport-Security")
+        for line in (read(path) or "").splitlines()
+    )
 
 
 def public_ip() -> str | None:
@@ -199,11 +392,13 @@ def public_ip() -> str | None:
 def run(config: Config) -> None:
     if config.proxy not in WRITERS:
         raise SystemExit(f"PROXY={config.proxy} is not supported (only: {', '.join(WRITERS)})")
-    filename, render = WRITERS[config.proxy]
+    writer = WRITERS[config.proxy]
     client = docker.from_env()
     ip: str | None = None
     next_ip_check = 0.0
     last_problems: list[str] | None = None
+    last_rendered: str | None = None
+    retry_at: float | None = None
     while True:
         if time.monotonic() >= next_ip_check:
             # Keep the last known IP when the lookup fails: a gap would lock you out.
@@ -225,14 +420,21 @@ def run(config: Config) -> None:
             config.allowlist_file, "\n".join(sources) + "\n"
         ):
             logger.info("Wrote %s: %s", config.allowlist_file.name, ", ".join(sources))
-        content = render(routes, sources, config.entrypoint)
-        if write_if_changed(config.output / filename, content):
-            logger.info(
-                "Wrote %s: %d routes (%s)",
-                filename,
-                len(routes),
-                ", ".join(host for route in routes for host in route.hosts) or "none",
-            )
+        if config.proxy == "swag":
+            config.ssl_conf_hsts = ssl_conf_sets_hsts(config.output.parent / "ssl.conf")
+        content = writer.render(routes, sources, config)
+        retry = retry_at is not None and time.monotonic() >= retry_at
+        if content != last_rendered or retry:
+            last_rendered = content
+            result = deploy(client, config, writer, content)
+            retry_at = time.monotonic() + RETRY_SECONDS if result == "rejected" else None
+            if result == "changed":
+                logger.info(
+                    "Wrote %s: %d routes (%s)",
+                    writer.filename,
+                    len(routes),
+                    ", ".join(host for route in routes for host in route.hosts) or "none",
+                )
         time.sleep(config.poll_seconds)
 
 

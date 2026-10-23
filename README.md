@@ -1,14 +1,23 @@
 # DryDock
 
-DryDock is a lightweight, self-hosted web UI for Docker Compose stacks, made for homelabs and Raspberry Pi. You mount a folder of Compose files, and DryDock lets you run, edit, watch and secure them from your browser.
+DryDock is a self-hosted control board for a home server or NAS that runs Docker: a Raspberry Pi, a mini PC, a NAS. One place shows what runs, which host name leads to which container, and what to fix to keep it all safe.
 
-DryDock is designed to help you keep your containers secure over time:
-- **Know your vulnerabilities:** Trivy scans your images and shows which CVEs have a fix.
-- **Stay up to date:** DryDock finds newer images, including newer version tags for pinned images.
-- **Get alerted:** scheduled scans and update checks can call a webhook when something needs attention.
-- **Change safely:** Compose edits are validated and backed up first, and nothing updates automatically.
-- **See it at a glance:** the dashboard shows running containers, open CVEs, what needs attention, and host CPU, memory and temperature.
-- **Control access:** login is required, and only admins can open a container shell, see secret values, edit `.env` files or read volume files.
+You mount a folder of Compose files. That folder stays the source of truth: DryDock lists the stacks, runs them, edits them, gives them host names and watches them.
+
+DryDock does three jobs:
+
+- **Run:** stacks, containers, images, volumes and networks. Start, stop, edit, update, read the logs, open a shell.
+- **Expose:** give a service a host name (`jellyfin.example.org`) with HTTPS, private or public. The **Proxy** page lists every host name with the stack and the service behind it, its port, who can reach it, and whether it runs. Traefik, SWAG or Caddy carries the traffic; your Compose files only carry neutral `expose.*` labels, so you can switch proxy without touching them.
+- **Secure:** built in, not an add-on.
+  - **Vulnerabilities:** Trivy scans your images and shows which CVEs have a fix.
+  - **Updates:** newer images and newer version tags, rebuilt git sources, and pending OS updates on the host, with security updates and "reboot required" flagged.
+  - **Intrusions:** fail2ban jails on the proxy's access log (failed logins, scanners, bad bots), tested and applied from the UI. Bans and the log lines behind them show on the **Host** page.
+  - **Exposure:** private services only answer your LAN, your public IP and trusted IPs. Every route is HTTPS with HSTS. One wildcard certificate keeps your service names out of public certificate logs.
+  - **Safe changes:** Compose edits are validated and backed up first. Nothing updates on its own.
+  - **Access:** login is required. Only admins open a container shell, see secret values, edit `.env` files or read volume files.
+  - **Alerts:** scheduled scans and update checks call a webhook when something needs attention.
+
+The dashboard puts it together: running containers, open CVEs, updates, what needs attention, and host CPU, memory and temperature.
 
 It runs as a single Docker image with a SQLite database. No cloud, no Kubernetes.
 
@@ -52,23 +61,36 @@ To build from source instead, replace `image:` with a git URL. The build reads t
 
 ## Features
 
+### Run
+
 - **Stacks:** every Compose file in your folder shows up as a project. Any `*.yml` file with a `services:` section counts. Start, stop, pull & build, reload or edit each one and its `.env`. **Pull & build** downloads newer images and rebuilds services that have a `build:` section. **Reload** stops the stack and runs `up`, so file changes apply. Create, rename, duplicate or delete a stack; a delete backs the stack up first. A `*.override.yml` next to a Compose file is merged in, like `docker compose up` does.
 - **Containers:** start, stop, restart, pause, kill or rename. State, uptime, health check, restart count, CPU and memory with a 5-minute sparkline, ports, live logs, a detail page, and a shell in the browser.
 - **Images:** see which images are in use, and remove or prune the rest.
-- **CVE scans:** scan one image, all running images, or all images in your Compose files.
-- **Updates:** finds rebuilt tags (`latest`, `stable`) and newer versions (`2025.10.4` → `2026.10.2`). A service built from a git URL (`build: https://github.com/me/app.git#main`) shows an update when its ref gets a new commit, and Update rebuilds it. For `postgres:16.2` you see both the newest `16.x` and the newest overall. For a floating tag like `stable`, the containers list shows the version the image declares (`org.opencontainers.image.version` label), when it has one.
+- **Volumes:** named volume management. Admins can browse the files in a volume (read-only) and download them.
+- **Networks:** driver, subnet and attached containers of every network. Remove one, or prune the custom networks no container uses. Networks of stopped stacks are kept, unlike `docker network prune`.
 - **Background jobs:** scans, update checks, stack actions and prunes run in the background. The top bar shows progress from any page. Compose commands run in a short-lived helper container, so DryDock can update its own stack and come back.
+
+### Expose
+
+- **Host names:** give a service a host name (`jellyfin.example.org`) with HTTPS, private (an IP allowlist) or public. The **Expose** panel beside the Compose editor writes neutral `expose.*` labels that name no proxy.
+- **Proxy page:** every host name in your Compose files, with its stack, service, container port, visibility and state, plus the health of the proxy and its sync. A host name already used by another stack is refused.
+- **Your choice of proxy:** stack templates for Traefik, SWAG (nginx) or Caddy, each with a wildcard certificate. The labels work with all three. See [Reverse proxy](#reverse-proxy).
+
+### Secure
+
+- **CVE scans:** scan one image, all running images, or all images in your Compose files.
+- **Image updates:** finds rebuilt tags (`latest`, `stable`) and newer versions (`2025.10.4` → `2026.10.2`). A service built from a git URL (`build: https://github.com/me/app.git#main`) shows an update when its ref gets a new commit, and Update rebuilds it. For `postgres:16.2` you see both the newest `16.x` and the newest overall. For a floating tag like `stable`, the containers list shows the version the image declares (`org.opencontainers.image.version` label), when it has one.
+- **Host updates:** pending OS package updates on the host (Debian, Ubuntu, Raspberry Pi OS), with security updates and "reboot required" flagged on the dashboard. They are checked on the update check schedule, read-only: DryDock never installs anything. The page gives the command to run on the host, and says when automatic security updates (`unattended-upgrades`) are off.
+- **fail2ban:** admins see the host's jails, active bans, the log lines behind each ban, and the user names tried on SSH. They also edit the jails that protect the reverse proxy (failed logins, refused requests, scanners, bad bots, or a custom regex), test a rule on the access log before saving, and apply it: DryDock writes its own jail file on the host and reloads fail2ban. Bans block the proxy's forwarded traffic, not only the host's own ports. No unban yet.
 - **Schedules and alerts:** run scans and update checks on an interval, and send results to a webhook.
+- **Users and API tokens:** several users with an admin flag. Each user can create tokens on the Settings page for scripts and CI, e.g. `curl -H "Authorization: Bearer ddt_..." http://drydock:8080/api/containers`. A token has the rights of its user.
+
+### Tools
+
 - **Private registries:** admins save a login per registry (Docker Hub, GHCR, your own) on the Settings page. Update checks, pulls and scans use it. DryDock checks the login with the registry before it saves it.
 - **Git logins:** admins save a login per git host (GitHub, Gitea, your own) on the Settings page. Builds from a private git URL and their update checks use it, with no token in your Compose files. Given a repo URL, DryDock checks the login before it saves it.
-- **AI assistant:** a chat beside the Compose editor. Ask for a change ("add a healthcheck to web"), see the diff, apply it to the editor, then save as usual. Nothing is saved for you. Admins pick the provider on the Settings page: OpenAI (or any OpenAI-compatible server, such as Ollama), Anthropic with an API key, or GitHub Copilot with a GitHub sign-in. Only the Compose file is sent, never the `.env`.
-- **Reverse proxy:** give a service a host name (`jellyfin.example.org`) with HTTPS, private (an IP allowlist) or public. The **Expose** panel beside the Compose editor writes neutral `expose.*` labels that name no proxy; the **Proxy** page lists what is exposed. A **Traefik reverse proxy** stack template sets up Traefik with a wildcard certificate. See [Reverse proxy](#reverse-proxy).
 - **Git for the repo folder:** when your Compose folder is in a git repo, the Projects page lists the changes and has **Commit & push** and **Pull** (fast-forward only), for admins. See [Git](#git).
-- **API tokens:** each user can create tokens on the Settings page for scripts and CI, e.g. `curl -H "Authorization: Bearer ddt_..." http://drydock:8080/api/containers`. A token has the rights of its user.
-- **Users and volumes:** several users with an admin flag, and named volume management. Admins can browse the files in a volume (read-only) and download them.
-- **Networks:** driver, subnet and attached containers of every network. Remove one, or prune the custom networks no container uses. Networks of stopped stacks are kept, unlike `docker network prune`.
-- **Host:** pending OS package updates on the host (Debian, Ubuntu, Raspberry Pi OS), with security updates and "reboot required" flagged on the dashboard. They are checked on the update check schedule, read-only: DryDock never installs anything. The page gives the command to run on the host, and says when automatic security updates (`unattended-upgrades`) are off.
-- **fail2ban:** admins see the host's jails, active bans, the log lines behind each ban, and the user names tried on SSH. They also edit the jails that protect the reverse proxy (failed logins, refused requests, scanners, bad bots, or a custom regex), test a rule on the access log before saving, and apply it: DryDock writes its own jail file on the host and reloads fail2ban. No unban yet.
+- **AI assistant:** a chat beside the Compose editor. Ask for a change ("add a healthcheck to web"), see the diff, apply it to the editor, then save as usual. Nothing is saved for you. Admins pick the provider on the Settings page: OpenAI (or any OpenAI-compatible server, such as Ollama), Anthropic with an API key, or GitHub Copilot with a GitHub sign-in. Only the Compose file is sent, never the `.env`.
 - **English and French:** pick the language in the top bar; it defaults to your browser's. Works on a phone too: the menu folds into a drawer.
 - **Logs page:** DryDock's own log, to see why a scan or a check failed.
 
@@ -116,7 +138,7 @@ DryDock needs the repo's `.git` to commit, push and pull. When your Compose file
 
 ## Reverse proxy
 
-The proxy carries the traffic, not DryDock. Your Compose files get neutral labels:
+The proxy carries the traffic, not DryDock: a DryDock restart cuts nothing. Your Compose files get neutral labels:
 
 ```yaml
     labels:
@@ -125,19 +147,27 @@ The proxy carries the traffic, not DryDock. Your Compose files get neutral label
       - expose.private=false            # default: private
 ```
 
-The proxy stack runs DryDock's **proxy sync** next to Traefik: it reads these labels from the running containers and writes Traefik's routes. The labels are real Docker labels, so a plain `docker compose up` keeps them, and another proxy only needs another writer in the sync.
+The proxy stack runs DryDock's **proxy sync** next to the proxy. It reads these labels from the running containers and writes the proxy's config:
+
+- **Traefik:** a file for Traefik's file provider, which Traefik watches.
+- **SWAG** (nginx): one server block per service, checked with `nginx -t`, then reloaded.
+- **Caddy:** the whole Caddyfile, loaded with `caddy reload`. Hosts are grouped under wildcard sites, so Caddy asks for one certificate per domain.
+
+A config the proxy refuses is put back to the previous one, so a bad label never takes the proxy down. The labels are real Docker labels, so a plain `docker compose up` keeps them. To switch proxy, stop the old proxy stack and create the new one: your stacks stay as they are.
 
 1. Create an OVH API token at <https://eu.api.ovh.com/createToken/> with `GET`, `POST`, `PUT` and `DELETE` on `/domain/zone/<domain>/*`. Let's Encrypt needs it to issue the wildcard certificate (DNS challenge). A DynHost login is not enough.
 2. Point `*.<domain>` at your public IP, for example with a CNAME to your DynHost name, and forward ports 80 and 443 of the internet router to the Docker host.
-3. On the **Proxy** page, set the domain. Then **Create the Traefik stack**, fill in its `.env` tab (`LAN_RANGES`, `TRUSTED_IPS`), stop any other proxy on ports 80 and 443, and run **up**.
+3. On the **Proxy** page, set the domain. Then pick a proxy (Traefik, SWAG or Caddy), fill in its `.env` tab (`LAN_RANGES`, `TRUSTED_IPS`, the OVH token), stop any other proxy on ports 80 and 443, and run **up**.
+   - SWAG reads the OVH token from a file: after the first up, fill in `PROXY_DATA/swag/dns-conf/ovh.ini` and restart `swag`.
+   - Caddy's official image has no OVH module, so the first up builds one. It takes a few minutes on a Pi.
 4. On a stack page, open **Expose**, pick a service, a name and its container port, then save and run **up**.
 
 - **Private** services only answer an IP allowlist: `LAN_RANGES`, your current public IP and `TRUSTED_IPS`. The public IP is in it because LAN and VPN clients often come back through it (hairpin NAT). The sync refreshes it every 5 minutes. **Public** services answer everyone.
 - Every service sends HSTS (`Strict-Transport-Security`): browsers stick to HTTPS for its name.
 - One wildcard certificate covers every service, so your service names never appear in public certificate logs.
 - Exposed services join the shared `proxy` network and keep their `default` one. The proxy reaches them by container name, so a recreate breaks nothing. **Remove** in the panel takes the labels and the network out again.
-- A service with `network_mode: host` (Home Assistant) is reached through `host.docker.internal`, which the template maps to the host.
-- fail2ban on the host reads the proxy's access log (`PROXY_DATA/logs/access.log`) and never bans the allowlist (`PROXY_DATA/allowlist.txt`). Set its jails on the **Host** page. The rules match a log format, text (Traefik, nginx) or JSON (Caddy), not a proxy.
+- A service with `network_mode: host` (Home Assistant) is reached through `host.docker.internal`, which the templates map to the host.
+- fail2ban on the host reads the proxy's access log (`PROXY_DATA/logs/access.log`) and never bans the allowlist (`PROXY_DATA/allowlist.txt`). Set its jails on the **Host** page. The rules match a log format, not a proxy: text for Traefik and SWAG, JSON for Caddy.
 - The panel rewrites the file in the editor, comments included, and shows the diff. Nothing is saved until you save. Older `traefik.*` or `swag*` labels on a service are replaced.
 
 ## Troubleshooting

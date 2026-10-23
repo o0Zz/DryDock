@@ -589,6 +589,8 @@ export interface ProxyContainer {
   id: string;
   name: string;
   running: boolean;
+  /** For the proxy: traefik, swag or caddy. */
+  kind?: string | null;
 }
 
 export interface ProxyOverview {

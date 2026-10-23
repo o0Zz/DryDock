@@ -31,6 +31,8 @@ class ProxyContainer(BaseModel):
     id: str
     name: str
     running: bool
+    # For the proxy: traefik, swag or caddy (its `drydock.proxy` label, else its image).
+    kind: str | None = None
 
 
 class ProxyOverview(BaseModel):

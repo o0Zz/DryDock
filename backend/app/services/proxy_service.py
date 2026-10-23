@@ -29,8 +29,10 @@ from app.schemas.proxy import ProxyContainer, ProxyRoute, ServiceExposure
 from app.services import compose_service, docker_service, repo_service
 
 LABEL_PREFIX = "expose."
-# Images of the proxies the sync can write for, to find the proxy's container.
-PROXY_IMAGES = ("traefik",)
+# The proxies the sync writes for. Their stack templates label the proxy's container
+# `drydock.proxy=<kind>`; an unlabelled one is recognised by its image name.
+PROXY_KINDS = ("traefik", "swag", "caddy")
+PROXY_LABEL = "drydock.proxy"
 # Set on the proxy sync's container by the proxy stack, to find it.
 SYNC_LABEL = "drydock.proxy-sync"
 # Labels of an older setup: a proxy reading them would route the service twice.
@@ -169,25 +171,42 @@ def routes(projects: list[Project]) -> list[ProxyRoute]:
     return sorted(found, key=lambda route: (route.hosts[:1], route.project_name))
 
 
-def _best(candidates: list[Any]) -> ProxyContainer | None:
+def _best(candidates: list[Any], kind: str | None = None) -> ProxyContainer | None:
     """The running one first: an old stopped copy must not hide the live one."""
     candidates.sort(key=lambda container: container.state != "running")
     if not candidates:
         return None
     best = candidates[0]
-    return ProxyContainer(id=best.id, name=best.name, running=best.state == "running")
+    return ProxyContainer(
+        id=best.id, name=best.name, running=best.state == "running", kind=kind
+    )
+
+
+def _image_name(image: str) -> str:
+    return image.split("@")[0].rsplit(":", 1)[0].rsplit("/", 1)[-1]
 
 
 def proxy_containers() -> tuple[ProxyContainer | None, ProxyContainer | None]:
     """The proxy's container and the proxy sync's. Raises DockerUnavailable."""
-    containers = docker_service.list_containers(all_states=True)
-    proxies = [
-        container
-        for container in containers
-        if container.image.split("@")[0].rsplit(":", 1)[0].rsplit("/", 1)[-1] in PROXY_IMAGES
-    ]
+    labelled = docker_service.list_containers(all_states=True, label=PROXY_LABEL)
+    if labelled:
+        proxy = _best(labelled)
+        if proxy is not None:
+            detail = docker_service.get_container_detail(proxy.id, privileged=False)
+            proxy.kind = detail.labels.get(PROXY_LABEL) or None
+    else:
+        candidates = [
+            container
+            for container in docker_service.list_containers(all_states=True)
+            if _image_name(container.image) in PROXY_KINDS
+        ]
+        proxy = _best(candidates)
+        if proxy is not None:
+            proxy.kind = next(
+                _image_name(container.image) for container in candidates if container.id == proxy.id
+            )
     syncs = docker_service.list_containers(all_states=True, label=SYNC_LABEL)
-    return _best(proxies), _best(syncs)
+    return proxy, _best(syncs)
 
 
 # --- Writing --------------------------------------------------------------------------
