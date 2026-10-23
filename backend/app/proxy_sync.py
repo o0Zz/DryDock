@@ -14,8 +14,8 @@ Writers:
     swag     site-confs/drydock-expose.conf for SWAG's nginx; checked with `nginx -t`,
              then `nginx -s reload`, both run in PROXY_CONTAINER.
     caddy    the whole Caddyfile; `caddy reload` in PROXY_CONTAINER checks and loads it.
-             Hosts are grouped under wildcard sites (`*.example.org`), so Caddy asks for one
-             wildcard certificate per domain instead of one per name.
+             With a DNS_PROVIDER (ovh, cloudflare) hosts are grouped under wildcard sites
+             (`*.example.org`): one certificate per domain. With `http`, one per name.
 
 A config the proxy refuses is put back to the previous one, so a bad label never takes
 the proxy down.
@@ -96,6 +96,9 @@ class Config:
     proxy_container: str = ""
     # SWAG's own ssl.conf already sends HSTS (recent versions): do not send it twice.
     ssl_conf_hsts: bool = False
+    # Caddy only: how it gets certificates (CADDY_DNS). The other proxies set it up
+    # in their own config.
+    dns_provider: str = "http"
 
     @classmethod
     def from_env(cls) -> Config:
@@ -112,6 +115,7 @@ class Config:
             ip_refresh_seconds=float(env.get("IP_REFRESH_SECONDS", "300")),
             allowlist_file=Path(env["ALLOWLIST_FILE"]) if env.get("ALLOWLIST_FILE") else None,
             proxy_container=env.get("PROXY_CONTAINER", proxy),
+            dns_provider=env.get("DNS_PROVIDER", "http"),
         )
 
 
@@ -243,19 +247,29 @@ def _site(host: str) -> str:
     return "*." + ".".join(labels[1:]) if len(labels) > 2 else host
 
 
-def render_caddy(routes: list[Route], sources: list[str], config: Config) -> str:
-    """A whole Caddyfile. The DNS challenge credentials come from the container's env."""
-    out = [
-        f"# {HEADER}",
-        "{",
-        "\temail {$ACME_EMAIL}",
+# How Caddy proves it owns the domain, by DNS_PROVIDER. A DNS provider gets wildcard
+# certificates and needs its caddy-dns module in the image (the template builds it); the
+# values come from the container's env. `http` needs nothing: one certificate per name,
+# through port 80, for any domain.
+CADDY_DNS: dict[str, list[str]] = {
+    "ovh": [
         "\tacme_dns ovh {",
         "\t\tendpoint {$OVH_ENDPOINT}",
         "\t\tapplication_key {$OVH_APPLICATION_KEY}",
         "\t\tapplication_secret {$OVH_APPLICATION_SECRET}",
         "\t\tconsumer_key {$OVH_CONSUMER_KEY}",
         "\t}",
-        "}",
+    ],
+    "cloudflare": ["\tacme_dns cloudflare {$CF_DNS_API_TOKEN}"],
+    "http": [],
+}
+
+
+def render_caddy(routes: list[Route], sources: list[str], config: Config) -> str:
+    """A whole Caddyfile. Credentials stay placeholders, filled in from Caddy's own env."""
+    wildcard = config.dns_provider != "http"
+    out = [f"# {HEADER}", "{", "\temail {$ACME_EMAIL}", *CADDY_DNS[config.dns_provider], "}"]
+    out += [
         "",
         "(common) {",
         "\tlog {",
@@ -268,7 +282,8 @@ def render_caddy(routes: list[Route], sources: list[str], config: Config) -> str
     sites: dict[str, list[tuple[str, Route]]] = {}
     for route in routes:
         for host in route.hosts:
-            sites.setdefault(_site(host), []).append((host, route))
+            # Without a DNS provider there is no wildcard: one site, one certificate per name.
+            sites.setdefault(_site(host) if wildcard else host, []).append((host, route))
     for site, entries in sorted(sites.items()):
         out += ["", f"{site} {{", "\timport common"]
         for host, route in entries:
@@ -281,7 +296,7 @@ def render_caddy(routes: list[Route], sources: list[str], config: Config) -> str
                     "\t\trespond @blocked 403",
                 ]
             out += [f"\t\treverse_proxy {route.target}", "\t}"]
-        # Any other name of the wildcard: no service behind it.
+        # Any other name of a wildcard: no service behind it.
         out += ["\thandle {", "\t\tabort", "\t}", "}"]
     return "\n".join(out) + "\n"
 
@@ -393,6 +408,11 @@ def run(config: Config) -> None:
     if config.proxy not in WRITERS:
         raise SystemExit(f"PROXY={config.proxy} is not supported (only: {', '.join(WRITERS)})")
     writer = WRITERS[config.proxy]
+    if config.proxy == "caddy" and config.dns_provider not in CADDY_DNS:
+        raise SystemExit(
+            f"DNS_PROVIDER={config.dns_provider} is not supported for Caddy "
+            f"(only: {', '.join(CADDY_DNS)})"
+        )
     client = docker.from_env()
     ip: str | None = None
     next_ip_check = 0.0

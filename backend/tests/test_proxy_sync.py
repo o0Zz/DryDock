@@ -144,7 +144,9 @@ def test_nginx_config_for_swag() -> None:
 
 
 def test_caddyfile_groups_hosts_under_wildcard_sites() -> None:
-    caddyfile = proxy_sync.render_caddy(ROUTES, SOURCES, Config(proxy="caddy"))
+    caddyfile = proxy_sync.render_caddy(
+        ROUTES, SOURCES, Config(proxy="caddy", dns_provider="ovh")
+    )
 
     assert "\tacme_dns ovh {" in caddyfile
     assert "\n*.example.org {\n\timport common\n" in caddyfile
@@ -221,3 +223,21 @@ def test_nginx_leaves_hsts_to_swags_ssl_conf(tmp_path: Path) -> None:
     conf = proxy_sync.render_nginx(ROUTES, SOURCES, Config(proxy="swag", ssl_conf_hsts=True))
 
     assert "Strict-Transport-Security" not in conf
+
+
+def test_caddy_without_dns_api_gets_one_certificate_per_name() -> None:
+    caddyfile = proxy_sync.render_caddy(ROUTES, SOURCES, Config(proxy="caddy"))
+
+    assert "acme_dns" not in caddyfile
+    assert "*." not in caddyfile
+    assert "\nmusic.example.org {\n" in caddyfile
+    assert "\napi.dev.example.org {\n" in caddyfile
+
+
+def test_caddy_with_cloudflare() -> None:
+    config = Config(proxy="caddy", dns_provider="cloudflare")
+
+    caddyfile = proxy_sync.render_caddy(ROUTES, SOURCES, config)
+
+    assert "\tacme_dns cloudflare {$CF_DNS_API_TOKEN}\n" in caddyfile
+    assert "\n*.example.org {\n" in caddyfile

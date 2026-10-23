@@ -155,11 +155,14 @@ The proxy stack runs DryDock's **proxy sync** next to the proxy. It reads these 
 
 A config the proxy refuses is put back to the previous one, so a bad label never takes the proxy down. The labels are real Docker labels, so a plain `docker compose up` keeps them. To switch proxy, stop the old proxy stack and create the new one: your stacks stay as they are.
 
-1. Create an OVH API token at <https://eu.api.ovh.com/createToken/> with `GET`, `POST`, `PUT` and `DELETE` on `/domain/zone/<domain>/*`. Let's Encrypt needs it to issue the wildcard certificate (DNS challenge). A DynHost login is not enough.
-2. Point `*.<domain>` at your public IP, for example with a CNAME to your DynHost name, and forward ports 80 and 443 of the internet router to the Docker host.
-3. On the **Proxy** page, set the domain. Then pick a proxy (Traefik, SWAG or Caddy), fill in its `.env` tab (`LAN_RANGES`, `TRUSTED_IPS`, the OVH token), stop any other proxy on ports 80 and 443, and run **up**.
-   - SWAG reads the OVH token from a file: after the first up, fill in `PROXY_DATA/swag/dns-conf/ovh.ini` and restart `swag`.
-   - Caddy's official image has no OVH module, so the first up builds one. It takes a few minutes on a Pi.
+1. Point `*.<domain>` at your public IP (for example a CNAME to your dynamic DNS name), and forward ports 80 and 443 of the internet router to the Docker host.
+2. On the **Proxy** page, set the domain. Then pick a proxy (Traefik, SWAG or Caddy) and how it gets its certificates:
+   - **A DNS provider** (OVH, Cloudflare, or another one Traefik or SWAG knows by name): one wildcard certificate per domain, so your service names never appear in public certificate logs. It needs an API token that can edit the zone's DNS records (Let's Encrypt checks a TXT record). A dynamic DNS login is not enough.
+   - **The HTTP challenge**: no DNS API, any domain. One certificate per name, through port 80; the names appear in public certificate logs. Traefik and Caddy only: SWAG would need every name up front.
+3. Fill in the stack's `.env` tab (`LAN_RANGES`, `TRUSTED_IPS`, the token), stop any other proxy on ports 80 and 443, and run **up**.
+   - SWAG reads the DNS token from a file: after the first up, fill in `PROXY_DATA/swag/dns-conf/<provider>.ini` and restart `swag`.
+   - Caddy's official image has no DNS modules: with a DNS provider, the first up builds one. It takes a few minutes on a Pi. Caddy knows OVH and Cloudflare here.
+   - Traefik with another provider passes the whole `.env` to Traefik: add the variables listed for it at <https://go-acme.github.io/lego/dns/>.
 4. On a stack page, open **Expose**, pick a service, a name and its container port, then save and run **up**.
 
 - **Private** services only answer an IP allowlist: `LAN_RANGES`, your current public IP and `TRUSTED_IPS`. The public IP is in it because LAN and VPN clients often come back through it (hairpin NAT). The sync refreshes it every 5 minutes. **Public** services answer everyone.

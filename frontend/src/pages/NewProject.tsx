@@ -4,12 +4,20 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { api } from "../api";
 import { useAuth } from "../auth";
 import { useT } from "../i18n";
-import { STACK_TEMPLATES } from "../stackTemplates";
+import {
+  CERT_CHOICES,
+  defaultCert,
+  STACK_TEMPLATES,
+  type CertSetup,
+  type StackTemplate,
+} from "../stackTemplates";
 
 const YamlEditor = lazy(() => import("../components/YamlEditor"));
 
 // Same rule as the backend: it becomes the folder and Compose project name.
 const NAME_PATTERN = /^[a-z0-9][a-z0-9_-]*$/;
+// A DNS provider's name as Traefik (lego) or SWAG (certbot) spells it.
+const PROVIDER_PATTERN = /^[a-z0-9][a-z0-9.-]*$/;
 
 /** Create `<repo>/<name>/docker-compose.yml` from the browser. */
 export default function NewProject() {
@@ -22,16 +30,18 @@ export default function NewProject() {
     STACK_TEMPLATES.find((candidate) => candidate.id === searchParams.get("template")) ??
     STACK_TEMPLATES[0];
   const [templateId, setTemplateId] = useState(initial.id);
+  const [cert, setCert] = useState<CertSetup>(defaultCert(initial));
   const [name, setName] = useState(initial.name);
-  const [content, setContent] = useState(initial.compose);
+  const [content, setContent] = useState(initial.compose(defaultCert(initial)));
   const [domain, setDomain] = useState("");
-  // DryDock's own image: the Traefik template runs its proxy sync from it.
+  // DryDock's own image: the proxy templates run their sync from it.
   const [image, setImage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   const template = STACK_TEMPLATES.find((candidate) => candidate.id === templateId)!;
   const nameValid = NAME_PATTERN.test(name);
+  const certValid = !template.certs || PROVIDER_PATTERN.test(cert.provider);
 
   useEffect(() => {
     api
@@ -46,14 +56,26 @@ export default function NewProject() {
   // The template is shown before the image is known; fill it in as soon as it is.
   useEffect(() => {
     if (image) setContent((current) => current.replaceAll("{image}", image));
-  }, [image, templateId]);
+  }, [image, templateId, cert]);
+
+  function render(next: StackTemplate, nextCert: CertSetup): void {
+    const compose = next.compose(nextCert);
+    setContent(image ? compose.replaceAll("{image}", image) : compose);
+  }
 
   function pickTemplate(id: string): void {
     const next = STACK_TEMPLATES.find((candidate) => candidate.id === id)!;
+    const nextCert = defaultCert(next);
     setTemplateId(id);
-    setContent(image ? next.compose.replaceAll("{image}", image) : next.compose);
+    setCert(nextCert);
+    render(next, nextCert);
     // Keep a name the user typed; replace only the previous template's suggestion.
     if (!name || name === template.name) setName(next.name);
+  }
+
+  function pickCert(nextCert: CertSetup): void {
+    setCert(nextCert);
+    render(template, nextCert);
   }
 
   async function onSubmit(event: FormEvent): Promise<void> {
@@ -63,7 +85,7 @@ export default function NewProject() {
     try {
       const project = await api.createProject(name, content);
       if (template.env && user?.is_admin) {
-        await api.putEnv(project.id, template.env.replace("{domain}", domain || "example.org"));
+        await api.putEnv(project.id, template.env(cert).replace("{domain}", domain || "example.org"));
       }
       navigate(`/projects/${project.id}`);
     } catch (createError) {
@@ -71,6 +93,8 @@ export default function NewProject() {
       setBusy(false);
     }
   }
+
+  const certChoice = CERT_CHOICES.find((choice) => choice.id === cert.choice);
 
   return (
     <div>
@@ -96,6 +120,37 @@ export default function NewProject() {
                 : ` ${t("It needs a .env: ask an admin to fill it in.")}`)}
           </div>
         </label>
+        {template.certs && (
+          <label>
+            {t("Certificates")}{" "}
+            <select
+              value={cert.choice}
+              onChange={(event) => {
+                const choice = event.target.value as CertSetup["choice"];
+                pickCert({ choice, provider: choice === "other" ? "" : choice });
+              }}
+            >
+              {CERT_CHOICES.filter((choice) => template.certs?.includes(choice.id)).map(
+                (choice) => (
+                  <option key={choice.id} value={choice.id}>
+                    {t(choice.label)}
+                  </option>
+                ),
+              )}
+            </select>
+            {cert.choice === "other" && (
+              <input
+                type="text"
+                placeholder={t("provider name, e.g. gandiv5")}
+                value={cert.provider}
+                onChange={(event) =>
+                  pickCert({ choice: "other", provider: event.target.value.trim().toLowerCase() })
+                }
+              />
+            )}
+            {certChoice && <div className="muted">{t(certChoice.description)}</div>}
+          </label>
+        )}
         <label>
           {t("Name")}{" "}
           <input
@@ -117,7 +172,7 @@ export default function NewProject() {
         </Suspense>
         {error && <div className="error">{error}</div>}
         <div className="button-row">
-          <button type="submit" disabled={!nameValid || busy}>
+          <button type="submit" disabled={!nameValid || !certValid || busy}>
             <Plus size={15} /> {t("Create stack")}
           </button>
         </div>

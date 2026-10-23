@@ -36,7 +36,6 @@
   "Traefik reverse proxy": "Reverse proxy Traefik",
   "Allowed IPs only: LAN, public IP, trusted IPs": "IP autorisées uniquement : LAN, IP publique, IP de confiance",
   "Private: allowed IPs only": "Privé : IP autorisées uniquement",
-  "HTTPS for the services you expose, with a wildcard certificate from the OVH DNS challenge. Private services only answer your LAN, your public IP and trusted IPs.": "HTTPS pour les services que vous exposez, avec un certificat wildcard par challenge DNS OVH. Les services privés ne répondent qu'à votre LAN, votre IP publique et vos IP de confiance.",
   "A bare name in the Exposure panel becomes <name>.<domain>. Use the domain of the proxy's wildcard certificate.": "Un nom simple dans le panneau Exposition devient <nom>.<domaine>. Utilisez le domaine du certificat wildcard du proxy.",
   "The proxy or its sync is not running: exposed services are not reachable yet.": "Le proxy ou sa synchro ne tourne pas : les services exposés ne sont pas encore joignables.",
   "Has labels of an older proxy setup (traefik.*, swag). Expose replaces them.": "A des labels d'une ancienne config de proxy (traefik.*, swag). Exposer les remplace.",
@@ -47,5 +46,14 @@
   "No proxy yet. Pick one: the expose.* labels work with each, so you can switch later without touching your stacks.": "Pas encore de proxy. Choisissez-en un : les labels expose.* marchent avec chacun, vous pourrez changer plus tard sans toucher à vos stacks.",
   "Caddy logs JSON: set the log format to JSON in the fail2ban jails (Host page).": "Caddy écrit ses logs en JSON : choisissez le format JSON dans les jails fail2ban (page Host).",
   "SWAG reverse proxy (nginx)": "Reverse proxy SWAG (nginx)",
-  "Caddy reverse proxy": "Reverse proxy Caddy"
+  "Caddy reverse proxy": "Reverse proxy Caddy",
+  "Certificates": "Certificats",
+  "provider name, e.g. gandiv5": "nom du fournisseur, par ex. gandiv5",
+  "Wildcard certificate through the OVH API.": "Certificat wildcard via l'API OVH.",
+  "Wildcard certificate through the Cloudflare API.": "Certificat wildcard via l'API Cloudflare.",
+  "HTTP challenge (any domain)": "Challenge HTTP (tout domaine)",
+  "No DNS API needed: one certificate per name, through port 80. The names appear in public certificate logs.": "Aucune API DNS nécessaire : un certificat par nom, via le port 80. Les noms apparaissent dans les logs publics de certificats.",
+  "Other DNS provider": "Autre fournisseur DNS",
+  "Type your provider's name as the proxy knows it, then add its variables to the .env (Traefik) or its .ini file (SWAG).": "Tapez le nom de votre fournisseur tel que le proxy le connaît, puis ajoutez ses variables au .env (Traefik) ou à son fichier .ini (SWAG).",
+  "HTTPS for the services you expose. Private services only answer your LAN, your public IP and trusted IPs.": "HTTPS pour les services que vous exposez. Les services privés ne répondent qu'à votre LAN, votre IP publique et vos IP de confiance."
 }
