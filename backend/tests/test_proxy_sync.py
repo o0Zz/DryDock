@@ -41,19 +41,19 @@ def test_routes_reach_containers_by_name_on_the_network() -> None:
     )
 
     assert problems == []
+    # Private unless a label says otherwise.
     assert routes == [
-        Route("drydock", ("drydock.example.org",), "http://drydock:8080", True, False),
-        Route("mstream", ("music.example.org",), "http://mstream:3000", False, False),
+        Route("drydock", ("drydock.example.org",), "http://drydock:8080", True),
+        Route("mstream", ("music.example.org",), "http://mstream:3000", False),
     ]
 
 
 def test_host_network_goes_through_the_host_gateway() -> None:
     [route], _ = proxy_sync.routes_from(
-        [_container("home-assistant", port="81", networks=(), mode="host", hsts="true")], "proxy"
+        [_container("home-assistant", port="81", networks=(), mode="host")], "proxy"
     )
 
     assert route.url == "http://host.docker.internal:81"
-    assert route.hsts
 
 
 def test_unreachable_or_broken_containers_are_skipped() -> None:
@@ -75,8 +75,8 @@ def test_unreachable_or_broken_containers_are_skipped() -> None:
 
 def test_traefik_config() -> None:
     routes = [
-        Route("mstream", ("music.example.org",), "http://mstream:3000", False, False),
-        Route("gitea", ("git.example.org", "g.example.org"), "http://gitea:3000", True, True),
+        Route("mstream", ("music.example.org",), "http://mstream:3000", False),
+        Route("gitea", ("git.example.org", "g.example.org"), "http://gitea:3000", True),
     ]
     sources = proxy_sync.allowlist(
         Config(lan_ranges=["192.168.10.0/24"], trusted_ips=["203.0.113.7"]), "198.51.100.4"
@@ -88,6 +88,7 @@ def test_traefik_config() -> None:
         "rule": "Host(`music.example.org`)",
         "entryPoints": ["websecure"],
         "service": "mstream",
+        "middlewares": ["hsts"],
     }
     assert config["routers"]["gitea"]["rule"] == "Host(`git.example.org`) || Host(`g.example.org`)"
     assert config["routers"]["gitea"]["middlewares"] == ["private", "hsts"]

@@ -28,6 +28,8 @@ DEFAULTS: dict[str, Any] = {
     # Docker network Traefik shares with the stacks it exposes.
     "proxy_domain": "",
     "proxy_network": "proxy",
+    # fail2ban jails DryDock manages (fail2ban_config_service); None until first saved.
+    "fail2ban_config": None,
 }
 
 def get_all(db: Session) -> dict[str, Any]:

@@ -157,15 +157,15 @@ services:
       - swag=enable
       - swag_url=old.example.org
       - expose.hsts=true
+      - com.example.owner=me
 """
     [before] = proxy_service.services(content)
     assert before.legacy
 
     labels = yaml.safe_load(_expose(content, service="app", port=80))["services"]["app"]["labels"]
 
-    # expose.hsts is not the panel's to change.
     assert labels == [
-        "expose.hsts=true",
+        "com.example.owner=me",
         "expose.host=jellyfin.example.org",
         "expose.port=80",
         "expose.private=true",

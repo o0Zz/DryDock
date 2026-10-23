@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import { ApiError, api } from "../api";
 import { useAuth } from "../auth";
 import Fact from "../components/Fact";
+import Fail2banRules from "../components/Fail2banRules";
 import JobList from "../components/JobList";
 import SortHeader from "../components/SortHeader";
 import { formatDate, secondsSince } from "../format";
@@ -372,6 +373,7 @@ export default function Host() {
           ) : (
             <div className="empty">{t("Loading…")}</div>
           )}
+          <Fail2banRules onApplied={loadFail2ban} />
         </section>
       )}
     </div>

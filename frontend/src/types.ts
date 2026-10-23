@@ -604,3 +604,45 @@ export interface ProxyOverview {
   docker_available: boolean;
   routes: ProxyRoute[];
 }
+
+export type Fail2banRule = "auth" | "forbidden" | "botsearch" | "badbots" | "custom";
+
+export interface Fail2banJailConfig {
+  /** Becomes the jail and filter name, drydock-<name>. */
+  name: string;
+  enabled: boolean;
+  rule: Fail2banRule;
+  /** Only for the custom rule. <HOST> marks the client IP. */
+  failregex: string;
+  maxretry: number;
+  /** Seconds. */
+  findtime: number;
+  /** Seconds. */
+  bantime: number;
+}
+
+export interface Fail2banConfig {
+  /** Host path of the proxy's access log. */
+  log_path: string;
+  /** text: Traefik, nginx (SWAG). json: Caddy. */
+  log_format: "text" | "json";
+  /** Host path of the proxy sync's allowlist, never banned. Empty: none. */
+  allowlist_file: string;
+  ignore_ips: string[];
+  /** forward: the proxy's ports are published by Docker. input: it runs on the host network. */
+  ban_hook: "forward" | "input";
+  jails: Fail2banJailConfig[];
+}
+
+export interface Fail2banConfigRead {
+  config: Fail2banConfig;
+  /** Whether the host's jail file matches this config; null when unreadable. */
+  applied: boolean | null;
+}
+
+export interface Fail2banTestResult {
+  lines: number;
+  matched: number;
+  top_ips: { ip: string; count: number }[];
+  samples: string[];
+}

@@ -7,7 +7,9 @@ Compose files stay the same whatever proxy reads them; PROXY picks the writer:
     expose.host     host name, or several separated by commas
     expose.port     the container port to forward to
     expose.private  "false" makes the service public; anything else keeps it private
-    expose.hsts     "true" adds a Strict-Transport-Security header
+
+Every route sends Strict-Transport-Security: everything is served over HTTPS, so
+browsers may refuse plain HTTP for these names.
 
 Private services only answer an IP allowlist: LAN_RANGES, the current public IP (LAN and
 VPN clients often come back through it, hairpin NAT) and TRUSTED_IPS.
@@ -15,6 +17,9 @@ VPN clients often come back through it, hairpin NAT) and TRUSTED_IPS.
 A container with `network_mode: host` is reached at host.docker.internal (the proxy maps it
 with extra_hosts: host-gateway). Any other container must share NETWORK with the proxy; it
 is reached by name, which survives a recreate where its IP does not.
+
+With ALLOWLIST_FILE set it also writes that allowlist, one entry per line, for tools that
+must never block those IPs (DryDock's fail2ban jails read it).
 
 Every POLL_SECONDS it lists the running containers with an `expose.host` label (one cheap
 API call); every IP_REFRESH_SECONDS it asks for the public IP. The config is only rewritten
@@ -52,7 +57,6 @@ class Route:
     hosts: tuple[str, ...]
     url: str
     private: bool
-    hsts: bool
 
 
 @dataclass
@@ -65,6 +69,7 @@ class Config:
     trusted_ips: list[str] = field(default_factory=list)
     poll_seconds: float = 5
     ip_refresh_seconds: float = 300
+    allowlist_file: Path | None = None
 
     @classmethod
     def from_env(cls) -> Config:
@@ -78,6 +83,7 @@ class Config:
             trusted_ips=_split(env.get("TRUSTED_IPS", "")),
             poll_seconds=float(env.get("POLL_SECONDS", "5")),
             ip_refresh_seconds=float(env.get("IP_REFRESH_SECONDS", "300")),
+            allowlist_file=Path(env["ALLOWLIST_FILE"]) if env.get("ALLOWLIST_FILE") else None,
         )
 
 
@@ -115,7 +121,6 @@ def routes_from(containers: list[dict[str, Any]], network: str) -> tuple[list[Ro
                 hosts=hosts,
                 url=f"http://{target}:{port}",
                 private=labels.get(f"{LABEL_PREFIX}private", "true").strip().lower() != "false",
-                hsts=labels.get(f"{LABEL_PREFIX}hsts", "").strip().lower() == "true",
             )
         )
     # Two containers claiming one host would make the proxy pick one at random.
@@ -141,12 +146,12 @@ def render_traefik(routes: list[Route], sources: list[str], entrypoint: str) -> 
     routers: dict[str, Any] = {}
     services: dict[str, Any] = {}
     for route in routes:
-        middlewares = (["private"] if route.private else []) + (["hsts"] if route.hsts else [])
+        middlewares = (["private"] if route.private else []) + ["hsts"]
         routers[route.name] = {
             "rule": " || ".join(f"Host(`{host}`)" for host in route.hosts),
             "entryPoints": [entrypoint],
             "service": route.name,
-            **({"middlewares": middlewares} if middlewares else {}),
+            "middlewares": middlewares,
         }
         services[route.name] = {"loadBalancer": {"servers": [{"url": route.url}]}}
     config = {
@@ -173,8 +178,10 @@ def write_if_changed(path: Path, content: str) -> bool:
             return False
     except OSError:
         pass
+    # The sync may start before the proxy has created its folders.
+    path.parent.mkdir(parents=True, exist_ok=True)
     # Not a .yml name: the proxy watching the folder must never read a half-written file.
-    temp = path.with_name(f".{path.name}.tmp")
+    temp =path.with_name(f".{path.name}.tmp")
     temp.write_text(content, encoding="utf-8")
     temp.replace(path)
     return True
@@ -213,7 +220,12 @@ def run(config: Config) -> None:
             for problem in problems:
                 logger.warning("Skipped %s", problem)
             last_problems = problems
-        content = render(routes, allowlist(config, ip), config.entrypoint)
+        sources = allowlist(config, ip)
+        if config.allowlist_file and write_if_changed(
+            config.allowlist_file, "\n".join(sources) + "\n"
+        ):
+            logger.info("Wrote %s: %s", config.allowlist_file.name, ", ".join(sources))
+        content = render(routes, sources, config.entrypoint)
         if write_if_changed(config.output / filename, content):
             logger.info(
                 "Wrote %s: %d routes (%s)",

@@ -28,6 +28,8 @@ class JobKind:
     HOST_UPDATE_CHECK = "host_update_check"
     # Commit, push or pull the repo folder.
     REPO_GIT = "repo_git"
+    # Write DryDock's fail2ban jails on the host and reload it.
+    FAIL2BAN_APPLY = "fail2ban_apply"
 
 
 class Job(Base):

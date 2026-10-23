@@ -22,7 +22,11 @@ import type {
   EnvContent,
   EnvSaveResult,
   ExposeRequest,
+  Fail2banConfig,
+  Fail2banConfigRead,
+  Fail2banJailConfig,
   Fail2banReport,
+  Fail2banTestResult,
   GitCredential,
   HostUpdates,
   HostUsage,
@@ -125,6 +129,18 @@ export const api = {
   hostUpdates: () => request<HostUpdates | null>("/api/host/updates"),
   checkHostUpdates: () => request<Job>("/api/host/updates/check", { method: "POST" }),
   fail2ban: () => request<Fail2banReport>("/api/host/fail2ban"),
+  getFail2banConfig: () => request<Fail2banConfigRead>("/api/host/fail2ban/config"),
+  saveFail2banConfig: (config: Fail2banConfig) =>
+    request<Fail2banConfigRead>("/api/host/fail2ban/config", {
+      method: "PUT",
+      body: JSON.stringify(config),
+    }),
+  applyFail2banConfig: () => request<Job>("/api/host/fail2ban/apply", { method: "POST" }),
+  testFail2banJail: (config: Fail2banConfig, jail: Fail2banJailConfig) =>
+    request<Fail2banTestResult>("/api/host/fail2ban/test", {
+      method: "POST",
+      body: JSON.stringify({ config, jail }),
+    }),
 
   // projects / containers
   listProjects: () => request<Project[]>("/api/projects"),

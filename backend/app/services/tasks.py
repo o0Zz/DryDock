@@ -18,10 +18,12 @@ from sqlalchemy.orm import Session
 from app.models.scan import Scan, ScanFinding
 from app.models.update import UpdateCheck
 from app.schemas.common import PruneResult
+from app.schemas.fail2ban import Fail2banConfig
 from app.schemas.project import Project
 from app.services import (
     compose_service,
     docker_service,
+    fail2ban_config_service,
     git_service,
     host_updates_service,
     job_service,
@@ -263,6 +265,18 @@ def update_check_runner(resolve: ImageResolver, *, notify: bool = False) -> JobR
         ctx.note(message)
         if notify:
             _maybe_notify_updates(ctx.db, checks)
+
+    return run
+
+
+def fail2ban_apply_runner(config: Fail2banConfig) -> JobRunner:
+    """Build a job body that writes DryDock's fail2ban jails on the host and reloads it."""
+
+    def run(ctx: JobContext) -> None:
+        ctx.set_total(1, "Writing the jails and reloading fail2ban")
+        ctx.set_output(fail2ban_config_service.apply(config))
+        enabled = sum(jail.enabled for jail in config.jails)
+        ctx.advance(f"fail2ban reloaded: {enabled} DryDock jail(s) enabled")
 
     return run
 

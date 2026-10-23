@@ -5,7 +5,6 @@ DryDock never carries the traffic, and its labels name no proxy:
     expose.host     host name, or several separated by commas
     expose.port     the container port to forward to
     expose.private  "false" makes the service public; anything else keeps it private
-    expose.hsts     "true" adds a Strict-Transport-Security header (written by hand)
 
 The proxy stack runs DryDock's proxy sync (`app.proxy_sync`) next to the proxy. It reads
 these labels from the running containers and writes the proxy's own config, so the Compose
@@ -49,7 +48,8 @@ class ProxyError(compose_service.ComposeError):
 
 
 def _legacy(key: str) -> bool:
-    return key == "swag" or key.startswith(_LEGACY_PREFIXES)
+    # expose.hsts was dropped: every route gets HSTS now.
+    return key in ("swag", "expose.hsts") or key.startswith(_LEGACY_PREFIXES)
 
 
 # --- Reading --------------------------------------------------------------------------

@@ -32,6 +32,10 @@ const TRAEFIK = `# Reverse proxy for the services you expose from DryDock (Expos
 # Private services only answer an IP allowlist: LAN_RANGES, your current public IP
 # (LAN and VPN clients often come back through it) and TRUSTED_IPS.
 #
+# PROXY_DATA (a host folder) holds the certificates, the routes, the allowlist and the
+# access log. DryDock's fail2ban jails (Host page) read logs/access.log and
+# allowlist.txt from there, whatever proxy writes them.
+#
 # One wildcard certificate (*.domain) through the OVH DNS challenge: service names
 # never appear in public certificate logs.
 services:
@@ -72,9 +76,9 @@ services:
       - "443:443"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
-      - ./letsencrypt:/letsencrypt
-      - ./dynamic:/etc/traefik/dynamic:ro
-      - ./logs:/logs
+      - \${PROXY_DATA:-/data/proxy}/letsencrypt:/letsencrypt
+      - \${PROXY_DATA:-/data/proxy}/dynamic:/etc/traefik/dynamic:ro
+      - \${PROXY_DATA:-/data/proxy}/logs:/logs
     # Services with network_mode: host are reached through the host's gateway address.
     extra_hosts:
       - host.docker.internal:host-gateway
@@ -85,7 +89,7 @@ services:
       - traefik.enable=true
       - traefik.http.routers.traefik.rule=Host(\`traefik.\${PROXY_DOMAIN}\`)
       - traefik.http.routers.traefik.entrypoints=websecure
-      - traefik.http.routers.traefik.middlewares=private@file
+      - traefik.http.routers.traefik.middlewares=private@file,hsts@file
       - traefik.http.routers.traefik.service=api@internal
 
   # Turns the expose.* labels of running containers into dynamic/expose.yml.
@@ -95,12 +99,14 @@ services:
     command: ["python", "-m", "app.proxy_sync"]
     environment:
       PROXY: traefik
+      OUTPUT: /data/dynamic
+      ALLOWLIST_FILE: /data/allowlist.txt
       NETWORK: proxy
       LAN_RANGES: \${LAN_RANGES:-192.168.0.0/16}
       TRUSTED_IPS: \${TRUSTED_IPS:-}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
-      - ./dynamic:/dynamic
+      - \${PROXY_DATA:-/data/proxy}:/data
     labels:
       # DryDock finds the sync by this label.
       - drydock.proxy-sync=true
@@ -110,7 +116,9 @@ networks:
     name: proxy
 `;
 
-const TRAEFIK_ENV = `# Domain of the wildcard certificate: services get <name>.<domain>.
+const TRAEFIK_ENV = `# Host folder for certificates, routes, allowlist and access log.
+PROXY_DATA=/data/proxy
+# Domain of the wildcard certificate: services get <name>.<domain>.
 PROXY_DOMAIN={domain}
 # Let's Encrypt account e-mail (expiry notices).
 ACME_EMAIL=

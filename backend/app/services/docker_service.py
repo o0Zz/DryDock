@@ -1025,19 +1025,32 @@ def _missing_source(exc: APIError) -> bool:
     return "bind source path does not exist" in str(exc)
 
 
-def run_on_host(script: str, *, image: str) -> str:
+def run_on_host(
+    script: str,
+    *,
+    image: str,
+    writable: tuple[str, ...] = (),
+    environment: dict[str, str] | None = None,
+) -> str:
     """Output of `sh -c script` chrooted into the host's root, mounted read-only.
 
     The host's own binaries run (its apt, its shell), so the output is what the
-    host itself would print, whatever DryDock's image is.
+    host itself would print, whatever DryDock's image is. `writable` host folders
+    are mounted read-write on top, so a script can only write there.
     """
+    options = _host_helper_options("/", image, "host-command")
+    options["mounts"] += [
+        Mount(target=posixpath.join(HOST_ROOT, path.lstrip("/")), source=path, type="bind")
+        for path in writable
+    ]
     try:
         output = _client().containers.run(
             entrypoint=["chroot"],
             command=[HOST_ROOT, "sh", "-c", script],
             remove=True,
+            environment=environment,
             log_config=LogConfig(type=LogConfig.types.JSON),
-            **_host_helper_options("/", image, "host-command"),
+            **options,
         )
     except ContainerError as exc:
         raise HostCommandFailed(str(exc)) from exc

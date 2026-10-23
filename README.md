@@ -68,7 +68,7 @@ To build from source instead, replace `image:` with a git URL. The build reads t
 - **Users and volumes:** several users with an admin flag, and named volume management. Admins can browse the files in a volume (read-only) and download them.
 - **Networks:** driver, subnet and attached containers of every network. Remove one, or prune the custom networks no container uses. Networks of stopped stacks are kept, unlike `docker network prune`.
 - **Host:** pending OS package updates on the host (Debian, Ubuntu, Raspberry Pi OS), with security updates and "reboot required" flagged on the dashboard. They are checked on the update check schedule, read-only: DryDock never installs anything. The page gives the command to run on the host, and says when automatic security updates (`unattended-upgrades`) are off.
-- **fail2ban:** admins see the host's jails, active bans, the log lines behind each ban, and the user names tried on SSH. Read-only: no unban.
+- **fail2ban:** admins see the host's jails, active bans, the log lines behind each ban, and the user names tried on SSH. They also edit the jails that protect the reverse proxy (failed logins, refused requests, scanners, bad bots, or a custom regex), test a rule on the access log before saving, and apply it: DryDock writes its own jail file on the host and reloads fail2ban. No unban yet.
 - **English and French:** pick the language in the top bar; it defaults to your browser's. Works on a phone too: the menu folds into a drawer.
 - **Logs page:** DryDock's own log, to see why a scan or a check failed.
 
@@ -123,7 +123,6 @@ The proxy carries the traffic, not DryDock. Your Compose files get neutral label
       - expose.host=music.example.org   # several hosts: comma-separated
       - expose.port=3000                # the container port
       - expose.private=false            # default: private
-      - expose.hsts=true                # optional, by hand
 ```
 
 The proxy stack runs DryDock's **proxy sync** next to Traefik: it reads these labels from the running containers and writes Traefik's routes. The labels are real Docker labels, so a plain `docker compose up` keeps them, and another proxy only needs another writer in the sync.
@@ -134,9 +133,11 @@ The proxy stack runs DryDock's **proxy sync** next to Traefik: it reads these la
 4. On a stack page, open **Expose**, pick a service, a name and its container port, then save and run **up**.
 
 - **Private** services only answer an IP allowlist: `LAN_RANGES`, your current public IP and `TRUSTED_IPS`. The public IP is in it because LAN and VPN clients often come back through it (hairpin NAT). The sync refreshes it every 5 minutes. **Public** services answer everyone.
+- Every service sends HSTS (`Strict-Transport-Security`): browsers stick to HTTPS for its name.
 - One wildcard certificate covers every service, so your service names never appear in public certificate logs.
 - Exposed services join the shared `proxy` network and keep their `default` one. The proxy reaches them by container name, so a recreate breaks nothing. **Remove** in the panel takes the labels and the network out again.
 - A service with `network_mode: host` (Home Assistant) is reached through `host.docker.internal`, which the template maps to the host.
+- fail2ban on the host reads the proxy's access log (`PROXY_DATA/logs/access.log`) and never bans the allowlist (`PROXY_DATA/allowlist.txt`). Set its jails on the **Host** page. The rules match a log format, text (Traefik, nginx) or JSON (Caddy), not a proxy.
 - The panel rewrites the file in the editor, comments included, and shows the diff. Nothing is saved until you save. Older `traefik.*` or `swag*` labels on a service are replaced.
 
 ## Troubleshooting
