@@ -1,4 +1,4 @@
-"""Exposing services through Traefik: reading and writing Compose labels."""
+"""Exposing services through the reverse proxy: reading and writing expose.* labels."""
 
 from collections.abc import Iterator
 from pathlib import Path
@@ -37,7 +37,6 @@ services:
 
 def _expose(content: str = STACK, **overrides: object) -> str:
     options: dict = {
-        "project_name": "media",
         "service": "jellyfin",
         "host": "jellyfin.example.org",
         "port": 8096,
@@ -48,19 +47,16 @@ def _expose(content: str = STACK, **overrides: object) -> str:
     return proxy_service.expose(content, **options)
 
 
-def test_expose_writes_labels_and_network() -> None:
+def test_expose_writes_neutral_labels_and_network() -> None:
     content = _expose()
 
     data = yaml.safe_load(content)
     jellyfin = data["services"]["jellyfin"]
     assert jellyfin["labels"] == [
         "com.example.owner=me",
-        "traefik.enable=true",
-        "traefik.docker.network=proxy",
-        "traefik.http.routers.media-jellyfin.rule=Host(`jellyfin.example.org`)",
-        "traefik.http.routers.media-jellyfin.entrypoints=lan",
-        "traefik.http.routers.media-jellyfin.service=media-jellyfin",
-        "traefik.http.services.media-jellyfin.loadbalancer.server.port=8096",
+        "expose.host=jellyfin.example.org",
+        "expose.port=8096",
+        "expose.private=true",
     ]
     # Still on default, so it keeps talking to db.
     assert jellyfin["networks"] == ["default", "proxy"]
@@ -96,6 +92,15 @@ volumes:
     assert restored == content
 
 
+def test_crlf_files_keep_their_line_endings() -> None:
+    content = STACK.replace("\n", "\r\n")
+
+    exposed = _expose(content)
+
+    assert exposed.count("\r\n") == exposed.count("\n")
+    assert proxy_service.unexpose(exposed, service="jellyfin", network="proxy") == content
+
+
 def test_described_exposure_round_trips() -> None:
     [jellyfin, db] = proxy_service.services(_expose(public=True))
 
@@ -112,10 +117,12 @@ def test_expose_again_updates_in_place() -> None:
     content = _expose(_expose(), host="tv.example.org", port=8920, public=True)
 
     labels = yaml.safe_load(content)["services"]["jellyfin"]["labels"]
-    assert "traefik.http.routers.media-jellyfin.rule=Host(`tv.example.org`)" in labels
-    assert "traefik.http.routers.media-jellyfin.entrypoints=lan,wan" in labels
-    assert "traefik.http.services.media-jellyfin.loadbalancer.server.port=8920" in labels
-    assert len(labels) == 7
+    assert labels == [
+        "com.example.owner=me",
+        "expose.host=tv.example.org",
+        "expose.port=8920",
+        "expose.private=false",
+    ]
 
 
 def test_mapping_labels_and_networks_keep_their_form() -> None:
@@ -133,27 +140,36 @@ networks:
     data = yaml.safe_load(_expose(content, service="app", port=80))
 
     app_spec = data["services"]["app"]
-    assert app_spec["labels"]["traefik.enable"] == "true"
+    assert app_spec["labels"]["expose.host"] == "jellyfin.example.org"
     assert app_spec["labels"]["com.example.owner"] == "me"
     assert set(app_spec["networks"]) == {"backend", "proxy"}
     assert data["networks"] == {"backend": {}, "proxy": {"external": True}}
 
 
-def test_existing_router_name_is_kept() -> None:
+def test_old_proxy_labels_are_replaced() -> None:
     content = """\
 services:
   app:
     image: app
     labels:
       - traefik.enable=true
-      - traefik.http.routers.custom.rule=Host(`old.example.org`)
-      - traefik.http.routers.custom.middlewares=auth@file
+      - traefik.http.routers.app.rule=Host(`old.example.org`)
+      - swag=enable
+      - swag_url=old.example.org
+      - expose.hsts=true
 """
+    [before] = proxy_service.services(content)
+    assert before.legacy
+
     labels = yaml.safe_load(_expose(content, service="app", port=80))["services"]["app"]["labels"]
 
-    assert "traefik.http.routers.custom.rule=Host(`jellyfin.example.org`)" in labels
-    # A label DryDock does not manage stays.
-    assert "traefik.http.routers.custom.middlewares=auth@file" in labels
+    # expose.hsts is not the panel's to change.
+    assert labels == [
+        "expose.hsts=true",
+        "expose.host=jellyfin.example.org",
+        "expose.port=80",
+        "expose.private=true",
+    ]
 
 
 def test_unexpose_restores_the_file() -> None:
@@ -171,22 +187,34 @@ def test_unexpose_keeps_a_network_other_services_use() -> None:
     assert "networks" not in data["services"]["db"]
 
 
-def test_router_without_entrypoints_counts_as_public() -> None:
+def test_private_unless_said_otherwise() -> None:
     content = """\
 services:
   app:
     labels:
-      traefik.enable: "true"
-      traefik.http.routers.app.rule: Host(`a.example.org`) || Host(`b.example.org`)
+      expose.host: a.example.org, b.example.org
 """
     [app_exposure] = proxy_service.services(content)
 
-    assert app_exposure.public
+    assert not app_exposure.public
     assert app_exposure.hosts == ["a.example.org", "b.example.org"]
 
 
-def test_host_network_mode_is_refused() -> None:
+def test_host_network_service_gets_labels_but_no_network() -> None:
     content = "services:\n  app:\n    network_mode: host\n"
+
+    [app_exposure] = proxy_service.services(content)
+    assert app_exposure.blocked is None
+    data = yaml.safe_load(_expose(content, service="app", port=81))
+
+    # The sync reaches it through host.docker.internal; it joins no network.
+    assert "networks" not in data
+    assert "networks" not in data["services"]["app"]
+    assert "expose.port=81" in data["services"]["app"]["labels"]
+
+
+def test_other_network_modes_are_refused() -> None:
+    content = "services:\n  app:\n    network_mode: 'service:vpn'\n"
 
     assert proxy_service.services(content)[0].blocked
     with pytest.raises(proxy_service.ProxyError):
@@ -210,11 +238,11 @@ def test_full_host(host: str, domain: str, expected: str | None) -> None:
         assert proxy_service.full_host(host, domain) == expected
 
 
-def test_long_rules_are_not_folded() -> None:
+def test_long_values_are_not_folded() -> None:
     host = "a-very-long-sub-domain-name-for-this-service." + "x" * 60 + ".example.org"
     content = _expose(host=host)
 
-    assert f"Host(`{host}`)" in content
+    assert f"expose.host={host}" in content
     compose_service.validate_yaml(content)
 
 
@@ -263,7 +291,9 @@ def test_api_expose_then_overview_lists_the_route(repo: Path, client: TestClient
     overview = client.get("/api/proxy").json()
 
     assert overview["network_exists"] is True
-    assert overview["traefik"] is None
+    assert overview["container"] is None
+    assert overview["sync"] is None
+    assert overview["drydock_image"]
     assert [(r["service"], r["hosts"], r["public"]) for r in overview["routes"]] == [
         ("jellyfin", ["tv.example.org"], False)
     ]
@@ -272,7 +302,7 @@ def test_api_expose_then_overview_lists_the_route(repo: Path, client: TestClient
 def test_api_refuses_a_host_another_stack_uses(repo: Path, client: TestClient) -> None:
     (repo / "other").mkdir()
     (repo / "other" / "docker-compose.yml").write_text(
-        _expose(project_name="other", host="tv.example.org"), encoding="utf-8"
+        _expose(host="tv.example.org"), encoding="utf-8"
     )
 
     response = client.post(
@@ -294,20 +324,19 @@ def test_api_unknown_service_is_a_bad_request(repo: Path, client: TestClient) ->
 
 
 def test_overview_fills_in_env_variables(repo: Path, client: TestClient) -> None:
-    (repo / "traefik").mkdir()
-    (repo / "traefik" / "docker-compose.yml").write_text(
+    (repo / "proxy").mkdir()
+    (repo / "proxy" / "docker-compose.yml").write_text(
         """\
 services:
-  traefik:
+  whoami:
     labels:
-      - traefik.enable=true
-      - traefik.http.routers.traefik.rule=Host(`traefik.${PROXY_DOMAIN}`)
-      - traefik.http.routers.traefik.entrypoints=lan
+      - expose.host=whoami.${PROXY_DOMAIN}
+      - expose.port=80
 """,
         encoding="utf-8",
     )
-    (repo / "traefik" / ".env").write_text("# domain\nPROXY_DOMAIN=example.org\n", "utf-8")
+    (repo / "proxy" / ".env").write_text("# domain\nPROXY_DOMAIN=example.org\n", "utf-8")
 
     routes = client.get("/api/proxy").json()["routes"]
 
-    assert [route["hosts"] for route in routes] == [["traefik.example.org"]]
+    assert [route["hosts"] for route in routes] == [["whoami.example.org"]]

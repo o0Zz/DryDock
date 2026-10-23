@@ -5,9 +5,9 @@ import { api } from "../api";
 import { useAuth } from "../auth";
 import { VisibilityBadge } from "../components/ExposurePanel";
 import { useT } from "../i18n";
-import type { ProxyOverview } from "../types";
+import type { ProxyContainer, ProxyOverview } from "../types";
 
-/** What Traefik exposes, from the labels in the repo, and whether the proxy runs. */
+/** What the reverse proxy exposes, from the labels in the repo, and whether it runs. */
 export default function Proxy() {
   const t = useT();
   const { user } = useAuth();
@@ -40,7 +40,7 @@ export default function Proxy() {
       </div>
       <p className="muted">
         {t(
-          "Traefik routes https://<name>.<domain> to your containers. Expose a service from its stack page (Expose, beside the Compose editor). DryDock only writes the labels: the traffic never goes through it.",
+          "Expose a service from its stack page (Expose, beside the Compose editor). DryDock writes neutral expose.* labels; the proxy sync turns them into your proxy's config. The traffic never goes through DryDock.",
         )}
       </p>
       {error && <div className="error">{error}</div>}
@@ -52,28 +52,23 @@ export default function Proxy() {
         ) : (
           <ul className="fact-list">
             <li>
-              <span className="muted">{t("Traefik")}</span>
-              <Check ok={proxy.traefik?.running ?? false}>
-                {proxy.traefik ? (
-                  <Link to={`/containers/${proxy.traefik.id}`}>
-                    {proxy.traefik.name}
-                    {proxy.traefik.running ? "" : ` (${t("stopped")})`}
-                  </Link>
-                ) : (
-                  t("no container")
-                )}
-              </Check>
+              <span className="muted">{t("Proxy")}</span>
+              <ContainerCheck container={proxy.container} />
+            </li>
+            <li>
+              <span className="muted">{t("Proxy sync")}</span>
+              <ContainerCheck container={proxy.sync} />
             </li>
             <li>
               <span className="muted">{t("Network")}</span>
               <Check ok={proxy.network_exists ?? false}>
                 <code>{proxy.network}</code>
-                {!proxy.network_exists && ` (${t("created by the Traefik stack on up")})`}
+                {!proxy.network_exists && ` (${t("created by the proxy stack on up")})`}
               </Check>
             </li>
           </ul>
         )}
-        {proxy.docker_available && !proxy.traefik && (
+        {proxy.docker_available && !proxy.container && (
           <div className="button-row">
             <Link className="button" to="/projects/new?template=traefik">
               <Plus size={15} /> {t("Create the Traefik stack")}
@@ -146,6 +141,22 @@ function Check({ ok, children }: { ok: boolean; children: ReactNode }) {
   );
 }
 
+function ContainerCheck({ container }: { container: ProxyContainer | null }) {
+  const t = useT();
+  return (
+    <Check ok={container?.running ?? false}>
+      {container ? (
+        <Link to={`/containers/${container.id}`}>
+          {container.name}
+          {container.running ? "" : ` (${t("stopped")})`}
+        </Link>
+      ) : (
+        t("no container")
+      )}
+    </Check>
+  );
+}
+
 function ProxySettings({
   proxy,
   editable,
@@ -191,7 +202,7 @@ function ProxySettings({
           />
           <span className="muted">
             {t(
-              "A bare name in the Exposure panel becomes <name>.<domain>. Use the domain of the Traefik stack's wildcard certificate.",
+              "A bare name in the Exposure panel becomes <name>.<domain>. Use the domain of the proxy's wildcard certificate.",
             )}
           </span>
         </label>
@@ -204,7 +215,7 @@ function ProxySettings({
             onChange={(event) => setNetwork(event.target.value)}
           />
           <span className="muted">
-            {t("Exposed services join it so Traefik can reach them. The Traefik stack creates it.")}
+            {t("Exposed services join it so the proxy can reach them. The proxy stack creates it.")}
           </span>
         </label>
         {error && <div className="error">{error}</div>}

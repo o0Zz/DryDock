@@ -201,9 +201,12 @@ def _to_schema(container: DockerContainer) -> Container:
     )
 
 
-def list_containers(*, all_states: bool = True) -> list[Container]:
+def list_containers(*, all_states: bool = True, label: str | None = None) -> list[Container]:
+    """Containers, optionally only those with `label` (`key` or `key=value`)."""
     try:
-        containers = _client().containers.list(all=all_states)
+        containers = _client().containers.list(
+            all=all_states, filters={"label": label} if label else None
+        )
     except DockerException as exc:
         raise DockerUnavailable(str(exc)) from exc
     return [_to_schema(container) for container in containers]

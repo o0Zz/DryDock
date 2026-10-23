@@ -1,15 +1,15 @@
 import { Check, ExternalLink, Globe, Lock, RefreshCw, Trash2, X } from "lucide-react";
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api";
 import { useT } from "../i18n";
-import { changesOnly, lineDiff } from "../lineDiff";
 import type { ProxyOverview, ServiceExposure } from "../types";
+import DiffView from "./DiffView";
 
 /**
- * Beside the Compose editor: give a service a host name behind Traefik, private
- * (LAN, VPN) or public. Each change rewrites the editor's content; saving and
- * `up` stay with the editor.
+ * Beside the Compose editor: give a service a host name behind the reverse proxy,
+ * private (an IP allowlist) or public. Each change rewrites the editor's content;
+ * saving and `up` stay with the editor.
  */
 export default function ExposurePanel({
   projectId,
@@ -67,7 +67,9 @@ export default function ExposurePanel({
     }
   }
 
-  const noTraefik = proxy && proxy.docker_available && !proxy.traefik?.running;
+  // Either one down means a change here never reaches the proxy.
+  const notRunning =
+    proxy?.docker_available && (!proxy.container?.running || !proxy.sync?.running);
 
   return (
     <aside className="assistant">
@@ -88,9 +90,9 @@ export default function ExposurePanel({
       </div>
 
       <div className="assistant-body">
-        {noTraefik && (
+        {notRunning && (
           <div className="notice">
-            {t("No running Traefik container: exposed services are not reachable yet.")}{" "}
+            {t("The proxy or its sync is not running: exposed services are not reachable yet.")}{" "}
             <Link to="/proxy">{t("Set up the proxy")}</Link>
           </div>
         )}
@@ -155,6 +157,11 @@ function ServiceRow({
       {exposure.exposed && exposure.port !== null && (
         <span className="muted">{t("to container port {port}", { port: exposure.port })}</span>
       )}
+      {exposure.legacy && (
+        <span className="notice">
+          {t("Has labels of an older proxy setup (traefik.*, swag). Expose replaces them.")}
+        </span>
+      )}
       {exposure.blocked ? (
         <span className="muted">{t("Cannot be exposed: {reason}", { reason: exposure.blocked })}</span>
       ) : (
@@ -181,7 +188,7 @@ export function VisibilityBadge({ exposure }: { exposure: { exposed?: boolean; p
       <Globe size={12} /> {t("Public")}
     </span>
   ) : (
-    <span className="badge running" title={t("LAN and VPN only")}>
+    <span className="badge running" title={t("Allowed IPs only: LAN, public IP, trusted IPs")}>
       <Lock size={12} /> {t("Private")}
     </span>
   );
@@ -261,7 +268,7 @@ function ExposeForm({
       <fieldset className="exposure-visibility">
         <label className="checkbox-label">
           <input type="radio" checked={!isPublic} onChange={() => setPublic(false)} />
-          <Lock size={13} /> {t("Private: LAN and VPN only")}
+          <Lock size={13} /> {t("Private: allowed IPs only")}
         </label>
         <label className="checkbox-label">
           <input type="radio" checked={isPublic} onChange={() => setPublic(true)} />
@@ -291,11 +298,7 @@ function ExposeForm({
 /** The editor change the last action made, since the rewrite may touch formatting too. */
 function LastChange({ before, after, current }: { before: string; after: string; current: string }) {
   const t = useT();
-  const shown = useMemo(() => {
-    const diff = lineDiff(before, after);
-    return diff ? changesOnly(diff) : null;
-  }, [before, after]);
-  if (!shown || shown.length === 0) return null;
+  if (before === after) return null;
   return (
     <div className="assistant-proposal">
       <div className="assistant-proposal-header">
@@ -306,20 +309,7 @@ function LastChange({ before, after, current }: { before: string; after: string;
           </span>
         )}
       </div>
-      <pre className="diff">
-        {shown.map((line, index) =>
-          line === null ? (
-            <div key={index} className="diff-gap">
-              ⋯
-            </div>
-          ) : (
-            <div key={index} className={`diff-${line.kind}`}>
-              {line.kind === "added" ? "+ " : line.kind === "removed" ? "- " : "  "}
-              {line.text}
-            </div>
-          ),
-        )}
-      </pre>
+      <DiffView before={before} after={after} />
     </div>
   );
 }

@@ -284,7 +284,7 @@ export interface AppSettings {
   notify_on_update: boolean;
   /** Bare sub-domains complete to it in the Exposure panel. */
   proxy_domain: string;
-  /** Docker network Traefik shares with the stacks it exposes. */
+  /** Docker network the proxy shares with the stacks it exposes. */
   proxy_network: string;
   next_scan_run: string | null;
   next_update_run: string | null;
@@ -554,7 +554,6 @@ export interface ComposeAssistReply {
 export interface ServiceExposure {
   service: string;
   exposed: boolean;
-  router: string | null;
   hosts: string[];
   /** Container port Traefik forwards to. */
   port: number | null;
@@ -564,6 +563,8 @@ export interface ServiceExposure {
   ports: number[];
   /** Why the service cannot be exposed, or null. */
   blocked: string | null;
+  /** Still has labels of an older proxy setup (traefik.*, swag*); exposing drops them. */
+  legacy: boolean;
 }
 
 export interface ExposeRequest {
@@ -584,10 +585,21 @@ export interface ProxyRoute {
   running: boolean;
 }
 
+export interface ProxyContainer {
+  id: string;
+  name: string;
+  running: boolean;
+}
+
 export interface ProxyOverview {
   domain: string;
   network: string;
-  traefik: { id: string; name: string; running: boolean } | null;
+  /** The proxy's container (Traefik). */
+  container: ProxyContainer | null;
+  /** DryDock's proxy sync, which turns expose.* labels into the proxy's config. */
+  sync: ProxyContainer | null;
+  /** Image the proxy stack template runs the sync from: DryDock's own. */
+  drydock_image: string;
   network_exists: boolean | null;
   docker_available: boolean;
   routes: ProxyRoute[];

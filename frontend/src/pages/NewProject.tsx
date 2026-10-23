@@ -25,6 +25,8 @@ export default function NewProject() {
   const [name, setName] = useState(initial.name);
   const [content, setContent] = useState(initial.compose);
   const [domain, setDomain] = useState("");
+  // DryDock's own image: the Traefik template runs its proxy sync from it.
+  const [image, setImage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -33,15 +35,23 @@ export default function NewProject() {
 
   useEffect(() => {
     api
-      .getSettings()
-      .then((settings) => setDomain(settings.proxy_domain))
+      .getProxy()
+      .then((proxy) => {
+        setDomain(proxy.domain);
+        setImage(proxy.drydock_image);
+      })
       .catch(() => undefined);
   }, []);
+
+  // The template is shown before the image is known; fill it in as soon as it is.
+  useEffect(() => {
+    if (image) setContent((current) => current.replaceAll("{image}", image));
+  }, [image, templateId]);
 
   function pickTemplate(id: string): void {
     const next = STACK_TEMPLATES.find((candidate) => candidate.id === id)!;
     setTemplateId(id);
-    setContent(next.compose);
+    setContent(image ? next.compose.replaceAll("{image}", image) : next.compose);
     // Keep a name the user typed; replace only the previous template's suggestion.
     if (!name || name === template.name) setName(next.name);
   }

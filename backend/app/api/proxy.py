@@ -10,7 +10,16 @@ from app.schemas.proxy import (
     ServiceExposure,
     UnexposeRequest,
 )
-from app.services import docker_service, proxy_service, repo_service, settings_service
+from app.services import (
+    docker_service,
+    host_path_service,
+    proxy_service,
+    repo_service,
+    settings_service,
+)
+
+# The published image, for a DryDock that does not run in a container (dev).
+DEFAULT_IMAGE = "ghcr.io/o0zz/drydock:latest"
 
 # Open to anyone who can edit a Compose file: the routes only change the editor's
 # content, and saving it stays the normal validate, back up, write flow.
@@ -24,13 +33,26 @@ def _project(project_id: str) -> Project:
     return project
 
 
+def _own_image() -> str:
+    container_id = host_path_service.own_container_id()
+    if container_id:
+        try:
+            return docker_service.get_container(container_id).image or DEFAULT_IMAGE
+        except docker_service.DockerUnavailable:
+            pass
+    return DEFAULT_IMAGE
+
+
 @router.get("", response_model=ProxyOverview)
 def overview(db: Session = Depends(get_db)) -> ProxyOverview:
     values = settings_service.get_all(db)
-    result = ProxyOverview(domain=values["proxy_domain"], network=values["proxy_network"])
+    result = ProxyOverview(
+        domain=values["proxy_domain"], network=values["proxy_network"], drydock_image=DEFAULT_IMAGE
+    )
     try:
-        result.traefik = proxy_service.traefik_container()
+        result.container, result.sync = proxy_service.proxy_containers()
         result.network_exists = docker_service.network_exists(result.network)
+        result.drydock_image = _own_image()
     except docker_service.DockerUnavailable:
         # The routes come from the files, so they still list.
         result.docker_available = False
@@ -51,11 +73,11 @@ def expose(
     project_id: str, body: ExposeRequest, db: Session = Depends(get_db)
 ) -> ExposureContent:
     """The editor's content with the service exposed at `host`. Nothing is saved."""
-    project = repo_service.attach_containers([_project(project_id)])[0]
+    _project(project_id)
     values = settings_service.get_all(db)
     host = proxy_service.full_host(body.host, values["proxy_domain"])
     for route in proxy_service.routes(
-        [candidate for candidate in repo_service.discover_projects() if candidate.id != project.id]
+        [candidate for candidate in repo_service.discover_projects() if candidate.id != project_id]
     ):
         if host in route.hosts:
             raise HTTPException(
@@ -64,7 +86,6 @@ def expose(
             )
     content = proxy_service.expose(
         body.content,
-        project_name=repo_service.compose_project_name(project) or project.name,
         service=body.service,
         host=host,
         port=body.port,

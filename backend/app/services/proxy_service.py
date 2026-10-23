@@ -1,12 +1,17 @@
-"""Expose stack services through a Traefik reverse proxy, with Compose labels.
+"""Expose stack services through a reverse proxy, with neutral Compose labels.
 
-DryDock never carries the traffic. Traefik (the "Traefik reverse proxy" stack template)
-reads the labels from Docker and routes `https://<host>` to the container over a shared
-network. DryDock only writes the labels into the Compose file and lists what is exposed.
+DryDock never carries the traffic, and its labels name no proxy:
 
-Two entrypoints separate private from public: `lan` (:443) is only reachable from the
-LAN or a VPN, `wan` (:8443) is where the router forwards the internet's port 443. A
-private service listens on `lan` only, so a missing label can never expose it.
+    expose.host     host name, or several separated by commas
+    expose.port     the container port to forward to
+    expose.private  "false" makes the service public; anything else keeps it private
+    expose.hsts     "true" adds a Strict-Transport-Security header (written by hand)
+
+The proxy stack runs DryDock's proxy sync (`app.proxy_sync`) next to the proxy. It reads
+these labels from the running containers and writes the proxy's own config, so the Compose
+files stay the same whatever proxy runs, and a plain `docker compose up` keeps them.
+
+This module reads and writes the labels in the Compose files and lists what is exposed.
 """
 
 from __future__ import annotations
@@ -24,14 +29,14 @@ from app.schemas.project import Project
 from app.schemas.proxy import ProxyContainer, ProxyRoute, ServiceExposure
 from app.services import compose_service, docker_service, repo_service
 
-PRIVATE_ENTRYPOINTS = "lan"
-PUBLIC_ENTRYPOINTS = "lan,wan"
-WAN_ENTRYPOINT = "wan"
+LABEL_PREFIX = "expose."
+# Images of the proxies the sync can write for, to find the proxy's container.
+PROXY_IMAGES = ("traefik",)
+# Set on the proxy sync's container by the proxy stack, to find it.
+SYNC_LABEL = "drydock.proxy-sync"
+# Labels of an older setup: a proxy reading them would route the service twice.
+_LEGACY_PREFIXES = ("traefik.", "swag_")
 
-_ROUTER_LABEL = re.compile(r"^traefik\.http\.routers\.([^.]+)\.(.+)$")
-_SERVICE_PORT_LABEL = re.compile(r"^traefik\.http\.services\.([^.]+)\.loadbalancer\.server\.port$")
-_HOST_RULE = re.compile(r"Host\(([^)]*)\)")
-_BACKTICKED = re.compile(r"`([^`]+)`")
 _ENV_LINE = re.compile(r"^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*?)\s*$")
 _VARIABLE = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)(?::?-([^}]*))?\}")
 _HOST_NAME = re.compile(
@@ -41,6 +46,10 @@ _HOST_NAME = re.compile(
 
 class ProxyError(compose_service.ComposeError):
     """The requested exposure cannot be written (unknown service, bad host...)."""
+
+
+def _legacy(key: str) -> bool:
+    return key == "swag" or key.startswith(_LEGACY_PREFIXES)
 
 
 # --- Reading --------------------------------------------------------------------------
@@ -75,51 +84,32 @@ def _declared_ports(spec: dict[str, Any]) -> list[int]:
     return sorted(int(port) for port in ports if port.isdigit())
 
 
+def _host_network(spec: dict[str, Any]) -> bool:
+    return spec.get("network_mode") == "host"
+
+
 def _blocked(spec: dict[str, Any]) -> str | None:
     mode = spec.get("network_mode")
-    if mode:
-        return f"uses network_mode: {mode}; Traefik reaches services over a Docker network"
-    return None
-
-
-def _router(labels: dict[str, str]) -> str | None:
-    """The router that carries a Host rule, else the first router named at all."""
-    routers = [
-        match.group(1) for key in labels if (match := _ROUTER_LABEL.match(key)) is not None
-    ]
-    with_rule = [name for name in routers if f"traefik.http.routers.{name}.rule" in labels]
-    return (with_rule or routers or [None])[0]
+    # A host-network service is reached at host.docker.internal.
+    if not mode or mode == "host":
+        return None
+    return f"uses network_mode: {mode}; the proxy reaches services over a Docker network"
 
 
 def describe(name: str, spec: Any) -> ServiceExposure:
     spec = spec if isinstance(spec, dict) else {}
     labels = _labels(spec)
-    router = _router(labels)
-    hosts: list[str] = []
-    public = False
-    if router:
-        rule = labels.get(f"traefik.http.routers.{router}.rule", "")
-        hosts = [host for part in _HOST_RULE.findall(rule) for host in _BACKTICKED.findall(part)]
-        entrypoints = labels.get(f"traefik.http.routers.{router}.entrypoints", "")
-        # Without the label, Traefik puts the router on every entrypoint, `wan` included.
-        public = not entrypoints or WAN_ENTRYPOINT in [e.strip() for e in entrypoints.split(",")]
-    port = next(
-        (
-            int(value)
-            for key, value in labels.items()
-            if _SERVICE_PORT_LABEL.match(key) and value.isdigit()
-        ),
-        None,
-    )
+    hosts = [host.strip() for host in labels.get(f"{LABEL_PREFIX}host", "").split(",")]
+    port = labels.get(f"{LABEL_PREFIX}port", "").strip()
     return ServiceExposure(
         service=name,
-        exposed=labels.get("traefik.enable", "").lower() == "true" and bool(hosts),
-        router=router,
-        hosts=hosts,
-        port=port,
-        public=public,
+        exposed=any(hosts),
+        hosts=[host for host in hosts if host],
+        port=int(port) if port.isdigit() else None,
+        public=labels.get(f"{LABEL_PREFIX}private", "true").strip().lower() == "false",
         ports=_declared_ports(spec),
         blocked=_blocked(spec),
+        legacy=any(_legacy(key) for key in labels),
     )
 
 
@@ -179,18 +169,25 @@ def routes(projects: list[Project]) -> list[ProxyRoute]:
     return sorted(found, key=lambda route: (route.hosts[:1], route.project_name))
 
 
-def traefik_container() -> ProxyContainer | None:
-    """The Traefik container, running ones first. Raises DockerUnavailable."""
-    candidates = [
-        container
-        for container in docker_service.list_containers(all_states=True)
-        if container.image.split("@")[0].rsplit(":", 1)[0].rsplit("/", 1)[-1] == "traefik"
-    ]
+def _best(candidates: list[Any]) -> ProxyContainer | None:
+    """The running one first: an old stopped copy must not hide the live one."""
     candidates.sort(key=lambda container: container.state != "running")
     if not candidates:
         return None
     best = candidates[0]
     return ProxyContainer(id=best.id, name=best.name, running=best.state == "running")
+
+
+def proxy_containers() -> tuple[ProxyContainer | None, ProxyContainer | None]:
+    """The proxy's container and the proxy sync's. Raises DockerUnavailable."""
+    containers = docker_service.list_containers(all_states=True)
+    proxies = [
+        container
+        for container in containers
+        if container.image.split("@")[0].rsplit(":", 1)[0].rsplit("/", 1)[-1] in PROXY_IMAGES
+    ]
+    syncs = docker_service.list_containers(all_states=True, label=SYNC_LABEL)
+    return _best(proxies), _best(syncs)
 
 
 # --- Writing --------------------------------------------------------------------------
@@ -204,12 +201,6 @@ def full_host(host: str, domain: str) -> str:
     if not _HOST_NAME.match(host):
         raise ProxyError(f"Invalid host name: {host}")
     return host
-
-
-def router_name(project_name: str, service: str) -> str:
-    # Router names are global in Traefik, so the stack name keeps them apart.
-    name = project_name if service == project_name else f"{project_name}-{service}"
-    return re.sub(r"[^a-z0-9-]+", "-", name.lower()).strip("-")
 
 
 def _yaml() -> YAML:
@@ -249,6 +240,8 @@ def _guess_indent(content: str) -> tuple[int, int]:
 
 def _load(content: str) -> tuple[YAML, CommentedMap]:
     compose_service.validate_yaml(content)
+    # ruamel keeps the `\r` of CRLF inside comments; _dump puts CRLF back.
+    content = content.replace("\r\n", "\n")
     yaml = _yaml()
     try:
         data = yaml.load(content)
@@ -303,12 +296,13 @@ def _put_trailing_comment(node: Any, token: Any) -> None:
     entry[_comment_slot(container)] = token
 
 
-def _dump(yaml: YAML, data: CommentedMap) -> str:
+def _dump(yaml: YAML, data: CommentedMap, original: str) -> str:
     out = io.StringIO()
     yaml.dump(data, out)
     content = out.getvalue()
     compose_service.validate_yaml(content)
-    return content
+    # ruamel writes LF; a file edited on Windows keeps its CRLF.
+    return content.replace("\n", "\r\n") if "\r\n" in original else content
 
 
 def _service(data: CommentedMap, service: str) -> CommentedMap:
@@ -363,7 +357,7 @@ def _attach(data: CommentedMap, spec: CommentedMap, network: str) -> None:
     if top is None:
         data["networks"] = top = CommentedMap()
     if network not in top:
-        # Created by the Traefik stack, shared by every exposed stack.
+        # Created by the proxy stack, shared by every exposed stack.
         top[network] = CommentedMap(external=True)
 
 
@@ -396,46 +390,40 @@ def _detach(data: CommentedMap, spec: CommentedMap, network: str) -> None:
 def expose(
     content: str,
     *,
-    project_name: str,
     service: str,
     host: str,
     port: int,
     public: bool,
     network: str,
 ) -> str:
+    """Write the service's `expose.*` labels. Labels of an older proxy setup go."""
     yaml, data = _load(content)
     spec = _service(data, service)
     reason = _blocked(spec)
     if reason:
         raise ProxyError(f"{service} {reason}")
-    labels = _labels(spec)
-    router = _router(labels) or router_name(project_name, service)
-    backend = labels.get(f"traefik.http.routers.{router}.service") or router
     managed = {
-        "traefik.enable": "true",
-        "traefik.docker.network": network,
-        f"traefik.http.routers.{router}.rule": f"Host(`{host}`)",
-        f"traefik.http.routers.{router}.entrypoints": (
-            PUBLIC_ENTRYPOINTS if public else PRIVATE_ENTRYPOINTS
-        ),
-        f"traefik.http.routers.{router}.service": backend,
-        f"traefik.http.services.{backend}.loadbalancer.server.port": str(port),
+        f"{LABEL_PREFIX}host": host,
+        f"{LABEL_PREFIX}port": str(port),
+        f"{LABEL_PREFIX}private": "false" if public else "true",
     }
     spec_tail, file_tail = _take_trailing_comment(spec), _take_trailing_comment(data)
-    _rewrite_labels(spec, lambda key: key in managed, managed)
-    _attach(data, spec, network)
+    _rewrite_labels(spec, lambda key: key in managed or _legacy(key), managed)
+    # A host-network container is reached through the host; it joins no network.
+    if not _host_network(spec):
+        _attach(data, spec, network)
     _put_trailing_comment(spec, spec_tail)
     _put_trailing_comment(data, file_tail)
-    return _dump(yaml, data)
+    return _dump(yaml, data, content)
 
 
 def unexpose(content: str, *, service: str, network: str) -> str:
-    """Drop every `traefik.*` label of the service and its link to the proxy network."""
+    """Drop the service's `expose.*` labels and its link to the proxy network."""
     yaml, data = _load(content)
     spec = _service(data, service)
     spec_tail, file_tail = _take_trailing_comment(spec), _take_trailing_comment(data)
-    _rewrite_labels(spec, lambda key: key.startswith("traefik."), {})
+    _rewrite_labels(spec, lambda key: key.startswith(LABEL_PREFIX), {})
     _detach(data, spec, network)
     _put_trailing_comment(spec, spec_tail)
     _put_trailing_comment(data, file_tail)
-    return _dump(yaml, data)
+    return _dump(yaml, data, content)

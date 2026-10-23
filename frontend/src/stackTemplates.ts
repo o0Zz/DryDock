@@ -19,15 +19,18 @@ const BLANK = `services:
       - "8080:80"
 `;
 
-// Matches proxy_service: "lan" for private services, "lan,wan" for public ones, and
-// the shared network the Exposure panel attaches services to.
-const TRAEFIK = `# Reverse proxy for the services you expose from DryDock (Exposure panel).
-# Fill in the .env tab, then up. Stop any other proxy on ports 80 and 443 first.
+// The proxy sync (app/proxy_sync.py) turns the expose.* labels the Expose panel
+// writes into dynamic/expose.yml. {image} is DryDock's own image, filled in on creation.
+const TRAEFIK = `# Reverse proxy for the services you expose from DryDock (Expose, beside the Compose editor).
+# Fill in the .env tab, stop any other proxy on ports 80 and 443, then up.
 #
-# Entrypoints:
-#   lan  :443   LAN and VPN only. Private services listen here.
-#   wan  :8443  Forward the internet router's port 443 here. Public services listen here too.
-# Do not forward 443 itself, nor open it over IPv6: private services would be reachable.
+# Your stacks carry neutral labels (expose.host, expose.port, expose.private).
+# proxy-sync, DryDock's own image, reads them from the running containers and writes
+# Traefik's routes to dynamic/expose.yml. Another proxy only needs another writer:
+# the Compose files stay the same.
+#
+# Private services only answer an IP allowlist: LAN_RANGES, your current public IP
+# (LAN and VPN clients often come back through it) and TRUSTED_IPS.
 #
 # One wildcard certificate (*.domain) through the OVH DNS challenge: service names
 # never appear in public certificate logs.
@@ -39,22 +42,25 @@ services:
       - --providers.docker=true
       - --providers.docker.exposedbydefault=false
       - --providers.docker.network=proxy
+      - --providers.file.directory=/etc/traefik/dynamic
+      - --providers.file.watch=true
       - --entrypoints.web.address=:80
-      - --entrypoints.web.http.redirections.entrypoint.to=lan
+      - --entrypoints.web.http.redirections.entrypoint.to=websecure
       - --entrypoints.web.http.redirections.entrypoint.scheme=https
-      - --entrypoints.lan.address=:443
-      - --entrypoints.lan.http.tls.certresolver=le
-      - --entrypoints.lan.http.tls.domains[0].main=\${PROXY_DOMAIN}
-      - --entrypoints.lan.http.tls.domains[0].sans=*.\${PROXY_DOMAIN}
-      - --entrypoints.wan.address=:8443
-      - --entrypoints.wan.http.tls.certresolver=le
-      - --entrypoints.wan.http.tls.domains[0].main=\${PROXY_DOMAIN}
-      - --entrypoints.wan.http.tls.domains[0].sans=*.\${PROXY_DOMAIN}
+      - --entrypoints.websecure.address=:443
+      # Large uploads (file managers, photos) must not time out.
+      - --entrypoints.websecure.transport.respondingtimeouts.readtimeout=0
+      - --entrypoints.websecure.http.tls.certresolver=le
+      - --entrypoints.websecure.http.tls.domains[0].main=\${PROXY_DOMAIN}
+      - --entrypoints.websecure.http.tls.domains[0].sans=*.\${PROXY_DOMAIN}
       - --certificatesresolvers.le.acme.email=\${ACME_EMAIL}
       - --certificatesresolvers.le.acme.storage=/letsencrypt/acme.json
       - --certificatesresolvers.le.acme.dnschallenge.provider=ovh
       # Public resolvers: a local DNS that answers for the domain would fail the check.
       - --certificatesresolvers.le.acme.dnschallenge.resolvers=1.1.1.1:53,8.8.8.8:53
+      # One line per request with the client IP, for fail2ban.
+      - --accesslog=true
+      - --accesslog.filepath=/logs/access.log
       - --api.dashboard=true
     environment:
       OVH_ENDPOINT: \${OVH_ENDPOINT:-ovh-eu}
@@ -64,18 +70,40 @@ services:
     ports:
       - "80:80"
       - "443:443"
-      - "8443:8443"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ./letsencrypt:/letsencrypt
+      - ./dynamic:/etc/traefik/dynamic:ro
+      - ./logs:/logs
+    # Services with network_mode: host are reached through the host's gateway address.
+    extra_hosts:
+      - host.docker.internal:host-gateway
     networks:
       - proxy
     labels:
-      # The dashboard has no login: LAN only.
+      # The dashboard has no login: private only. private@file comes from proxy-sync.
       - traefik.enable=true
       - traefik.http.routers.traefik.rule=Host(\`traefik.\${PROXY_DOMAIN}\`)
-      - traefik.http.routers.traefik.entrypoints=lan
+      - traefik.http.routers.traefik.entrypoints=websecure
+      - traefik.http.routers.traefik.middlewares=private@file
       - traefik.http.routers.traefik.service=api@internal
+
+  # Turns the expose.* labels of running containers into dynamic/expose.yml.
+  proxy-sync:
+    image: {image}
+    restart: unless-stopped
+    command: ["python", "-m", "app.proxy_sync"]
+    environment:
+      PROXY: traefik
+      NETWORK: proxy
+      LAN_RANGES: \${LAN_RANGES:-192.168.0.0/16}
+      TRUSTED_IPS: \${TRUSTED_IPS:-}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./dynamic:/dynamic
+    labels:
+      # DryDock finds the sync by this label.
+      - drydock.proxy-sync=true
 
 networks:
   proxy:
@@ -86,6 +114,9 @@ const TRAEFIK_ENV = `# Domain of the wildcard certificate: services get <name>.<
 PROXY_DOMAIN={domain}
 # Let's Encrypt account e-mail (expiry notices).
 ACME_EMAIL=
+# Private services allow these networks, your current public IP and these IPs (comma-separated).
+LAN_RANGES=192.168.0.0/16
+TRUSTED_IPS=
 # OVH API token for the DNS challenge: https://eu.api.ovh.com/createToken/
 # Rights: GET, POST, PUT and DELETE on /domain/zone/<domain>/*
 OVH_ENDPOINT=ovh-eu
@@ -106,7 +137,7 @@ export const STACK_TEMPLATES: StackTemplate[] = [
     id: "traefik",
     label: msg("Traefik reverse proxy"),
     description: msg(
-      "HTTPS for the services you expose, with a wildcard certificate from the OVH DNS challenge. Private services stay on the LAN.",
+      "HTTPS for the services you expose, with a wildcard certificate from the OVH DNS challenge. Private services only answer your LAN, your public IP and trusted IPs.",
     ),
     name: "traefik",
     compose: TRAEFIK,

@@ -4,17 +4,17 @@ from pydantic import BaseModel, Field
 class ServiceExposure(BaseModel):
     service: str
     exposed: bool
-    # Traefik router that carries the service, when it has one.
-    router: str | None = None
     hosts: list[str] = []
-    # Container port Traefik forwards to.
+    # Container port the proxy forwards to.
     port: int | None = None
-    # Reachable from the internet: on the `wan` entrypoint, or on every entrypoint.
+    # Reachable from any IP: `expose.private=false`.
     public: bool = False
     # Ports the service declares (`ports` targets, `expose`), to suggest one.
     ports: list[int] = []
-    # Why the service cannot be exposed (e.g. `network_mode: host`), or None.
+    # Why the service cannot be exposed (e.g. `network_mode: service:vpn`), or None.
     blocked: str | None = None
+    # It still has labels of an older proxy setup (`traefik.*`, `swag*`); exposing drops them.
+    legacy: bool = False
 
 
 class ProxyRoute(BaseModel):
@@ -37,9 +37,13 @@ class ProxyOverview(BaseModel):
     domain: str
     network: str
     # None when Docker is unreachable; the route list still comes from the files.
-    traefik: ProxyContainer | None = None
+    container: ProxyContainer | None = None
+    # The proxy sync, which turns the expose.* labels into the proxy's config.
+    sync: ProxyContainer | None = None
     network_exists: bool | None = None
     docker_available: bool = True
+    # Image the proxy stack template runs the sync from: DryDock's own.
+    drydock_image: str
     routes: list[ProxyRoute] = []
 
 

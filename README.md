@@ -62,7 +62,7 @@ To build from source instead, replace `image:` with a git URL. The build reads t
 - **Private registries:** admins save a login per registry (Docker Hub, GHCR, your own) on the Settings page. Update checks, pulls and scans use it. DryDock checks the login with the registry before it saves it.
 - **Git logins:** admins save a login per git host (GitHub, Gitea, your own) on the Settings page. Builds from a private git URL and their update checks use it, with no token in your Compose files. Given a repo URL, DryDock checks the login before it saves it.
 - **AI assistant:** a chat beside the Compose editor. Ask for a change ("add a healthcheck to web"), see the diff, apply it to the editor, then save as usual. Nothing is saved for you. Admins pick the provider on the Settings page: OpenAI (or any OpenAI-compatible server, such as Ollama), Anthropic with an API key, or GitHub Copilot with a GitHub sign-in. Only the Compose file is sent, never the `.env`.
-- **Reverse proxy:** give a service a host name (`jellyfin.example.org`) with HTTPS, private (LAN and VPN) or public. The **Expose** panel beside the Compose editor writes the Traefik labels; the **Proxy** page lists what is exposed. A **Traefik reverse proxy** stack template sets up Traefik with a wildcard certificate. See [Reverse proxy](#reverse-proxy).
+- **Reverse proxy:** give a service a host name (`jellyfin.example.org`) with HTTPS, private (an IP allowlist) or public. The **Expose** panel beside the Compose editor writes neutral `expose.*` labels that name no proxy; the **Proxy** page lists what is exposed. A **Traefik reverse proxy** stack template sets up Traefik with a wildcard certificate. See [Reverse proxy](#reverse-proxy).
 - **Git for the repo folder:** when your Compose folder is in a git repo, the Projects page lists the changes and has **Commit & push** and **Pull** (fast-forward only), for admins. See [Git](#git).
 - **API tokens:** each user can create tokens on the Settings page for scripts and CI, e.g. `curl -H "Authorization: Bearer ddt_..." http://drydock:8080/api/containers`. A token has the rights of its user.
 - **Users and volumes:** several users with an admin flag, and named volume management. Admins can browse the files in a volume (read-only) and download them.
@@ -116,18 +116,28 @@ DryDock needs the repo's `.git` to commit, push and pull. When your Compose file
 
 ## Reverse proxy
 
-Traefik carries the traffic, not DryDock. DryDock writes Traefik labels into your Compose files and shows what is exposed.
+The proxy carries the traffic, not DryDock. Your Compose files get neutral labels:
+
+```yaml
+    labels:
+      - expose.host=music.example.org   # several hosts: comma-separated
+      - expose.port=3000                # the container port
+      - expose.private=false            # default: private
+      - expose.hsts=true                # optional, by hand
+```
+
+The proxy stack runs DryDock's **proxy sync** next to Traefik: it reads these labels from the running containers and writes Traefik's routes. The labels are real Docker labels, so a plain `docker compose up` keeps them, and another proxy only needs another writer in the sync.
 
 1. Create an OVH API token at <https://eu.api.ovh.com/createToken/> with `GET`, `POST`, `PUT` and `DELETE` on `/domain/zone/<domain>/*`. Let's Encrypt needs it to issue the wildcard certificate (DNS challenge). A DynHost login is not enough.
-2. Point `*.<domain>` at your public IP, for example with a CNAME to your DynHost name. On your LAN DNS (AdGuard, Pi-hole, the router), point `*.<domain>` at the Docker host.
-3. On the **Proxy** page, set the domain. Then **Create the Traefik stack**, fill in its `.env` tab, stop any other proxy on ports 80 and 443, and run **up**.
-4. On the internet router, forward port 443 to port **8443** of the Docker host. Do not forward 443 itself.
-5. On a stack page, open **Expose**, pick a service, a name and its container port, then save and run **up**.
+2. Point `*.<domain>` at your public IP, for example with a CNAME to your DynHost name, and forward ports 80 and 443 of the internet router to the Docker host.
+3. On the **Proxy** page, set the domain. Then **Create the Traefik stack**, fill in its `.env` tab (`LAN_RANGES`, `TRUSTED_IPS`), stop any other proxy on ports 80 and 443, and run **up**.
+4. On a stack page, open **Expose**, pick a service, a name and its container port, then save and run **up**.
 
-- **Private** services listen on the `lan` entrypoint (443) only, so they cannot be reached from the internet. **Public** services also listen on `wan` (8443).
+- **Private** services only answer an IP allowlist: `LAN_RANGES`, your current public IP and `TRUSTED_IPS`. The public IP is in it because LAN and VPN clients often come back through it (hairpin NAT). The sync refreshes it every 5 minutes. **Public** services answer everyone.
 - One wildcard certificate covers every service, so your service names never appear in public certificate logs.
-- Exposed services join the shared `proxy` network and keep their `default` one. **Remove** in the panel takes the Traefik labels and the network out again.
-- The panel rewrites the file in the editor, comments included, and shows the diff. Nothing is saved until you save.
+- Exposed services join the shared `proxy` network and keep their `default` one. The proxy reaches them by container name, so a recreate breaks nothing. **Remove** in the panel takes the labels and the network out again.
+- A service with `network_mode: host` (Home Assistant) is reached through `host.docker.internal`, which the template maps to the host.
+- The panel rewrites the file in the editor, comments included, and shows the diff. Nothing is saved until you save. Older `traefik.*` or `swag*` labels on a service are replaced.
 
 ## Troubleshooting
 
