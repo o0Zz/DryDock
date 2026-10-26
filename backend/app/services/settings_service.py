@@ -20,6 +20,10 @@ DEFAULTS: dict[str, Any] = {
     # Scheduled update check of all known images (digest, tags, git commits) and host packages.
     "update_check_enabled": True,
     "update_check_interval_hours": 24,
+    # Daily pull and recreate of the services labelled `drydock.update=auto`, at this
+    # hour of the server's clock. Off by default: an update is a choice, per service.
+    "auto_update_enabled": False,
+    "auto_update_hour": 4,
     # Optional webhook fired after a scheduled run finds something notable.
     "notify_webhook_url": "",
     "notify_on_critical": True,

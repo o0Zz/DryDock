@@ -10,6 +10,7 @@ import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { api } from "../api";
 import { useAuth } from "../auth";
+import AutoUpdateBadge from "../components/AutoUpdateBadge";
 import ImageName from "../components/ImageName";
 import JobList from "../components/JobList";
 import LogPanel from "../components/LogPanel";
@@ -280,6 +281,7 @@ export default function Containers() {
                       onJob={track}
                       onError={setError}
                     />
+                    <AutoUpdateBadge container={container} />
                   </div>
                 </td>
                 <td>

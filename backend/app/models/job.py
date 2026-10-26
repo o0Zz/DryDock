@@ -32,6 +32,8 @@ class JobKind:
     FAIL2BAN_APPLY = "fail2ban_apply"
     # Download the IP blocklists and load them in the host's nftables.
     BLOCKLIST_APPLY = "blocklist_apply"
+    # Pull and recreate the services labelled `drydock.update=auto` that have an update.
+    AUTO_UPDATE = "auto_update"
 
 
 class Job(Base):

@@ -82,6 +82,11 @@ Dockerfile             3-stage build (frontend, backend venv, runtime with docke
   - Newer tag: `registry_service` lists the registry's tags over the v2 API with a bearer token (anonymous, or logged in with the stored credentials). Only tags of the same shape count (same prefix, same number of parts, same suffix), so prereleases and other variants are ignored. It reports the newest tag and the newest within the current major, and skips outlier majors (a jump of more than 3).
   - Git build (`git_service`): a service whose `build:` is a git URL (`https://…/app.git#ref`) is checked by commit, not digest. `git_service.remote_commit` reads the refs over git smart HTTP (`/info/refs`), like `git ls-remote`, with no git binary and no clone. The `UpdateCheck` row gets `git_source`, and its digests hold commits: the one built and the latest. The built commit carries over from the previous git row. A container update or a project "Pull & build" stores the current commit as built. Without a previous row, the first check takes the current commit as the baseline. Only http(s). A private repo uses the git login for its host. The image name of a service without `image:` comes from its containers (`tasks.git_images`).
   - Container update runs `pull --ignore-buildable`, `build --pull`, then `up -d --no-deps` on the service. Each step is a no-op for the other kind of service.
+- **Auto-update** (`tasks.auto_update_runner`, jobs of kind `auto_update`, `POST /api/updates/auto` admin only): opt-in per service with the label `drydock.update=auto`, read from the running container (`Container.auto_update`), so it takes effect once deployed. Settings `auto_update_enabled` (off by default) and `auto_update_hour`: a daily `CronTrigger` on the server's clock, not an interval, so recreates happen at night.
+  - Only running containers: an update must never start a stopped stack. A scaled service is updated once.
+  - Each target gets a fresh update check, then the container update steps only when `update_available` (same tag rebuilt, or a new git commit). A newer version tag (`newest_tag`) is never applied: that means editing the Compose file, and a new major can break.
+  - After the recreate it waits `AUTO_UPDATE_SETTLE_SECONDS`, then up to `AUTO_UPDATE_HEALTH_TIMEOUT` for every container of the service to be running, with no restart and not `unhealthy` or `starting`. A failure does not stop the others; the job ends in error and lists them. No rollback: the old image is kept for a manual one. A failed recreate is not retried, since the pull already made the local digest current.
+  - DryDock's own container (`host_path_service.own_container_id`) goes last, and the webhook (`update.applied`, under `notify_on_update`) is sent before it: Compose stops this process halfway, and the job resumes from the helper as usual.
 - **Git logins** (`git_auth_service`, admin only): one login per host, in `<data>/git/credentials` (git's credential store format, mode 600), plus a file per host with its `Authorization` header value.
   - Update check: `git_service.list_refs` sends it as basic auth.
   - Build: BuildKit clones a git context with the build secret `GIT_AUTH_HEADER.<host>`. `compose_service._command` adds one more `-f`: a generated `<data>/git/compose/<project-id>.yml` that declares that secret for each service built from a host with a login. It is an `environment:` secret (`DRYDOCK_GIT_AUTH_<n>`): bake refuses a `file:` secret outside the project without `--allow fs.read`, which Compose 5.6 does not pass. A plain run gets the variables in its env. The helper container's script sets them from the header files in `/data` first, so its config holds no token. Compose's config hash ignores `build:`, so `up` does not recreate anything for it.
@@ -211,7 +216,7 @@ uv run alembic check       # fails if models and migrations differ
 ## Principles
 
 - Simple over complete. Local-first. Pi-friendly: few dependencies, cheap polling.
-- Safe defaults: back up before writing, confirm destructive actions, never auto-update.
+- Safe defaults: back up before writing, confirm destructive actions, never auto-update without an explicit opt-in per service.
 - Security is built in, not an add-on: show the risk where the thing is (CVEs on the image, exposure on the route, bans on the host), and make the safe choice the default (private routes, HTTPS, HSTS, read-only host access).
 - DryDock observes and writes config; the real tools do the work. Traefik, SWAG or Caddy carries traffic, fail2ban bans, apt upgrades, Trivy scans. DryDock never sits in the data path.
 - Proxy-neutral: Compose files carry `expose.*` labels, never a proxy's own. Switching proxy changes no stack.
@@ -219,7 +224,7 @@ uv run alembic check       # fails if models and migrations differ
 
 ## Non-goals
 
-Kubernetes, Swarm, multi-host, RBAC beyond admin/user, plugins, an auto-update engine, registry mirroring, public internet exposure of DryDock itself (exposing other services through the proxy is fine), DNS record management. DryDock shows which host name leads to which container, but it does not create DNS records: a wildcard record points at the public IP once, by hand.
+Kubernetes, Swarm, multi-host, RBAC beyond admin/user, plugins, an auto-update engine beyond the per-service opt-in (no tag bumps, no rollback), registry mirroring, public internet exposure of DryDock itself (exposing other services through the proxy is fine), DNS record management. DryDock shows which host name leads to which container, but it does not create DNS records: a wildcard record points at the public IP once, by hand.
 
 ## Known gaps
 

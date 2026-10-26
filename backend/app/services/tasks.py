@@ -7,8 +7,9 @@ behave identically.
 from __future__ import annotations
 
 import logging
+import time
 from collections.abc import Callable, Sequence
-from dataclasses import asdict
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import TypeVar
 
@@ -26,6 +27,7 @@ from app.services import (
     docker_service,
     fail2ban_config_service,
     git_service,
+    host_path_service,
     host_updates_service,
     job_service,
     notify_service,
@@ -360,6 +362,188 @@ def container_update_runner(
         source = git_images(compose_path).get(image)
         store_update_check(ctx.db, image, git=source, built=source is not None)
         ctx.advance(f"{service} updated to the latest {image}")
+
+    return run
+
+
+# --- Auto-update -------------------------------------------------------------
+
+AUTO_UPDATE_LABEL = "Auto-update of labelled services"
+# A recreated container must still run after the settle time, with no restart,
+# and pass its healthcheck within the timeout, for the update to count.
+AUTO_UPDATE_SETTLE_SECONDS = 10
+AUTO_UPDATE_HEALTH_TIMEOUT = 90
+_HEALTH_POLL_SECONDS = 5
+
+
+class AutoUpdateFailed(Exception):
+    pass
+
+
+@dataclass
+class _AutoTarget:
+    name: str
+    compose_path: Path
+    service: str
+    image: str
+    project_name: str | None
+    # DryDock's own container: updated last, since Compose stops this process.
+    is_self: bool = False
+
+
+def _auto_update_targets() -> tuple[list[_AutoTarget], list[str]]:
+    """Running services labelled `drydock.update=auto`, and why others were skipped.
+
+    Only running containers count: an update must never start a stopped stack.
+    """
+    containers = docker_service.list_containers(
+        all_states=False,
+        label=f"{docker_service.AUTO_UPDATE_LABEL}={docker_service.AUTO_UPDATE_VALUE}",
+    )
+    projects = repo_service.attach_containers(repo_service.discover_projects())
+    by_container = {
+        container.id: project for project in projects for container in project.containers
+    }
+    own = host_path_service.own_container_id() or ""
+    targets: dict[tuple[str | None, str], _AutoTarget] = {}
+    skipped: list[str] = []
+    for container in containers:
+        project = by_container.get(container.id)
+        if not container.compose_service or project is None:
+            skipped.append(f"{container.name}: skipped, no Compose file in the repo matches it")
+            continue
+        key = (container.compose_project, container.compose_service)
+        # A scaled service has several containers but is updated once.
+        target = targets.setdefault(
+            key,
+            _AutoTarget(
+                name=f"{container.compose_project}/{container.compose_service}",
+                compose_path=Path(project.compose_path),
+                service=container.compose_service,
+                image=container.image,
+                project_name=container.compose_project,
+            ),
+        )
+        target.is_self = target.is_self or bool(own and container.id.startswith(own))
+    return sorted(targets.values(), key=lambda target: (target.is_self, target.name)), skipped
+
+
+def _service_problem(project_name: str | None, service: str) -> str | None:
+    """Why the service is not up yet, or None when every container runs and is healthy."""
+    containers = [
+        container
+        for container in docker_service.list_containers(
+            all_states=True, label=f"com.docker.compose.service={service}"
+        )
+        if container.compose_project == project_name
+    ]
+    if not containers:
+        return "no container after the recreate"
+    for container in containers:
+        if container.state != "running":
+            return f"{container.name} is {container.state}"
+        if container.restart_count:
+            return f"{container.name} restarted {container.restart_count} time(s)"
+        if container.health in ("unhealthy", "starting"):
+            return f"{container.name} is {container.health}"
+    return None
+
+
+def _wait_until_up(project_name: str | None, service: str) -> str | None:
+    """Wait for the recreated service to settle. Returns the problem, if it never does."""
+    time.sleep(AUTO_UPDATE_SETTLE_SECONDS)
+    deadline = time.monotonic() + AUTO_UPDATE_HEALTH_TIMEOUT
+    while True:
+        problem = _service_problem(project_name, service)
+        if problem is None or time.monotonic() >= deadline:
+            return problem
+        time.sleep(_HEALTH_POLL_SECONDS)
+
+
+def _apply_update(
+    ctx: JobContext, target: _AutoTarget, source: git_service.GitSource | None
+) -> None:
+    compose_service.pull_service(
+        target.compose_path, target.service, project_name=target.project_name
+    )
+    compose_service.build_service(
+        target.compose_path, target.service, project_name=target.project_name
+    )
+    compose_service.recreate_service(
+        target.compose_path, target.service, project_name=target.project_name, ctx=ctx
+    )
+    store_update_check(ctx.db, target.image, git=source, built=source is not None)
+
+
+def auto_update_runner(*, notify: bool = False) -> JobRunner:
+    """Build a job body that updates the labelled services with a same-tag or git update.
+
+    A newer version tag is never applied: it means editing the Compose file, and
+    a new major can break things. The previous image is kept, so a failed update
+    can be rolled back by hand.
+    """
+
+    def run(ctx: JobContext) -> None:
+        targets, lines = _auto_update_targets()
+        ctx.set_total(len(targets), f"{len(targets)} service(s) labelled for auto-update")
+        if not targets:
+            ctx.set_output("\n".join(lines))
+            return
+        sources = git_images()
+        updated: list[str] = []
+        failed: list[dict[str, str]] = []
+
+        def report() -> None:
+            if notify and (updated or failed):
+                _notify(ctx.db, "notify_on_update", "update.applied", {
+                    "updated": updated,
+                    "failed": failed,
+                })
+
+        for target in targets:
+            ctx.note(f"Checking {target.image}")
+            source = sources.get(target.image)
+            check = store_update_check(ctx.db, target.image, git=source)
+            if check.error:
+                lines.append(f"{target.name}: skipped, update check failed: {check.error}")
+            elif not check.update_available:
+                lines.append(f"{target.name}: up to date")
+            else:
+                ctx.note(f"Updating {target.name}")
+                if target.is_self:
+                    # Compose stops this process halfway: report before, not after.
+                    lines.append(f"{target.name}: updating DryDock itself")
+                    ctx.set_output("\n".join(lines))
+                    updated.append(target.name)
+                    report()
+                    _apply_update(ctx, target, source)
+                    ctx.advance()
+                    return
+                try:
+                    _apply_update(ctx, target, source)
+                    problem = _wait_until_up(target.project_name, target.service)
+                    if problem:
+                        raise AutoUpdateFailed(problem)
+                except (
+                    compose_service.ComposeError,
+                    docker_service.DockerUnavailable,
+                    AutoUpdateFailed,
+                ) as exc:
+                    lines.append(f"{target.name}: failed: {exc}")
+                    failed.append({"service": target.name, "error": str(exc)[:500]})
+                else:
+                    lines.append(f"{target.name}: updated")
+                    updated.append(target.name)
+            ctx.set_output("\n".join(lines))
+            ctx.advance()
+
+        report()
+        if failed:
+            raise AutoUpdateFailed(
+                f"{len(failed)} of {len(updated) + len(failed)} update(s) failed: "
+                + ", ".join(entry["service"] for entry in failed)
+            )
+        ctx.note(f"{len(updated)} service(s) updated, {len(targets) - len(updated)} unchanged")
 
     return run
 

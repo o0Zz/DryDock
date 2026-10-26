@@ -117,5 +117,11 @@
   "Open GitHub": "Ouvrir GitHub",
   "Waiting for GitHub…": "En attente de GitHub…",
   "Sign in again": "Se reconnecter",
-  "Sign in with GitHub": "Se connecter avec GitHub"
+  "Sign in with GitHub": "Se connecter avec GitHub",
+  "Pulls and recreates each running service labelled {label} when its tag was rebuilt or its git ref moved. A newer version tag is never applied, and services without the label are never touched.": "Récupère et recrée chaque service en marche portant le label {label} quand son tag a été reconstruit ou que sa référence git a avancé. Un tag de version plus récent n'est jamais appliqué, et les services sans le label ne sont jamais touchés.",
+  "Auto-update started. Follow it in the jobs list.": "Mise à jour automatique lancée. Suivez-la dans la liste des tâches.",
+  "Auto-update": "Mise à jour automatique",
+  "Update labelled services automatically": "Mettre à jour automatiquement les services avec le label",
+  "Every day at (server time)": "Chaque jour à (heure du serveur)",
+  "Run now": "Lancer maintenant"
 }

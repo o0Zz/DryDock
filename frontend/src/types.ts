@@ -152,6 +152,8 @@ export interface Container {
   /** Last start and stop; null when it never happened. */
   started_at: string | null;
   finished_at: string | null;
+  /** Labelled `drydock.update=auto`: the scheduled auto-update may recreate it. */
+  auto_update: boolean;
 }
 
 export interface ContainerActionResult {
@@ -279,6 +281,10 @@ export interface AppSettings {
   scan_interval_hours: number;
   update_check_enabled: boolean;
   update_check_interval_hours: number;
+  /** Daily pull and recreate of the services labelled `drydock.update=auto`. */
+  auto_update_enabled: boolean;
+  /** Hour of the server's clock, 0 to 23. */
+  auto_update_hour: number;
   notify_webhook_url: string;
   notify_on_critical: boolean;
   notify_on_update: boolean;
@@ -288,6 +294,7 @@ export interface AppSettings {
   proxy_network: string;
   next_scan_run: string | null;
   next_update_run: string | null;
+  next_auto_update_run: string | null;
   repo_path: string;
   data_path: string;
 }
@@ -299,6 +306,8 @@ export type SettingsPatch = Partial<
     | "scan_interval_hours"
     | "update_check_enabled"
     | "update_check_interval_hours"
+    | "auto_update_enabled"
+    | "auto_update_hour"
     | "notify_webhook_url"
     | "notify_on_critical"
     | "notify_on_update"

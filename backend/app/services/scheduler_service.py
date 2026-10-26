@@ -7,6 +7,8 @@ from collections.abc import Callable
 from datetime import datetime
 
 from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.triggers.base import BaseTrigger
+from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 
 from app.core.database import SessionLocal
@@ -18,6 +20,7 @@ logger = logging.getLogger(__name__)
 SCAN_JOB_ID = "scheduled-scan"
 UPDATE_JOB_ID = "scheduled-update-check"
 BLOCKLIST_JOB_ID = "scheduled-blocklist"
+AUTO_UPDATE_JOB_ID = "scheduled-auto-update"
 
 _scheduler: BackgroundScheduler | None = None
 
@@ -43,6 +46,15 @@ def _run_scheduled_update_check() -> None:
         JobKind.HOST_UPDATE_CHECK,
         "Scheduled host update check",
         tasks.host_update_check_runner(notify=True),
+        trigger="schedule",
+    )
+
+
+def _run_scheduled_auto_update() -> None:
+    job_service.submit(
+        JobKind.AUTO_UPDATE,
+        tasks.AUTO_UPDATE_LABEL,
+        tasks.auto_update_runner(notify=True),
         trigger="schedule",
     )
 
@@ -80,27 +92,37 @@ def reconfigure() -> None:
     _apply(
         SCAN_JOB_ID,
         enabled=config["scan_schedule_enabled"],
-        hours=config["scan_interval_hours"],
+        trigger=IntervalTrigger(hours=config["scan_interval_hours"]),
         func=_run_scheduled_scan,
         name="CVE scan of running images",
     )
     _apply(
         UPDATE_JOB_ID,
         enabled=config["update_check_enabled"],
-        hours=config["update_check_interval_hours"],
+        trigger=IntervalTrigger(hours=config["update_check_interval_hours"]),
         func=_run_scheduled_update_check,
         name="Registry update check",
     )
     _apply(
         BLOCKLIST_JOB_ID,
         enabled=blocklist_service.config_from(config).enabled,
-        hours=blocklist_service.INTERVAL_HOURS,
+        trigger=IntervalTrigger(hours=blocklist_service.INTERVAL_HOURS),
         func=run_blocklist,
         name="IP blocklist refresh",
     )
+    # A fixed hour, not an interval: a recreate is best done when nobody uses the service.
+    _apply(
+        AUTO_UPDATE_JOB_ID,
+        enabled=config["auto_update_enabled"],
+        trigger=CronTrigger(hour=config["auto_update_hour"]),
+        func=_run_scheduled_auto_update,
+        name="Auto-update of labelled services",
+    )
 
 
-def _apply(job_id: str, *, enabled: bool, hours: int, func: Callable[[], None], name: str) -> None:
+def _apply(
+    job_id: str, *, enabled: bool, trigger: BaseTrigger, func: Callable[[], None], name: str
+) -> None:
     assert _scheduler is not None
     if not enabled:
         if _scheduler.get_job(job_id):
@@ -111,20 +133,20 @@ def _apply(job_id: str, *, enabled: bool, hours: int, func: Callable[[], None], 
     # replace_existing keeps reconfigure() idempotent when only the interval changed.
     _scheduler.add_job(
         func,
-        trigger=IntervalTrigger(hours=hours),
+        trigger=trigger,
         id=job_id,
         name=name,
         replace_existing=True,
         coalesce=True,
         max_instances=1,
     )
-    logger.info("Scheduled %s every %sh", job_id, hours)
+    logger.info("Scheduled %s: %s", job_id, trigger)
 
 
 def next_run_times() -> dict[str, datetime | None]:
     """Next fire time per schedule, for display in the settings UI."""
     result: dict[str, datetime | None] = {}
-    for job_id in (SCAN_JOB_ID, UPDATE_JOB_ID):
+    for job_id in (SCAN_JOB_ID, UPDATE_JOB_ID, AUTO_UPDATE_JOB_ID):
         job = _scheduler.get_job(job_id) if _scheduler else None
         result[job_id] = job.next_run_time if job else None
     return result

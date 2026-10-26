@@ -173,6 +173,12 @@ def _image_version(image: str, labels: dict[str, str]) -> str | None:
     return version
 
 
+# A service opts in to the scheduled auto-update with this label. Read from the
+# container, so it takes effect once the stack is deployed with it.
+AUTO_UPDATE_LABEL = "drydock.update"
+AUTO_UPDATE_VALUE = "auto"
+
+
 def _to_schema(container: DockerContainer) -> Container:
     attrs = container.attrs or {}
     labels = attrs.get("Config", {}).get("Labels") or {}
@@ -198,6 +204,7 @@ def _to_schema(container: DockerContainer) -> Container:
         health=(state.get("Health") or {}).get("Status"),
         started_at=_optional_time(state.get("StartedAt")),
         finished_at=_optional_time(state.get("FinishedAt")),
+        auto_update=labels.get(AUTO_UPDATE_LABEL) == AUTO_UPDATE_VALUE,
     )
 
 

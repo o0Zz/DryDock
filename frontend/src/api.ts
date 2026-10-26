@@ -230,6 +230,7 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ images: images ?? null }),
     }),
+  runAutoUpdate: () => request<Job>("/api/updates/auto", { method: "POST" }),
 
   // background jobs
   listJobs: (limit: number) => request<Job[]>(`/api/jobs?limit=${limit}`),

@@ -29,6 +29,7 @@ import LogPanel from "../components/LogPanel";
 import Meter from "../components/Meter";
 import ScanFindings from "../components/ScanFindings";
 import UpdateAction from "../components/UpdateAction";
+import AutoUpdateBadge from "../components/AutoUpdateBadge";
 import UpdateBadge, { hasUpdate } from "../components/UpdateBadge";
 import {
   CONTAINER_ACTION_ICONS,
@@ -650,6 +651,7 @@ function UpdatesTab({
       <div className="row-between">
         <div className="button-row inline">
           <UpdateBadge update={update ?? undefined} />
+          <AutoUpdateBadge container={container} />
           <UpdateAction
             container={container}
             update={update ?? undefined}

@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
+from app.core.security import require_admin
 from app.models.job import Job, JobKind
 from app.models.update import UpdateCheck
 from app.schemas.job import JobRead
@@ -37,3 +38,17 @@ def check_updates(body: UpdateCheckRequest | None = None) -> Job:
         label = "Update check: all known images"
         runner = tasks.update_check_runner(tasks.all_known_images)
     return job_service.submit(JobKind.UPDATE_CHECK, label, runner)
+
+
+@router.post(
+    "/auto",
+    response_model=JobRead,
+    status_code=status.HTTP_202_ACCEPTED,
+    dependencies=[Depends(require_admin)],
+)
+def run_auto_update() -> Job:
+    """Run the auto-update now: the services labelled `drydock.update=auto` that have
+    a same-tag or git update get pulled and recreated. Works with the schedule off too."""
+    return job_service.submit(
+        JobKind.AUTO_UPDATE, tasks.AUTO_UPDATE_LABEL, tasks.auto_update_runner()
+    )

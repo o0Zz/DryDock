@@ -17,6 +17,7 @@ def _read(db: Session) -> SettingsRead:
         **values,
         next_scan_run=next_runs.get(scheduler_service.SCAN_JOB_ID),
         next_update_run=next_runs.get(scheduler_service.UPDATE_JOB_ID),
+        next_auto_update_run=next_runs.get(scheduler_service.AUTO_UPDATE_JOB_ID),
         repo_path=str(env_settings.repo_path),
         data_path=str(env_settings.data_path),
     )

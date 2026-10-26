@@ -163,5 +163,7 @@
   "Open the stack": "Ouvrir la stack",
   "Update details": "Détails de mise à jour",
   "Show the logs": "Afficher les logs",
-  "logs": "logs"
+  "logs": "logs",
+  "Labelled drydock.update=auto: the scheduled auto-update pulls and recreates it when its tag is rebuilt or its git ref moves.": "Label drydock.update=auto : la mise à jour automatique planifiée le récupère et le recrée quand son tag est reconstruit ou que sa référence git avance.",
+  "auto-update": "mise à jour auto"
 }

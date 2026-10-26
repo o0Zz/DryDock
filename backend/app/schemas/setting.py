@@ -8,6 +8,8 @@ class SettingsRead(BaseModel):
     scan_interval_hours: int
     update_check_enabled: bool
     update_check_interval_hours: int
+    auto_update_enabled: bool
+    auto_update_hour: int
     notify_webhook_url: str
     notify_on_critical: bool
     notify_on_update: bool
@@ -16,6 +18,7 @@ class SettingsRead(BaseModel):
     # Computed, read-only context for the settings screen.
     next_scan_run: datetime | None = None
     next_update_run: datetime | None = None
+    next_auto_update_run: datetime | None = None
     repo_path: str
     data_path: str
 
@@ -25,6 +28,8 @@ class SettingsUpdate(BaseModel):
     scan_interval_hours: int | None = Field(default=None, ge=1, le=24 * 30)
     update_check_enabled: bool | None = None
     update_check_interval_hours: int | None = Field(default=None, ge=1, le=24 * 30)
+    auto_update_enabled: bool | None = None
+    auto_update_hour: int | None = Field(default=None, ge=0, le=23)
     notify_webhook_url: str | None = Field(default=None, max_length=2000)
     notify_on_critical: bool | None = None
     notify_on_update: bool | None = None

@@ -75,6 +75,16 @@ export default function Settings() {
     setNotice(null);
   }
 
+  async function runAutoUpdate(): Promise<void> {
+    setError(null);
+    try {
+      await api.runAutoUpdate();
+      setNotice(t("Auto-update started. Follow it in the jobs list."));
+    } catch (runError) {
+      setError((runError as Error).message);
+    }
+  }
+
   async function save(event: FormEvent): Promise<void> {
     event.preventDefault();
     setSaving(true);
@@ -95,6 +105,9 @@ export default function Settings() {
   const [notifyBefore, notifyAfter] = t(
     "After a {scheduled} run, DryDock POSTs a JSON summary to this URL. Manual runs never notify.",
   ).split("{scheduled}");
+  const [autoBefore, autoAfter] = t(
+    "Pulls and recreates each running service labelled {label} when its tag was rebuilt or its git ref moved. A newer version tag is never applied, and services without the label are never touched.",
+  ).split("{label}");
   const [envBefore, envAfter] = t(
     "Set with {variables} environment variables; restart to change.",
   ).split("{variables}");
@@ -208,6 +221,49 @@ export default function Settings() {
                     date: formatDate(settings.next_update_run, t("not scheduled")),
                   })}
                 </div>
+              </div>
+            </div>
+            <div className="subsection">
+              <h3>{t("Auto-update")}</h3>
+              <p className="muted">
+                {autoBefore}
+                <code>drydock.update: auto</code>
+                {autoAfter}
+              </p>
+              <label className="checkbox-label">
+                <input
+                  type="checkbox"
+                  disabled={!user?.is_admin}
+                  checked={formValues.auto_update_enabled}
+                  onChange={(event) => edit({ auto_update_enabled: event.target.checked })}
+                />
+                {t("Update labelled services automatically")}
+              </label>
+              <div className="field-row">
+                <label>
+                  {t("Every day at (server time)")}
+                  <select
+                    disabled={!user?.is_admin || !formValues.auto_update_enabled}
+                    value={formValues.auto_update_hour}
+                    onChange={(event) => edit({ auto_update_hour: Number(event.target.value) })}
+                  >
+                    {Array.from({ length: 24 }, (_, hour) => (
+                      <option key={hour} value={hour}>
+                        {`${String(hour).padStart(2, "0")}:00`}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <div className="muted">
+                  {t("Next run: {date}", {
+                    date: formatDate(settings.next_auto_update_run, t("not scheduled")),
+                  })}
+                </div>
+                {user?.is_admin && (
+                  <button type="button" className="secondary" onClick={runAutoUpdate}>
+                    <RefreshCw size={15} /> {t("Run now")}
+                  </button>
+                )}
               </div>
             </div>
           </section>

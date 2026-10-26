@@ -32,6 +32,8 @@ class Container(BaseModel):
     # Last start and stop; None when it never happened. Uptime is now - started_at.
     started_at: datetime | None = None
     finished_at: datetime | None = None
+    # `drydock.update=auto`: the scheduled auto-update may pull and recreate it.
+    auto_update: bool = False
 
 
 class ContainerRename(BaseModel):
