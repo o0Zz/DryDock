@@ -11,7 +11,7 @@ DryDock does three jobs:
 - **Secure:** built in, not an add-on.
   - **Vulnerabilities:** Trivy scans your images and shows which CVEs have a fix.
   - **Updates:** newer images and newer version tags, rebuilt git sources, and pending OS updates on the host, with security updates and "reboot required" flagged.
-  - **Intrusions:** fail2ban jails on the proxy's access log (failed logins, scanners, bad bots), tested and applied from the UI. Bans and the log lines behind them show on the **Host** page.
+  - **Intrusions:** fail2ban jails on the proxy's access log (failed logins, scanners, bad bots), tested and applied from the UI. Bans and the log lines behind them show on the **Proxy** page, **Security** tab.
   - **Known bad IPs:** a daily blocklist (FireHOL level1 by default) dropped by the host's firewall before it reaches any container. Private ranges and your allowlist are never blocked.
   - **Exposure:** private services only answer your LAN, your public IP and trusted IPs. Every route is HTTPS with HSTS. One wildcard certificate keeps your service names out of public certificate logs.
   - **Safe changes:** Compose edits are validated and backed up first. Nothing updates on its own, except the services you label for it.
@@ -173,7 +173,7 @@ A config the proxy refuses is put back to the previous one, so a bad label never
 - One wildcard certificate covers every service, so your service names never appear in public certificate logs.
 - Exposed services join the shared `proxy` network and keep their `default` one. The proxy reaches them by container name, so a recreate breaks nothing. **Remove** in the panel takes the labels and the network out again.
 - A service with `network_mode: host` (Home Assistant) is reached through `host.docker.internal`, which the templates map to the host.
-- fail2ban on the host reads the proxy's access log (`PROXY_DATA/logs/access.log`) and never bans the allowlist (`PROXY_DATA/allowlist.txt`). Set its jails on the **Host** page. The rules match a log format, not a proxy: text for Traefik and SWAG, JSON for Caddy.
+- fail2ban on the host reads the proxy's access log (`PROXY_DATA/logs/access.log`) and never bans the allowlist (`PROXY_DATA/allowlist.txt`). Set its jails on the **Proxy** page, **Security** tab. The rules match a log format, not a proxy: text for Traefik and SWAG, JSON for Caddy.
 - The panel rewrites the file in the editor, comments included, and shows the diff. Nothing is saved until you save. Older `traefik.*` or `swag*` labels on a service are replaced.
 
 ## Labels

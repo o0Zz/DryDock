@@ -133,7 +133,7 @@ function commonHelp(cert: CertSetup): string {
 # (LAN and VPN clients often come back through it) and TRUSTED_IPS.
 #
 # PROXY_DATA (a host folder) holds the certificates, the config, the allowlist and the
-# access log. DryDock's fail2ban jails (Host page) read logs/access.log and
+# access log. DryDock's fail2ban jails (Proxy page, Security tab) read logs/access.log and
 # allowlist.txt from there.
 #
 ${certificates}`;
@@ -280,7 +280,7 @@ ${build}${commonHelp(cert)}
 #
 # proxy-sync writes the whole Caddyfile (PROXY_DATA/caddy/Caddyfile) and runs caddy
 # reload, which refuses a bad config and keeps the running one. Caddy logs JSON: set
-# the log format to JSON in DryDock's fail2ban jails (Host page).
+# the log format to JSON in DryDock's fail2ban jails (Proxy page, Security tab).
 services:
   caddy:
 ${image}    container_name: caddy

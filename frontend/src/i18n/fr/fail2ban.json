@@ -54,5 +54,6 @@
   "Not loaded on the host": "Pas chargé sur l'hôte",
   "Blocked by {network}": "Bloquée par {network}",
   "Never blocked ({network})": "Jamais bloquée ({network})",
-  "Not on the list": "Pas dans la liste"
+  "Not on the list": "Pas dans la liste",
+  "fail2ban and the IP blocklist are on the Proxy page:": "fail2ban et la liste d'IP bloquées sont sur la page Proxy :"
 }

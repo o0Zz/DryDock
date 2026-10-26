@@ -1,17 +1,16 @@
 import { Copy, RefreshCw, ShieldBan } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-import { ApiError, api } from "../api";
+import { Link } from "react-router-dom";
+import { api } from "../api";
 import { useAuth } from "../auth";
 import Fact from "../components/Fact";
-import Fail2banRules from "../components/Fail2banRules";
-import IpBlocklist from "../components/IpBlocklist";
 import JobList from "../components/JobList";
 import SortHeader from "../components/SortHeader";
 import { formatDate, secondsSince } from "../format";
 import { isActive, useJobs } from "../hooks/useJobs";
 import { useSort } from "../hooks/useSort";
-import { translate, useT } from "../i18n";
-import type { Fail2banBan, Fail2banReport, HostPackage, HostUpdates } from "../types";
+import { useT } from "../i18n";
+import type { HostPackage, HostUpdates } from "../types";
 
 // Package lists older than this mean the host no longer runs `apt update`.
 const STALE_LISTS_DAYS = 7;
@@ -159,146 +158,11 @@ function PackageTable({ packages }: { packages: HostPackage[] }) {
   );
 }
 
-function BanTable({ bans, empty }: { bans: Fail2banBan[]; empty: string }) {
-  const t = useT();
-  // No default: the server lists the newest bans first.
-  const sorting = useSort(bans, {
-    storageKey: "drydock.sort.bans",
-    columns: {
-      banned: (ban) => Date.parse(ban.banned_at),
-      ip: (ban) => ban.ip,
-      jail: (ban) => ban.jail,
-      // A permanent ban outlasts every dated one.
-      until: (ban) => (ban.expires_at ? Date.parse(ban.expires_at) : Number.MAX_SAFE_INTEGER),
-      times: (ban) => ban.ban_count,
-    },
-    descendingFirst: ["banned", "until", "times"],
-  });
-  if (bans.length === 0) return <p className="muted">{empty}</p>;
-  return (
-    <table className="projects-table">
-      <thead>
-        <tr>
-          <SortHeader sorting={sorting} column="ip">
-            IP
-          </SortHeader>
-          <SortHeader sorting={sorting} column="jail">
-            {t("Jail")}
-          </SortHeader>
-          <SortHeader sorting={sorting} column="banned">
-            {t("Banned")}
-          </SortHeader>
-          <SortHeader sorting={sorting} column="until">
-            {t("Until")}
-          </SortHeader>
-          <SortHeader sorting={sorting} column="times">
-            {t("Times")}
-          </SortHeader>
-          <th>{t("Log lines")}</th>
-        </tr>
-      </thead>
-      <tbody>
-        {sorting.rows.map((ban) => (
-          <tr key={`${ban.jail}-${ban.ip}-${ban.banned_at}`}>
-            <td>
-              <code>{ban.ip}</code>
-            </td>
-            <td>{ban.jail}</td>
-            <td className="muted">{formatDate(ban.banned_at)}</td>
-            <td className="muted">{formatDate(ban.expires_at, t("permanent"))}</td>
-            <td>{ban.ban_count}</td>
-            <td>
-              {ban.matches.length > 0 ? (
-                <details>
-                  <summary className="muted">
-                    {t("{count} line(s)", { count: ban.matches.length })}
-                  </summary>
-                  <pre className="match-lines">{ban.matches.join("\n")}</pre>
-                </details>
-              ) : (
-                "—"
-              )}
-            </td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
-  );
-}
-
-function Fail2ban({ report }: { report: Fail2banReport }) {
-  const t = useT();
-  return (
-    <>
-      <p className="muted">
-        {t("History since {date}. fail2ban keeps it for", {
-          date: formatDate(report.history_since),
-        })}{" "}
-        <code>dbpurgeage</code> {t("(1 day by default).")}
-      </p>
-      <table className="projects-table">
-        <thead>
-          <tr>
-            <th>{t("Jail")}</th>
-            <th>{t("Active bans")}</th>
-            <th>{t("Bans in history")}</th>
-            <th>{t("Last ban")}</th>
-          </tr>
-        </thead>
-        <tbody>
-          {report.jails.map((jail) => (
-            <tr key={jail.name}>
-              <td>
-                <span className="row-name">{jail.name}</span>{" "}
-                {!jail.enabled && <span className="badge">{t("disabled")}</span>}
-                {jail.enabled && jail.bans === 0 && (
-                  <span
-                    className="badge"
-                    title={t(
-                      "This jail has banned nobody. Check that its log path and filter match your logs.",
-                    )}
-                  >
-                    {t("no bans")}
-                  </span>
-                )}
-              </td>
-              <td>{jail.active_bans}</td>
-              <td>{jail.bans}</td>
-              <td className="muted">{formatDate(jail.last_ban_at)}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-
-      {report.top_users.length > 0 && (
-        <>
-          <h3>{t("User names tried on SSH")}</h3>
-          <div className="button-row">
-            {report.top_users.map((user) => (
-              <span key={user.name} className="badge">
-                {user.name} × {user.count}
-              </span>
-            ))}
-          </div>
-        </>
-      )}
-
-      <h3>{t("Active bans ({count})", { count: report.active_bans.length })}</h3>
-      <BanTable bans={report.active_bans} empty={t("Nobody is banned right now.")} />
-
-      <h3>{t("Recent bans")}</h3>
-      <BanTable bans={report.recent_bans} empty={t("No bans in fail2ban's history.")} />
-    </>
-  );
-}
-
 export default function Host() {
   const t = useT();
   const { user } = useAuth();
   const [updates, setUpdates] = useState<HostUpdates | null | undefined>(undefined);
-  const [report, setReport] = useState<Fail2banReport | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [fail2banError, setFail2banError] = useState<string | null>(null);
 
   const loadUpdates = useCallback((): void => {
     api
@@ -307,28 +171,9 @@ export default function Host() {
       .catch((loadError: Error) => setError(loadError.message));
   }, []);
 
-  const loadFail2ban = useCallback((): void => {
-    if (!user?.is_admin) return;
-    setFail2banError(null);
-    api
-      .fail2ban()
-      .then(setReport)
-      .catch((loadError: Error) =>
-        setFail2banError(
-          loadError instanceof ApiError && loadError.status === 404
-            ? translate(
-                "fail2ban was not found on the host ({error}). Set DRYDOCK_FAIL2BAN_DB if its database lives elsewhere.",
-                { error: loadError.message },
-              )
-            : loadError.message,
-        ),
-      );
-  }, [user?.is_admin]);
-
   useEffect(() => {
     loadUpdates();
-    loadFail2ban();
-  }, [loadUpdates, loadFail2ban]);
+  }, [loadUpdates]);
 
   const { jobs, start, dismiss } = useJobs(loadUpdates, setError);
   const checkJobs = jobs.filter((job) => job.kind === "host_update_check");
@@ -358,25 +203,10 @@ export default function Host() {
       </section>
 
       {user?.is_admin && (
-        <section className="section">
-          <div className="row-between">
-            <h2>
-              <ShieldBan size={18} /> fail2ban
-            </h2>
-            <button type="button" className="secondary small" onClick={loadFail2ban}>
-              <RefreshCw size={14} /> {t("Refresh")}
-            </button>
-          </div>
-          {fail2banError ? (
-            <div className="error">{fail2banError}</div>
-          ) : report ? (
-            <Fail2ban report={report} />
-          ) : (
-            <div className="empty">{t("Loading…")}</div>
-          )}
-          <Fail2banRules onApplied={loadFail2ban} />
-          <IpBlocklist />
-        </section>
+        <p className="muted">
+          <ShieldBan size={14} /> {t("fail2ban and the IP blocklist are on the Proxy page:")}{" "}
+          <Link to="/proxy?tab=security">{t("Security")}</Link>
+        </p>
       )}
     </div>
   );

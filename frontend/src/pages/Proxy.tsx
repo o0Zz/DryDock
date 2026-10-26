@@ -1,9 +1,19 @@
-import { CheckCircle2, CircleAlert, ExternalLink, Plus, RefreshCw, Save } from "lucide-react";
+import {
+  CheckCircle2,
+  CircleAlert,
+  ExternalLink,
+  Plus,
+  RefreshCw,
+  Route,
+  Save,
+  ShieldBan,
+} from "lucide-react";
 import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { api } from "../api";
 import { useAuth } from "../auth";
 import { VisibilityBadge } from "../components/ExposurePanel";
+import ProxySecurity from "../components/ProxySecurity";
 import { useT } from "../i18n";
 import { PROXY_TEMPLATES } from "../stackTemplates";
 import type { ProxyContainer, ProxyOverview } from "../types";
@@ -11,10 +21,17 @@ import type { ProxyContainer, ProxyOverview } from "../types";
 // Product names, the same in every language.
 const PROXY_NAMES: Record<string, string> = { traefik: "Traefik", swag: "SWAG", caddy: "Caddy" };
 
-/** What the reverse proxy exposes, from the labels in the repo, and whether it runs. */
+/**
+ * What the reverse proxy exposes, from the labels in the repo, and whether it runs.
+ * The Security tab (admin) holds what protects it: fail2ban on its access log and the
+ * IP blocklist.
+ */
 export default function Proxy() {
   const t = useT();
   const { user } = useAuth();
+  // In the URL, so a reload or a link from another page opens the same tab.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tab = user?.is_admin && searchParams.get("tab") === "security" ? "security" : "routes";
   const [proxy, setProxy] = useState<ProxyOverview | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -42,12 +59,45 @@ export default function Proxy() {
           <RefreshCw size={15} /> {t("Reload")}
         </button>
       </div>
+      {error && <div className="error">{error}</div>}
+      {user?.is_admin && (
+        <div className="tabs" role="tablist">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === "routes"}
+            className={`tab ${tab === "routes" ? "active" : ""}`}
+            onClick={() => setSearchParams({}, { replace: true })}
+          >
+            <Route size={15} /> {t("Routes")}
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === "security"}
+            className={`tab ${tab === "security" ? "active" : ""}`}
+            onClick={() => setSearchParams({ tab: "security" }, { replace: true })}
+          >
+            <ShieldBan size={15} /> {t("Security")}
+          </button>
+        </div>
+      )}
+
+      {tab === "security" ? <ProxySecurity /> : <RoutesTab proxy={proxy} onSaved={load} />}
+    </div>
+  );
+}
+
+function RoutesTab({ proxy, onSaved }: { proxy: ProxyOverview; onSaved: () => Promise<void> }) {
+  const t = useT();
+  const { user } = useAuth();
+  return (
+    <>
       <p className="muted">
         {t(
-          "Expose a service from its stack page (Expose, beside the Compose editor). DryDock writes neutral expose.* labels; the proxy sync turns them into your proxy's config. The traffic never goes through DryDock.",
+          "Expose a service from its stack page (Services, beside the Compose editor). DryDock writes neutral expose.* labels; the proxy sync turns them into your proxy's config. The traffic never goes through DryDock.",
         )}
       </p>
-      {error && <div className="error">{error}</div>}
 
       <section className="section">
         <h2>{t("Status")}</h2>
@@ -98,12 +148,12 @@ export default function Proxy() {
         )}
         {proxy.container?.kind === "caddy" && (
           <div className="notice">
-            {t("Caddy logs JSON: set the log format to JSON in the fail2ban jails (Host page).")}
+            {t("Caddy logs JSON: set the log format to JSON in the fail2ban jails (Security tab).")}
           </div>
         )}
       </section>
 
-      <ProxySettings proxy={proxy} editable={user?.is_admin ?? false} onSaved={load} />
+      <ProxySettings proxy={proxy} editable={user?.is_admin ?? false} onSaved={onSaved} />
 
       <section className="section">
         <h2>
@@ -154,7 +204,7 @@ export default function Proxy() {
           </table>
         )}
       </section>
-    </div>
+    </>
   );
 }
 
@@ -228,7 +278,7 @@ function ProxySettings({
           />
           <span className="muted">
             {t(
-              "A bare name in the Exposure panel becomes <name>.<domain>. Use the domain of the proxy's wildcard certificate.",
+              "A bare name in the Services panel becomes <name>.<domain>. Use the domain of the proxy's wildcard certificate.",
             )}
           </span>
         </label>
