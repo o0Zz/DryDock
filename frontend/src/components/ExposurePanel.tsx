@@ -1,15 +1,16 @@
-import { Check, ExternalLink, Globe, Lock, RefreshCw, Trash2, X } from "lucide-react";
+import { Check, ExternalLink, Globe, Lock, RefreshCw, Tags, Trash2, X } from "lucide-react";
 import { useEffect, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api";
-import { useT } from "../i18n";
+import { msg, useT } from "../i18n";
 import type { ProxyOverview, ServiceExposure } from "../types";
 import DiffView from "./DiffView";
 
 /**
- * Beside the Compose editor: give a service a host name behind the reverse proxy,
- * private (an IP allowlist) or public. Each change rewrites the editor's content;
- * saving and `up` stay with the editor.
+ * Beside the Compose editor: the labels DryDock reads, per service. A host name
+ * behind the reverse proxy, private (an IP allowlist) or public, and the opt-in to
+ * the scheduled auto-update. Each change rewrites the editor's content; saving and
+ * `up` stay with the editor.
  */
 export default function ExposurePanel({
   projectId,
@@ -75,7 +76,7 @@ export default function ExposurePanel({
     <aside className="assistant">
       <div className="assistant-header">
         <strong>
-          <Globe size={15} /> {t("Exposure")}
+          <Tags size={15} /> {t("Services")}
         </strong>
         <div className="button-row inline">
           <button
@@ -121,11 +122,17 @@ export default function ExposurePanel({
               onRemove={() =>
                 void change(() => api.unexposeService(projectId, content, exposure.service))
               }
+              onAutoUpdate={(enabled) =>
+                void change(() =>
+                  api.setAutoUpdate(projectId, content, exposure.service, enabled),
+                )
+              }
             />
           ),
         )}
         {error && <div className="error">{error}</div>}
         {lastChange && <LastChange {...lastChange} current={content} />}
+        <LabelReference />
       </div>
     </aside>
   );
@@ -136,11 +143,13 @@ function ServiceRow({
   busy,
   onEdit,
   onRemove,
+  onAutoUpdate,
 }: {
   exposure: ServiceExposure;
   busy: boolean;
   onEdit: () => void;
   onRemove: () => void;
+  onAutoUpdate: (enabled: boolean) => void;
 }) {
   const t = useT();
   return (
@@ -176,7 +185,67 @@ function ServiceRow({
           )}
         </div>
       )}
+      <label
+        className="checkbox-label"
+        title={t(
+          "Adds drydock.update=auto: when Auto-update is on in Settings, DryDock pulls and recreates this service once a day if its tag was rebuilt. Leave it off for databases and apps like Home Assistant.",
+        )}
+      >
+        <input
+          type="checkbox"
+          disabled={busy}
+          checked={exposure.auto_update}
+          onChange={(event) => onAutoUpdate(event.target.checked)}
+        />
+        {t("Auto-update")}
+      </label>
     </div>
+  );
+}
+
+// The labels DryDock reads from a Compose file, so a user can write them by hand.
+const LABELS: { label: string; example: string; text: string }[] = [
+  {
+    label: "expose.host",
+    example: "expose.host=app.example.org",
+    text: msg("Host name(s) the proxy routes to the service, comma-separated. Always HTTPS. A bare name gets the proxy domain only in this panel."),
+  },
+  {
+    label: "expose.port",
+    example: "expose.port=8080",
+    text: msg("Container port the proxy forwards to."),
+  },
+  {
+    label: "expose.private",
+    example: "expose.private=false",
+    text: msg("Private by default: allowed IPs only (LAN, public IP, trusted IPs). false makes it public."),
+  },
+  {
+    label: "drydock.update",
+    example: "drydock.update=auto",
+    text: msg("auto: the scheduled auto-update (Settings) pulls and recreates the service when its tag is rebuilt or its git ref moves. Never a newer tag."),
+  },
+];
+
+function LabelReference() {
+  const t = useT();
+  return (
+    <details className="label-reference">
+      <summary>{t("Labels DryDock reads")}</summary>
+      <dl>
+        {LABELS.map((entry) => (
+          <div key={entry.label}>
+            <dt>
+              <code>{entry.example}</code>
+            </dt>
+            <dd>{t(entry.text)}</dd>
+          </div>
+        ))}
+      </dl>
+      <p className="muted">
+        {t("An exposed service also joins the proxy network. Other drydock.* labels are set by DryDock itself.")}
+      </p>
+    </details>
   );
 }
 

@@ -112,6 +112,8 @@ def describe(name: str, spec: Any) -> ServiceExposure:
         ports=_declared_ports(spec),
         blocked=_blocked(spec),
         legacy=any(_legacy(key) for key in labels),
+        auto_update=labels.get(docker_service.AUTO_UPDATE_LABEL, "").strip()
+        == docker_service.AUTO_UPDATE_VALUE,
     )
 
 
@@ -431,6 +433,24 @@ def expose(
     # A host-network container is reached through the host; it joins no network.
     if not _host_network(spec):
         _attach(data, spec, network)
+    _put_trailing_comment(spec, spec_tail)
+    _put_trailing_comment(data, file_tail)
+    return _dump(yaml, data, content)
+
+
+def set_auto_update(content: str, *, service: str, enabled: bool) -> str:
+    """Add or drop the service's `drydock.update=auto` label.
+
+    Not a proxy label, but it shares the label editing that keeps the file's comments.
+    """
+    yaml, data = _load(content)
+    spec = _service(data, service)
+    spec_tail, file_tail = _take_trailing_comment(spec), _take_trailing_comment(data)
+    _rewrite_labels(
+        spec,
+        lambda key: key == docker_service.AUTO_UPDATE_LABEL,
+        {docker_service.AUTO_UPDATE_LABEL: docker_service.AUTO_UPDATE_VALUE} if enabled else {},
+    )
     _put_trailing_comment(spec, spec_tail)
     _put_trailing_comment(data, file_tail)
     return _dump(yaml, data, content)

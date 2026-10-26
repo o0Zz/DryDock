@@ -15,6 +15,8 @@ class ServiceExposure(BaseModel):
     blocked: str | None = None
     # It still has labels of an older proxy setup (`traefik.*`, `swag*`); exposing drops them.
     legacy: bool = False
+    # `drydock.update=auto`: the scheduled auto-update may recreate it.
+    auto_update: bool = False
 
 
 class ProxyRoute(BaseModel):
@@ -64,3 +66,8 @@ class ExposeRequest(ExposureContent):
 
 class UnexposeRequest(ExposureContent):
     service: str = Field(min_length=1, max_length=255)
+
+
+class AutoUpdateRequest(ExposureContent):
+    service: str = Field(min_length=1, max_length=255)
+    enabled: bool

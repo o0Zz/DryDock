@@ -1,6 +1,5 @@
 {
   "Proxy": "Proxy",
-  "Exposure": "Exposition",
   "Set up the proxy": "Configurer le proxy",
   "to container port {port}": "vers le port {port} du conteneur",
   "Cannot be exposed: {reason}": "Ne peut pas être exposé : {reason}",
@@ -19,7 +18,6 @@
   "Template": "Modèle",
   "Its .env is created too: fill it in before the first up.": "Son .env est créé aussi : remplissez-le avant le premier up.",
   "It needs a .env: ask an admin to fill it in.": "Il lui faut un .env : demandez à un admin de le remplir.",
-  "Give a service a host name behind the Traefik proxy": "Donner à un service un nom d'hôte derrière le proxy Traefik",
   "Docker is unreachable: the proxy state is unknown.": "Docker est injoignable : l'état du proxy est inconnu.",
   "no container": "aucun conteneur",
   "Exposed services": "Services exposés",
@@ -55,5 +53,13 @@
   "No DNS API needed: one certificate per name, through port 80. The names appear in public certificate logs.": "Aucune API DNS nécessaire : un certificat par nom, via le port 80. Les noms apparaissent dans les logs publics de certificats.",
   "Other DNS provider": "Autre fournisseur DNS",
   "Type your provider's name as the proxy knows it, then add its variables to the .env (Traefik) or its .ini file (SWAG).": "Tapez le nom de votre fournisseur tel que le proxy le connaît, puis ajoutez ses variables au .env (Traefik) ou à son fichier .ini (SWAG).",
-  "HTTPS for the services you expose. Private services only answer your LAN, your public IP and trusted IPs.": "HTTPS pour les services que vous exposez. Les services privés ne répondent qu'à votre LAN, votre IP publique et vos IP de confiance."
+  "HTTPS for the services you expose. Private services only answer your LAN, your public IP and trusted IPs.": "HTTPS pour les services que vous exposez. Les services privés ne répondent qu'à votre LAN, votre IP publique et vos IP de confiance.",
+  "Host names and auto-update for each service": "Noms d'hôte et mise à jour automatique de chaque service",
+  "Adds drydock.update=auto: when Auto-update is on in Settings, DryDock pulls and recreates this service once a day if its tag was rebuilt. Leave it off for databases and apps like Home Assistant.": "Ajoute drydock.update=auto : quand la mise à jour automatique est active dans les Paramètres, DryDock récupère et recrée ce service une fois par jour si son tag a été reconstruit. À laisser désactivé pour les bases de données et les applications comme Home Assistant.",
+  "Host name(s) the proxy routes to the service, comma-separated. Always HTTPS. A bare name gets the proxy domain only in this panel.": "Nom(s) d'hôte que le proxy dirige vers le service, séparés par des virgules. Toujours en HTTPS. Un nom court reçoit le domaine du proxy uniquement dans ce panneau.",
+  "Container port the proxy forwards to.": "Port du conteneur vers lequel le proxy transmet.",
+  "Private by default: allowed IPs only (LAN, public IP, trusted IPs). false makes it public.": "Privé par défaut : IP autorisées uniquement (LAN, IP publique, IP de confiance). false le rend public.",
+  "auto: the scheduled auto-update (Settings) pulls and recreates the service when its tag is rebuilt or its git ref moves. Never a newer tag.": "auto : la mise à jour automatique planifiée (Paramètres) récupère et recrée le service quand son tag est reconstruit ou que sa référence git avance. Jamais un tag plus récent.",
+  "Labels DryDock reads": "Labels lus par DryDock",
+  "An exposed service also joins the proxy network. Other drydock.* labels are set by DryDock itself.": "Un service exposé rejoint aussi le réseau du proxy. Les autres labels drydock.* sont posés par DryDock lui-même."
 }

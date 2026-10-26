@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.schemas.project import Project
 from app.schemas.proxy import (
+    AutoUpdateRequest,
     ExposeRequest,
     ExposureContent,
     ProxyOverview,
@@ -103,4 +104,15 @@ def unexpose(
     network = settings_service.get_all(db)["proxy_network"]
     return ExposureContent(
         content=proxy_service.unexpose(body.content, service=body.service, network=network)
+    )
+
+
+@router.post("/projects/{project_id}/auto-update", response_model=ExposureContent)
+def auto_update(project_id: str, body: AutoUpdateRequest) -> ExposureContent:
+    """The editor's content with the service's `drydock.update=auto` label set or dropped."""
+    _project(project_id)
+    return ExposureContent(
+        content=proxy_service.set_auto_update(
+            body.content, service=body.service, enabled=body.enabled
+        )
     )

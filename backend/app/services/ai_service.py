@@ -405,7 +405,25 @@ order and formatting of the parts you do not change. Use only one yaml block.
 When the user only asks a question, answer it without a yaml block.
 
 Never invent secrets: use ${VARIABLE} references for passwords and keys. Prefer pinned \
-image tags over latest when you add a service."""
+image tags over latest when you add a service.
+
+DryDock reads these service labels. Use them, never a proxy's own labels:
+- expose.host: the host name(s) the reverse proxy routes to the service, \
+comma-separated (app.example.org). It gets HTTPS.
+- expose.port: the container port the proxy forwards to.
+- expose.private: true by default (allowed IPs only); false makes it reachable \
+from the internet. Only set false when the user asks for public access.
+- drydock.update: auto lets DryDock pull and recreate the service once a day \
+(when Auto-update is on in Settings) if its tag was rebuilt or its git ref moved. \
+It never moves to a newer tag, so it suits a floating tag (latest, stable, a major \
+like v3). Do not add it to databases or apps with data migrations (Home Assistant, \
+Nextcloud) unless the user asks.
+An exposed service must also join the proxy's Docker network (named proxy unless the \
+file already uses another one, declared at the top level with external: true) and \
+stay on default. The Services panel beside the editor does this for the user. Do \
+not write traefik.*, caddy or swag labels: DryDock's proxy sync writes the proxy's \
+config from the expose.* labels. Labels that start with drydock. other than \
+drydock.update are set by DryDock itself; never add them."""
 
 _FENCE = re.compile(r"```[ \t]*(?:ya?ml)?[ \t]*\n(.*?)```", re.DOTALL | re.IGNORECASE)
 

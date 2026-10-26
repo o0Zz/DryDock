@@ -574,6 +574,8 @@ export interface ServiceExposure {
   blocked: string | null;
   /** Still has labels of an older proxy setup (traefik.*, swag*); exposing drops them. */
   legacy: boolean;
+  /** Labelled `drydock.update=auto`. */
+  auto_update: boolean;
 }
 
 export interface ExposeRequest {

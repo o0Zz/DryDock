@@ -331,6 +331,11 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ content, service }),
     }),
+  setAutoUpdate: (id: string, content: string, service: string, enabled: boolean) =>
+    request<ComposeContent>(`/api/proxy/projects/${id}/auto-update`, {
+      method: "POST",
+      body: JSON.stringify({ content, service, enabled }),
+    }),
 
   // networks
   listNetworks: () => request<DockerNetwork[]>("/api/networks"),

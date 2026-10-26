@@ -374,3 +374,47 @@ def test_proxy_found_by_label_then_by_image(monkeypatch: pytest.MonkeyPatch) -> 
     proxy, sync = proxy_service.proxy_containers()
     assert (proxy.name, proxy.kind, proxy.running) == ("swag", "swag", True)
     assert sync is None
+
+
+# --- Auto-update label ----------------------------------------------------------------
+
+
+def test_auto_update_label_in_list_form_keeps_comments() -> None:
+    content = proxy_service.set_auto_update(STACK, service="jellyfin", enabled=True)
+
+    assert "# keep this comment" in content
+    assert yaml.safe_load(content)["services"]["jellyfin"]["labels"] == [
+        "com.example.owner=me",
+        "drydock.update=auto",
+    ]
+    assert [service.auto_update for service in proxy_service.services(content)] == [True, False]
+    # Off again gives back the file.
+    off = proxy_service.set_auto_update(content, service="jellyfin", enabled=False)
+    assert yaml.safe_load(off) == yaml.safe_load(STACK)
+
+
+def test_auto_update_label_in_mapping_form() -> None:
+    content = "services:\n  app:\n    labels:\n      drydock.update: manual\n"
+
+    data = yaml.safe_load(proxy_service.set_auto_update(content, service="app", enabled=True))
+
+    assert data["services"]["app"]["labels"] == {"drydock.update": "auto"}
+
+
+def test_auto_update_off_drops_empty_labels() -> None:
+    content = "services:\n  db:\n    image: postgres:16\n"
+    on = proxy_service.set_auto_update(content, service="db", enabled=True)
+
+    assert proxy_service.set_auto_update(on, service="db", enabled=False) == content
+
+
+def test_api_auto_update(repo: Path, client: TestClient) -> None:
+    response = client.post(
+        f"/api/proxy/projects/{_project_id(repo)}/auto-update",
+        json={"content": STACK, "service": "db", "enabled": True},
+    )
+
+    assert response.status_code == 200, response.text
+    assert yaml.safe_load(response.json()["content"])["services"]["db"]["labels"] == [
+        "drydock.update=auto"
+    ]

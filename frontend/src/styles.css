@@ -1213,6 +1213,11 @@ pre.diff .diff-gap { color: var(--muted); }
 .exposure-host .muted { white-space: nowrap; }
 .exposure-visibility { border: 0; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.2rem; }
 .exposure-visibility .checkbox-label { flex-direction: row; align-items: center; gap: 0.35rem; }
+.exposure-row .checkbox-label { flex-direction: row; align-items: center; gap: 0.35rem; }
+.label-reference { font-size: 0.85rem; }
+.label-reference dl { margin: 0.5rem 0 0; display: grid; gap: 0.15rem 0; }
+.label-reference dt { margin-top: 0.4rem; }
+.label-reference dd { margin: 0; color: var(--muted); }
 .badge svg { vertical-align: -2px; }
 
 /* --- fail2ban jails managed by DryDock (Host page) --------------------- */

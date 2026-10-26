@@ -4,7 +4,6 @@ import {
   ChevronLeft,
   Copy,
   Download,
-  Globe,
   PenLine,
   Play,
   RotateCw,
@@ -12,6 +11,7 @@ import {
   ScrollText,
   Sparkles,
   Square,
+  Tags,
   Trash2,
   Undo2,
   type LucideIcon,
@@ -572,10 +572,10 @@ export default function ProjectDetail() {
               type="button"
               className="secondary"
               aria-pressed={sidePanel === "exposure"}
-              title={t("Give a service a host name behind the Traefik proxy")}
+              title={t("Host names and auto-update for each service")}
               onClick={() => setSidePanel(sidePanel === "exposure" ? null : "exposure")}
             >
-              <Globe size={15} /> {t("Expose")}
+              <Tags size={15} /> {t("Services")}
             </button>
             {savedAt && !dirty && <span className="muted">{savedAt}</span>}
           </div>

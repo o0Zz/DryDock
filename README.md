@@ -73,7 +73,7 @@ To build from source instead, replace `image:` with a git URL. The build reads t
 
 ### Expose
 
-- **Host names:** give a service a host name (`jellyfin.example.org`) with HTTPS, private (an IP allowlist) or public. The **Expose** panel beside the Compose editor writes neutral `expose.*` labels that name no proxy.
+- **Host names:** give a service a host name (`jellyfin.example.org`) with HTTPS, private (an IP allowlist) or public. The **Services** panel beside the Compose editor writes neutral `expose.*` labels that name no proxy.
 - **Proxy page:** every host name in your Compose files, with its stack, service, container port, visibility and state, plus the health of the proxy and its sync. A host name already used by another stack is refused.
 - **Your choice of proxy:** stack templates for Traefik, SWAG (nginx) or Caddy, each with a wildcard certificate. The labels work with all three. See [Reverse proxy](#reverse-proxy).
 
@@ -81,7 +81,7 @@ To build from source instead, replace `image:` with a git URL. The build reads t
 
 - **CVE scans:** scan one image, all running images, or all images in your Compose files.
 - **Image updates:** finds rebuilt tags (`latest`, `stable`) and newer versions (`2025.10.4` → `2026.10.2`). A service built from a git URL (`build: https://github.com/me/app.git#main`) shows an update when its ref gets a new commit, and Update rebuilds it. For `postgres:16.2` you see both the newest `16.x` and the newest overall. For a floating tag like `stable`, the containers list shows the version the image declares (`org.opencontainers.image.version` label), when it has one.
-- **Auto-update (opt-in):** label a service `drydock.update: auto` and turn on Auto-update in Settings. Every day at the hour you pick, DryDock pulls and recreates the running labelled services whose tag was rebuilt or whose git ref moved. It never applies a newer version tag, never starts a stopped stack, and leaves every other service alone. Good for a proxy or DryDock itself, not for Home Assistant or a database. After the recreate it waits for the container to run without restarts and pass its healthcheck, and the webhook gets what was updated and what failed. The old image stays, so you can roll back by hand.
+- **Auto-update (opt-in):** tick **Auto-update** for a service in the **Services** panel (it writes the label `drydock.update: auto`) and turn on Auto-update in Settings. Every day at the hour you pick, DryDock pulls and recreates the running labelled services whose tag was rebuilt or whose git ref moved. It never applies a newer version tag, never starts a stopped stack, and leaves every other service alone. Good for a proxy or DryDock itself, not for Home Assistant or a database. After the recreate it waits for the container to run without restarts and pass its healthcheck, and the webhook gets what was updated and what failed. The old image stays, so you can roll back by hand.
 - **Host updates:** pending OS package updates on the host (Debian, Ubuntu, Raspberry Pi OS), with security updates and "reboot required" flagged on the dashboard. They are checked on the update check schedule, read-only: DryDock never installs anything. The page gives the command to run on the host, and says when automatic security updates (`unattended-upgrades`) are off.
 - **fail2ban:** admins see the host's jails, active bans, the log lines behind each ban, and the user names tried on SSH. They also edit the jails that protect the reverse proxy (failed logins, refused requests, scanners, bad bots, or a custom regex), test a rule on the access log before saving, and apply it: DryDock writes its own jail file on the host and reloads fail2ban. Bans block the proxy's forwarded traffic, not only the host's own ports. No unban yet.
 - **IP blocklist:** admins turn on a list of known bad IPs (FireHOL level1, or their own list URLs). DryDock downloads it every 24 hours and at startup, drops private ranges, and loads it in its own nftables table on the host (`inet drydock_blocklist`). The page shows the ranges loaded, the packets dropped, and checks whether an IP is blocked. The host needs `nft` (nftables).
@@ -166,7 +166,7 @@ A config the proxy refuses is put back to the previous one, so a bad label never
    - SWAG reads the DNS token from a file: after the first up, fill in `PROXY_DATA/swag/dns-conf/<provider>.ini` and restart `swag`.
    - Caddy's official image has no DNS modules: with a DNS provider, the first up builds one. It takes a few minutes on a Pi. Caddy knows OVH and Cloudflare here.
    - Traefik with another provider passes the whole `.env` to Traefik: add the variables listed for it at <https://go-acme.github.io/lego/dns/>.
-4. On a stack page, open **Expose**, pick a service, a name and its container port, then save and run **up**.
+4. On a stack page, open **Services**, pick a service, a name and its container port, then save and run **up**.
 
 - **Private** services only answer an IP allowlist: `LAN_RANGES`, your current public IP and `TRUSTED_IPS`. The public IP is in it because LAN and VPN clients often come back through it (hairpin NAT). The sync refreshes it every 5 minutes. **Public** services answer everyone.
 - Every service sends HSTS (`Strict-Transport-Security`): browsers stick to HTTPS for its name.
@@ -175,6 +175,38 @@ A config the proxy refuses is put back to the previous one, so a bad label never
 - A service with `network_mode: host` (Home Assistant) is reached through `host.docker.internal`, which the templates map to the host.
 - fail2ban on the host reads the proxy's access log (`PROXY_DATA/logs/access.log`) and never bans the allowlist (`PROXY_DATA/allowlist.txt`). Set its jails on the **Host** page. The rules match a log format, not a proxy: text for Traefik and SWAG, JSON for Caddy.
 - The panel rewrites the file in the editor, comments included, and shows the diff. Nothing is saved until you save. Older `traefik.*` or `swag*` labels on a service are replaced.
+
+## Labels
+
+DryDock reads these labels from your Compose files. The **Services** panel beside the Compose editor writes them for you and lists them under "Labels DryDock reads". The AI assistant knows them too.
+
+| Label | Values | Default | What it does |
+| --- | --- | --- | --- |
+| `expose.host` | host names, comma-separated | none | The proxy routes `https://<host>` to the service. A service without it is not exposed. |
+| `expose.port` | a container port | none | The port the proxy forwards to. |
+| `expose.private` | `true`, `false` | `true` | Private: allowed IPs only (`LAN_RANGES`, your public IP, `TRUSTED_IPS`). `false`: anyone. |
+| `drydock.update` | `auto` | none | The daily auto-update (Settings) pulls and recreates the service when its tag is rebuilt or its git ref moves. Never a newer tag. |
+
+```yaml
+services:
+  traefik:
+    image: traefik:v3
+    labels:
+      - drydock.update=auto
+  music:
+    image: navidrome/navidrome:latest
+    labels:
+      - expose.host=music.example.org
+      - expose.port=4533
+      - expose.private=false
+    networks: [default, proxy]
+
+networks:
+  proxy:
+    external: true
+```
+
+DryDock reads labels from the running containers, so a change takes effect after **up**. DryDock sets other `drydock.*` labels itself (`drydock.proxy`, `drydock.proxy-sync`, `drydock.job`, `drydock.helper`). Do not add or edit them.
 
 ## Troubleshooting
 
