@@ -30,6 +30,8 @@ DEFAULTS: dict[str, Any] = {
     "proxy_network": "proxy",
     # fail2ban jails DryDock manages (fail2ban_config_service); None until first saved.
     "fail2ban_config": None,
+    # Known bad IPs dropped by the host's nftables (blocklist_service); None until saved.
+    "ip_blocklist": None,
 }
 
 def get_all(db: Session) -> dict[str, Any]:

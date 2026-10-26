@@ -38,5 +38,21 @@
   "Not applied yet": "Pas encore appliqué",
   "Run this rule over the end of the access log": "Lancer cette règle sur la fin de l'access log",
   "Test": "Tester",
-  "{matched} of the last {lines} lines match.": "{matched} des {lines} dernières lignes correspondent."
+  "{matched} of the last {lines} lines match.": "{matched} des {lines} dernières lignes correspondent.",
+  "Known bad IPs": "IP malveillantes connues",
+  "Ranges from public lists of known attackers, dropped by the host's firewall before they reach any container. DryDock owns the nftables table inet drydock_blocklist, reloads it every 24 hours and when it starts. Private ranges and the allowlist are never blocked.": "Des plages issues de listes publiques d'attaquants connus, bloquées par le pare-feu de l'hôte avant d'atteindre un conteneur. DryDock gère la table nftables inet drydock_blocklist et la recharge toutes les 24 heures et à son démarrage. Les plages privées et l'allowlist ne sont jamais bloquées.",
+  "Block known bad IPs": "Bloquer les IP malveillantes connues",
+  "Lists (one URL per line)": "Listes (une URL par ligne)",
+  "Allowlist file (never blocked)": "Fichier d'allowlist (jamais bloqué)",
+  "{entries} ranges loaded on {date}.": "{entries} plages chargées le {date}.",
+  "{count} packets dropped since.": "{count} paquets bloqués depuis.",
+  "{entries} ranges, downloaded {date}": "{entries} plages, téléchargées le {date}",
+  "Check an IP": "Vérifier une IP",
+  "Active on the host": "Actif sur l'hôte",
+  "Off": "Désactivé",
+  "Still loaded on the host": "Encore chargé sur l'hôte",
+  "Not loaded on the host": "Pas chargé sur l'hôte",
+  "Blocked by {network}": "Bloquée par {network}",
+  "Never blocked ({network})": "Jamais bloquée ({network})",
+  "Not on the list": "Pas dans la liste"
 }

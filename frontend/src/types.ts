@@ -648,3 +648,48 @@ export interface Fail2banTestResult {
   top_ips: { ip: string; count: number }[];
   samples: string[];
 }
+
+export interface IpBlocklistConfig {
+  enabled: boolean;
+  /** Lists of IPs and CIDR ranges, one per line. */
+  sources: string[];
+  /** Host path of the proxy sync's allowlist, never blocked. Empty: none. */
+  allowlist_file: string;
+  /** Never blocked either, on top of the private ranges, which always are. */
+  ignore_ips: string[];
+}
+
+export interface IpBlocklistSource {
+  url: string;
+  /** Ranges at its last successful download. */
+  entries: number;
+  fetched_at: string | null;
+  /** The last download's error; the previous ranges are still used. */
+  error: string | null;
+}
+
+export interface IpBlocklistRead {
+  config: IpBlocklistConfig;
+  /** What was last loaded on the host; null when never. */
+  status: {
+    applied_at: string | null;
+    entries: number;
+    sources: IpBlocklistSource[];
+  } | null;
+  host: {
+    /** null when the host could not be read. */
+    active: boolean | null;
+    /** Packets dropped since the list was last loaded. */
+    dropped: number | null;
+    error: string | null;
+  };
+}
+
+export interface IpBlocklistCheck {
+  ip: string;
+  blocked: boolean;
+  /** The blocklist range the IP falls in. */
+  network: string | null;
+  /** The never-blocked range that lets it through anyway. */
+  allowed_by: string | null;
+}

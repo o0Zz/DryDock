@@ -11,12 +11,13 @@ from apscheduler.triggers.interval import IntervalTrigger
 
 from app.core.database import SessionLocal
 from app.models.job import JobKind
-from app.services import docker_service, job_service, settings_service, tasks
+from app.services import blocklist_service, docker_service, job_service, settings_service, tasks
 
 logger = logging.getLogger(__name__)
 
 SCAN_JOB_ID = "scheduled-scan"
 UPDATE_JOB_ID = "scheduled-update-check"
+BLOCKLIST_JOB_ID = "scheduled-blocklist"
 
 _scheduler: BackgroundScheduler | None = None
 
@@ -46,6 +47,15 @@ def _run_scheduled_update_check() -> None:
     )
 
 
+def run_blocklist() -> None:
+    job_service.submit(
+        JobKind.BLOCKLIST_APPLY,
+        "IP blocklist refresh",
+        tasks.blocklist_apply_runner(),
+        trigger="schedule",
+    )
+
+
 def start() -> None:
     global _scheduler
     if _scheduler is not None:
@@ -53,6 +63,10 @@ def start() -> None:
     _scheduler = BackgroundScheduler(daemon=True)
     _scheduler.start()
     reconfigure()
+    # A host reboot clears the nftables table, and DryDock starts with the host.
+    with SessionLocal() as db:
+        if blocklist_service.get_config(db).enabled:
+            run_blocklist()
 
 
 def reconfigure() -> None:
@@ -76,6 +90,13 @@ def reconfigure() -> None:
         hours=config["update_check_interval_hours"],
         func=_run_scheduled_update_check,
         name="Registry update check",
+    )
+    _apply(
+        BLOCKLIST_JOB_ID,
+        enabled=blocklist_service.config_from(config).enabled,
+        hours=blocklist_service.INTERVAL_HOURS,
+        func=run_blocklist,
+        name="IP blocklist refresh",
     )
 
 

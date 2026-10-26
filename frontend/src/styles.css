@@ -1229,3 +1229,15 @@ pre.diff .diff-gap { color: var(--muted); }
 .fail2ban-detail td { border-top: 0; padding-top: 0; }
 .fail2ban-test { display: flex; flex-direction: column; gap: 0.35rem; font-size: 0.85rem; }
 pre.error { white-space: pre-wrap; }
+
+/* --- IP blocklist (Host page) ------------------------------------------ */
+.blocklist-sources {
+  width: 100%;
+  font-family: "Cascadia Code", Consolas, Menlo, monospace;
+  resize: vertical;
+}
+.blocklist-status { display: flex; flex-direction: column; gap: 0.2rem; font-size: 0.85rem; margin: 0.5rem 0; }
+.blocklist-status code { overflow-wrap: anywhere; }
+.blocklist-check { align-items: center; margin-top: 0.75rem; }
+.blocklist-check input[type="text"] { width: 12rem; max-width: 100%; }
+.error-text { color: #cf222e; }

@@ -1,9 +1,10 @@
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.core.security import require_admin
 from app.models.job import Job, JobKind
+from app.schemas.blocklist import IpBlocklistCheck, IpBlocklistConfig, IpBlocklistRead
 from app.schemas.fail2ban import (
     Fail2banConfig,
     Fail2banConfigRead,
@@ -13,10 +14,12 @@ from app.schemas.fail2ban import (
 from app.schemas.host import Fail2banReport, HostUpdates
 from app.schemas.job import JobRead
 from app.services import (
+    blocklist_service,
     fail2ban_config_service,
     fail2ban_service,
     host_updates_service,
     job_service,
+    scheduler_service,
     tasks,
 )
 
@@ -83,3 +86,47 @@ def apply_fail2ban_config(db: Session = Depends(get_db)) -> Job:
 )
 def test_fail2ban_jail(body: Fail2banTestRequest) -> Fail2banTestResult:
     return fail2ban_config_service.test(body.config, body.jail)
+
+
+# Known bad IPs dropped by the host's nftables. It changes the host's firewall, so the
+# whole feature is admin only.
+@router.get("/blocklist", response_model=IpBlocklistRead, dependencies=[Depends(require_admin)])
+def blocklist(db: Session = Depends(get_db)) -> IpBlocklistRead:
+    return IpBlocklistRead(
+        config=blocklist_service.get_config(db),
+        status=blocklist_service.status(),
+        host=blocklist_service.host_state(),
+    )
+
+
+@router.put("/blocklist", response_model=IpBlocklistRead, dependencies=[Depends(require_admin)])
+def save_blocklist(body: IpBlocklistConfig, db: Session = Depends(get_db)) -> IpBlocklistRead:
+    """Store the config and its schedule. Nothing changes on the host until it is applied."""
+    blocklist_service.save_config(db, body)
+    scheduler_service.reconfigure()
+    return IpBlocklistRead(
+        config=body, status=blocklist_service.status(), host=blocklist_service.host_state()
+    )
+
+
+@router.post(
+    "/blocklist/apply",
+    response_model=JobRead,
+    status_code=status.HTTP_202_ACCEPTED,
+    dependencies=[Depends(require_admin)],
+)
+def apply_blocklist() -> Job:
+    return job_service.submit(
+        JobKind.BLOCKLIST_APPLY, "Apply the IP blocklist", tasks.blocklist_apply_runner()
+    )
+
+
+@router.get(
+    "/blocklist/check", response_model=IpBlocklistCheck, dependencies=[Depends(require_admin)]
+)
+def check_blocklist(ip: str) -> IpBlocklistCheck:
+    """Whether the last loaded list blocks `ip`."""
+    try:
+        return blocklist_service.check(ip.strip())
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, f"not an IP address: {ip}") from exc

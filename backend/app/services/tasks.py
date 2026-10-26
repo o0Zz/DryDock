@@ -21,6 +21,7 @@ from app.schemas.common import PruneResult
 from app.schemas.fail2ban import Fail2banConfig
 from app.schemas.project import Project
 from app.services import (
+    blocklist_service,
     compose_service,
     docker_service,
     fail2ban_config_service,
@@ -277,6 +278,33 @@ def fail2ban_apply_runner(config: Fail2banConfig) -> JobRunner:
         ctx.set_output(fail2ban_config_service.apply(config))
         enabled = sum(jail.enabled for jail in config.jails)
         ctx.advance(f"fail2ban reloaded: {enabled} DryDock jail(s) enabled")
+
+    return run
+
+
+def blocklist_apply_runner() -> JobRunner:
+    """Build a job body that loads the IP blocklist on the host, or removes it when off.
+
+    It reads the config when it runs, so a scheduled refresh follows the last save.
+    """
+
+    def run(ctx: JobContext) -> None:
+        config = blocklist_service.get_config(ctx.db)
+        if not config.enabled:
+            ctx.set_total(1, "Removing the blocklist from the host")
+            ctx.set_output(blocklist_service.apply(config))
+            ctx.advance("Blocklist off")
+            return
+        ctx.set_total(1, "Downloading the lists and loading them on the host")
+        output = blocklist_service.apply(config)
+        status = blocklist_service.status()
+        errors = [source.error for source in status.sources if source.error] if status else []
+        ctx.set_output("\n".join([output.strip(), *errors]))
+        entries = status.entries if status else 0
+        message = f"Blocklist loaded: {entries} ranges"
+        if errors:
+            message += f", {len(errors)} list(s) kept from the previous download"
+        ctx.advance(message)
 
     return run
 

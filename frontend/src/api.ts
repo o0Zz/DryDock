@@ -30,6 +30,9 @@ import type {
   GitCredential,
   HostUpdates,
   HostUsage,
+  IpBlocklistCheck,
+  IpBlocklistConfig,
+  IpBlocklistRead,
   Job,
   LocalImage,
   Project,
@@ -141,6 +144,15 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ config, jail }),
     }),
+  getBlocklist: () => request<IpBlocklistRead>("/api/host/blocklist"),
+  saveBlocklist: (config: IpBlocklistConfig) =>
+    request<IpBlocklistRead>("/api/host/blocklist", {
+      method: "PUT",
+      body: JSON.stringify(config),
+    }),
+  applyBlocklist: () => request<Job>("/api/host/blocklist/apply", { method: "POST" }),
+  checkBlocklist: (ip: string) =>
+    request<IpBlocklistCheck>(`/api/host/blocklist/check?ip=${encodeURIComponent(ip)}`),
 
   // projects / containers
   listProjects: () => request<Project[]>("/api/projects"),

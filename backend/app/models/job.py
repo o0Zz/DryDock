@@ -30,6 +30,8 @@ class JobKind:
     REPO_GIT = "repo_git"
     # Write DryDock's fail2ban jails on the host and reload it.
     FAIL2BAN_APPLY = "fail2ban_apply"
+    # Download the IP blocklists and load them in the host's nftables.
+    BLOCKLIST_APPLY = "blocklist_apply"
 
 
 class Job(Base):

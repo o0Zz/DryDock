@@ -1031,18 +1031,24 @@ def run_on_host(
     image: str,
     writable: tuple[str, ...] = (),
     environment: dict[str, str] | None = None,
+    host_network: bool = False,
 ) -> str:
     """Output of `sh -c script` chrooted into the host's root, mounted read-only.
 
     The host's own binaries run (its apt, its shell), so the output is what the
     host itself would print, whatever DryDock's image is. `writable` host folders
     are mounted read-write on top, so a script can only write there.
+    `host_network` runs it in the host's network namespace with NET_ADMIN, for
+    the host's firewall (nftables); otherwise it has no network at all.
     """
     options = _host_helper_options("/", image, "host-command")
     options["mounts"] += [
         Mount(target=posixpath.join(HOST_ROOT, path.lstrip("/")), source=path, type="bind")
         for path in writable
     ]
+    if host_network:
+        options["network_mode"] = "host"
+        options["cap_add"] = ["NET_ADMIN"]
     try:
         output = _client().containers.run(
             entrypoint=["chroot"],
