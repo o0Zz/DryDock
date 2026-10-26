@@ -25,28 +25,49 @@ const HINTS: Record<AiProviderId, string> = {
 export default function AiSettings() {
   const t = useT();
   const [config, setConfig] = useState<AiConfig | null>(null);
+  // The provider shown can differ from the active one until it is set up.
+  const [selected, setSelected] = useState<AiProviderId | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     api
       .getAi()
-      .then(setConfig)
+      .then((loaded) => {
+        setConfig(loaded);
+        setSelected(loaded.active);
+      })
       .catch((loadError: Error) => setError(loadError.message));
   }, []);
 
+  async function activate(next: AiConfig, provider: AiProviderId | null): Promise<void> {
+    setConfig(next);
+    const ready = provider === null || next.providers.some((p) => p.id === provider && p.configured);
+    if (ready && next.active !== provider) setConfig(await api.setAiActive(provider));
+  }
+
   async function choose(provider: AiProviderId | null): Promise<void> {
     setError(null);
+    setSelected(provider);
     try {
-      setConfig(await api.setAiActive(provider));
+      if (config) await activate(config, provider);
     } catch (chooseError) {
       setError((chooseError as Error).message);
+    }
+  }
+
+  // A provider just set up becomes the one in use.
+  async function changed(next: AiConfig): Promise<void> {
+    try {
+      await activate(next, selected);
+    } catch (activateError) {
+      setError((activateError as Error).message);
     }
   }
 
   if (!config) {
     return error ? <div className="error">{error}</div> : <div>{t("Loading…")}</div>;
   }
-  const ready = config.providers.filter((provider) => provider.configured);
+  const shown = config.providers.find((provider) => provider.id === selected);
 
   return (
     <section className="section">
@@ -57,39 +78,32 @@ export default function AiSettings() {
         )}
       </p>
       <label className="field">
-        {t("Provider in use")}
+        {t("Provider")}
         <select
-          value={config.active ?? ""}
+          value={selected ?? ""}
           onChange={(event) => choose((event.target.value || null) as AiProviderId | null)}
         >
           <option value="">{t("None (assistant off)")}</option>
-          {ready.map((provider) => (
+          {config.providers.map((provider) => (
             <option key={provider.id} value={provider.id}>
-              {NAMES[provider.id]}
+              {provider.configured
+                ? NAMES[provider.id]
+                : `${NAMES[provider.id]} (${t("not set up")})`}
             </option>
           ))}
         </select>
       </label>
       {error && <div className="error">{error}</div>}
-      {config.providers.map((provider) => (
-        <ProviderForm
-          key={provider.id}
-          provider={provider}
-          active={config.active === provider.id}
-          onChange={setConfig}
-        />
-      ))}
+      {shown && <ProviderForm key={shown.id} provider={shown} onChange={changed} />}
     </section>
   );
 }
 
 function ProviderForm({
   provider,
-  active,
   onChange,
 }: {
   provider: AiProvider;
-  active: boolean;
   onChange: (config: AiConfig) => void;
 }) {
   const t = useT();
@@ -154,16 +168,6 @@ function ProviderForm({
 
   return (
     <div className="subsection">
-      <h3>
-        {NAMES[provider.id]}{" "}
-        {provider.configured ? (
-          <span className={`badge ${active ? "running" : ""}`}>
-            {active ? t("in use") : t("ready")}
-          </span>
-        ) : (
-          <span className="badge">{t("not set up")}</span>
-        )}
-      </h3>
       <p className="muted">{t(HINTS[provider.id])}</p>
       {isCopilot ? (
         <CopilotSignIn provider={provider} onChange={onChange} />

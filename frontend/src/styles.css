@@ -434,6 +434,8 @@ button.linklike.danger svg { color: #cf222e; }
 input[type="text"],
 input[type="password"],
 input[type="search"],
+input[type="number"],
+select,
 .login-card input,
 .button-row input {
   background: var(--bg);
@@ -444,7 +446,8 @@ input[type="search"],
   font-size: 0.9rem;
 }
 
-input:focus {
+input:focus,
+select:focus {
   outline: none;
   border-color: var(--accent);
 }
