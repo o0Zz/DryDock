@@ -12,7 +12,7 @@ A new feature should make one of these better for a single host, and stay cheap 
 
 The repo folder is named `HarborGuard`, an earlier name. The product, the env prefix (`DRYDOCK_`), the package and the image are all **DryDock**.
 
-`README.md` is the short, user-facing page (features, quick start, config). Contributor detail lives here. Keep both in sync when behaviour changes.
+`README.md` is the short, user-facing pitch (why, highlights with screenshots, quick start, labels, config). User detail lives in `docs/` (`features.md`, `reverse-proxy.md`, `git.md`, `troubleshooting.md`). Contributor detail lives here. Keep all three in sync when behaviour changes.
 
 ## Stack
 
@@ -52,7 +52,8 @@ frontend/src/
   hooks/               useJobs, useContainerStats, useSort (click-to-sort tables with SortHeader)
   api.ts, types.ts     typed API client and response types
   i18n.tsx, i18n/fr/   translations: English text is the key, one JSON file per UI area
-docs/                  user docs (troubleshooting.md)
+docs/                  user docs (features, reverse-proxy, git, troubleshooting) and
+                       screenshots/ for the README
 sample-repo/           Compose stacks for local dev
 Dockerfile             3-stage build (frontend, backend venv, runtime with docker/compose/buildx/trivy/git)
 .github/workflows/     multi-arch build and push to ghcr.io
@@ -214,7 +215,7 @@ uv run alembic check       # fails if models and migrations differ
 - Frontend: all calls go through `api.ts`, and all types live in `types.ts`. Load heavy components lazily (`YamlEditor`, `ContainerConsole`).
 - UI text goes through `t("English text", { vars })` from `useT()` (`i18n.tsx`). Text defined outside a component is marked `msg("...")` and passed to `t()` where shown; plain helpers use `translate()`. Add the French to `src/i18n/fr/<area>.json` (shared words in `common.json`). `npm run i18n:check` fails on a missing key or a placeholder mismatch. Keep whole sentences as one key; never translate API data or values used in logic.
 - Layout: one breakpoint at 768px in `styles.css`. Below it the sidebar is a drawer (menu button in the topbar), tables scroll sideways, and panels become bottom sheets. New wide content must not push the page wider than the screen.
-- Docs (`README.md`, this file) use plain, short sentences.
+- Docs (`README.md`, `docs/`, this file) use plain, short sentences.
 
 ## Principles
 

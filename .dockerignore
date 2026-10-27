@@ -28,6 +28,7 @@ sample-repo
 # Docs & metadata that don't affect the build
 CLAUDE.md
 README.md
+docs
 Dockerfile
 .dockerignore
 docker-compose.yml
