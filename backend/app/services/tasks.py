@@ -19,13 +19,14 @@ from sqlalchemy.orm import Session
 from app.models.scan import Scan, ScanFinding
 from app.models.update import UpdateCheck
 from app.schemas.common import PruneResult
-from app.schemas.fail2ban import Fail2banConfig
+from app.schemas.fail2ban import Fail2banEdit
 from app.schemas.project import Project
 from app.services import (
     blocklist_service,
     compose_service,
     docker_service,
     fail2ban_config_service,
+    fail2ban_jails,
     git_service,
     host_path_service,
     host_updates_service,
@@ -272,14 +273,27 @@ def update_check_runner(resolve: ImageResolver, *, notify: bool = False) -> JobR
     return run
 
 
-def fail2ban_apply_runner(config: Fail2banConfig) -> JobRunner:
-    """Build a job body that writes DryDock's fail2ban jails on the host and reloads it."""
+def fail2ban_apply_runner(edit: Fail2banEdit) -> JobRunner:
+    """Build a job body that edits fail2ban's files on the host and reloads it.
+
+    It plans from the host's files as they are when it runs, and keeps a copy of every
+    file it changes in DryDock's backups first.
+    """
 
     def run(ctx: JobContext) -> None:
-        ctx.set_total(1, "Writing the jails and reloading fail2ban")
-        ctx.set_output(fail2ban_config_service.apply(config))
-        enabled = sum(jail.enabled for jail in config.jails)
-        ctx.advance(f"fail2ban reloaded: {enabled} DryDock jail(s) enabled")
+        ctx.set_total(2, "Reading fail2ban's files on the host")
+        snapshot = fail2ban_config_service.snapshot()
+        changes = fail2ban_jails.plan(snapshot, edit)
+        if not changes:
+            ctx.advance("Nothing to change")
+            ctx.advance()
+            return
+        ctx.advance(f"Writing {len(changes)} file(s) and reloading fail2ban")
+        fail2ban_config_service.backup(snapshot, changes)
+        output = fail2ban_config_service.apply(changes)
+        changed = "".join(f"changed /etc/fail2ban/{path}\n" for path in changes)
+        ctx.set_output(f"{changed}\n{output}")
+        ctx.advance(f"fail2ban reloaded: {len(changes)} file(s) changed")
 
     return run
 

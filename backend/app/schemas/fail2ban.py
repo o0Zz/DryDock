@@ -1,72 +1,122 @@
-import ipaddress
 from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
 
-# Ready-made detections, or `custom` with the user's own failregex.
-Fail2banRule = Literal["auth", "forbidden", "botsearch", "badbots", "custom"]
 # Access log formats: one text line per request (Traefik, nginx/SWAG), or JSON (Caddy).
 LogFormat = Literal["text", "json"]
 
+# A jail name is also a file name (`jail.d/<name>.local`, `filter.d/<name>.conf`).
+JAIL_NAME = r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,62}$"
 # An absolute host path, on one line: it ends up in fail2ban's config and a shell script.
 _HOST_PATH = r"^/[^\n\r'\"$`]*$"
 
 
 class Fail2banJailConfig(BaseModel):
-    # Becomes the jail and filter name, `drydock-<name>`.
-    name: str = Field(pattern=r"^[a-z0-9][a-z0-9-]{0,40}$")
-    enabled: bool = True
-    rule: Fail2banRule
-    # Only for `custom`. <HOST> marks the client IP, as in any fail2ban filter.
-    failregex: str = Field(default="", max_length=2000)
-    maxretry: int = Field(default=5, ge=1, le=1000)
-    # Seconds.
-    findtime: int = Field(default=600, ge=60, le=30 * 86400)
-    bantime: int = Field(default=86400, ge=60, le=365 * 86400)
+    """A jail as the host's fail2ban sees it, from its files and `fail2ban-client -d`."""
+
+    name: str
+    # DryDock created its files: `jail.d/<name>.local` and `filter.d/<name>.conf`.
+    managed: bool
+    enabled: bool
+    # `systemd` reads the journal: no log path.
+    backend: str | None = None
+    # The filter.d file of its regexes; None when DryDock cannot tell (interpolated).
+    filter: str | None = None
+    logpath: list[str] = []
+    failregex: list[str] = []
+    ignoreregex: list[str] = []
+    maxretry: str = ""
+    findtime: str = ""
+    bantime: str = ""
+    # field -> `file:line` that sets it.
+    sources: dict[str, str] = {}
+    # Its lines of `fail2ban-client -d`, raw. Empty when the jail is off.
+    dump: list[str] = []
 
 
-class Fail2banConfig(BaseModel):
-    # Host path of the proxy's access log.
-    log_path: str = Field(pattern=_HOST_PATH, max_length=500)
+class Fail2banTemplate(BaseModel):
+    """A starting point for a new jail on the proxy's access log."""
+
+    # The filter.d file the new filter includes for its variables, if any.
+    before: str | None = None
+    failregex: dict[LogFormat, str]
+
+
+class Fail2banJails(BaseModel):
+    jails: list[Fail2banJailConfig]
+    # The single `jail.d/drydock.local` of older DryDock versions is still there.
+    legacy: bool = False
+    templates: dict[str, Fail2banTemplate] = {}
+
+
+class Fail2banNewJail(BaseModel):
+    template: str
     log_format: LogFormat = "text"
-    # Host path of the proxy sync's allowlist: its IPs are never banned. Empty: none.
-    allowlist_file: str = Field(default="", pattern=r"^$|" + _HOST_PATH, max_length=500)
-    ignore_ips: list[str] = []
     # Docker publishes the proxy's ports, so its traffic is forwarded, not input.
     ban_hook: Literal["forward", "input"] = "forward"
-    jails: list[Fail2banJailConfig] = []
 
-    @field_validator("ignore_ips")
+
+class Fail2banJailChange(BaseModel):
+    """What changes in one jail. A field left None stays as it is."""
+
+    name: str = Field(pattern=JAIL_NAME)
+    # Set to create the jail; DryDock then owns its two files.
+    create: Fail2banNewJail | None = None
+    # Only a jail DryDock created can be deleted. Any jail can be turned off.
+    delete: bool = False
+    enabled: bool | None = None
+    logpath: list[str] | None = None
+    failregex: list[str] | None = None
+    ignoreregex: list[str] | None = None
+    maxretry: str | None = Field(default=None, pattern=r"^\d{1,4}$")
+    # fail2ban's time values: seconds, `10m`, `1d`, `-1` for ever.
+    findtime: str | None = Field(default=None, pattern=r"^-?\d+[smhdwy]?$")
+    bantime: str | None = Field(default=None, pattern=r"^-?\d+[smhdwy]?$")
+
+    @field_validator("logpath", "failregex", "ignoreregex")
     @classmethod
-    def _networks(cls, value: list[str]) -> list[str]:
-        for item in value:
-            try:
-                ipaddress.ip_network(item, strict=False)
-            except ValueError as exc:
-                raise ValueError(f"not an IP or network: {item}") from exc
-        return value
-
-    @field_validator("jails")
-    @classmethod
-    def _unique(cls, value: list[Fail2banJailConfig]) -> list[Fail2banJailConfig]:
-        names = [jail.name for jail in value]
-        if len(names) != len(set(names)):
-            raise ValueError("jail names must be unique")
-        for jail in value:
-            if jail.rule == "custom" and "<HOST>" not in jail.failregex:
-                raise ValueError(f"{jail.name}: a custom failregex needs <HOST>")
-        return value
+    def _lines(cls, value: list[str] | None) -> list[str] | None:
+        if value is None:
+            return None
+        lines = [line.strip() for line in value if line.strip()]
+        for line in lines:
+            if "\n" in line or "\r" in line or len(line) > 2000:
+                raise ValueError("one line per item, 2000 characters at most")
+        return lines
 
 
-class Fail2banConfigRead(BaseModel):
-    config: Fail2banConfig
-    # Whether the host's jail file is the one this config renders; None when unreadable.
-    applied: bool | None = None
+class Fail2banEdit(BaseModel):
+    changes: list[Fail2banJailChange] = []
+    # Split the old `jail.d/drydock.local` into one file per jail.
+    convert_legacy: bool = False
+
+
+class Fail2banFileChange(BaseModel):
+    # Path under /etc/fail2ban.
+    path: str
+    # None: the file does not exist before, or is removed after.
+    before: str | None
+    after: str | None
+
+
+class Fail2banPlan(BaseModel):
+    files: list[Fail2banFileChange]
 
 
 class Fail2banTestRequest(BaseModel):
-    config: Fail2banConfig
-    jail: Fail2banJailConfig
+    logpath: str = Field(pattern=_HOST_PATH, max_length=500)
+    failregex: list[str]
+    ignoreregex: list[str] = []
+    # The jail's filter: its other settings (prefregex, datepattern) apply too.
+    filter: str | None = Field(default=None, pattern=JAIL_NAME)
+    # For a new jail: the template's include and the log format's date pattern.
+    template: str | None = None
+    log_format: LogFormat = "text"
+
+    @field_validator("failregex", "ignoreregex")
+    @classmethod
+    def _lines(cls, value: list[str]) -> list[str]:
+        return Fail2banJailChange._lines(value) or []
 
 
 class Fail2banHit(BaseModel):

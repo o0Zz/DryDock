@@ -43,6 +43,7 @@ from app.services import (
     compose_service,
     docker_service,
     fail2ban_config_service,
+    fail2ban_jails,
     fail2ban_service,
     host_path_service,
     job_service,
@@ -136,6 +137,7 @@ _ERROR_STATUS: dict[type[Exception], tuple[int, str]] = {
     compose_service.ComposeExists: (409, "{}"),
     fail2ban_service.Fail2banError: (400, "{}"),
     fail2ban_config_service.Fail2banConfigError: (400, "{}"),
+    fail2ban_jails.Fail2banPlanError: (400, "{}"),
     blocklist_service.BlocklistError: (400, "{}"),
     ai_service.AiNotConfigured: (400, "{}"),
     # The provider failed, not DryDock.

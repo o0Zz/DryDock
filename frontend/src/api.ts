@@ -22,10 +22,11 @@ import type {
   EnvContent,
   EnvSaveResult,
   ExposeRequest,
-  Fail2banConfig,
-  Fail2banConfigRead,
-  Fail2banJailConfig,
+  Fail2banEdit,
+  Fail2banJails,
+  Fail2banPlan,
   Fail2banReport,
+  Fail2banTestRequest,
   Fail2banTestResult,
   GitCredential,
   HostUpdates,
@@ -132,17 +133,18 @@ export const api = {
   hostUpdates: () => request<HostUpdates | null>("/api/host/updates"),
   checkHostUpdates: () => request<Job>("/api/host/updates/check", { method: "POST" }),
   fail2ban: () => request<Fail2banReport>("/api/host/fail2ban"),
-  getFail2banConfig: () => request<Fail2banConfigRead>("/api/host/fail2ban/config"),
-  saveFail2banConfig: (config: Fail2banConfig) =>
-    request<Fail2banConfigRead>("/api/host/fail2ban/config", {
-      method: "PUT",
-      body: JSON.stringify(config),
+  fail2banJails: () => request<Fail2banJails>("/api/host/fail2ban/jails"),
+  planFail2ban: (edit: Fail2banEdit) =>
+    request<Fail2banPlan>("/api/host/fail2ban/plan", {
+      method: "POST",
+      body: JSON.stringify(edit),
     }),
-  applyFail2banConfig: () => request<Job>("/api/host/fail2ban/apply", { method: "POST" }),
-  testFail2banJail: (config: Fail2banConfig, jail: Fail2banJailConfig) =>
+  applyFail2ban: (edit: Fail2banEdit) =>
+    request<Job>("/api/host/fail2ban/apply", { method: "POST", body: JSON.stringify(edit) }),
+  testFail2ban: (test: Fail2banTestRequest) =>
     request<Fail2banTestResult>("/api/host/fail2ban/test", {
       method: "POST",
-      body: JSON.stringify({ config, jail }),
+      body: JSON.stringify(test),
     }),
   getBlocklist: () => request<IpBlocklistRead>("/api/host/blocklist"),
   saveBlocklist: (config: IpBlocklistConfig) =>

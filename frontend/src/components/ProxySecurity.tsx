@@ -5,13 +5,13 @@ import { formatDate } from "../format";
 import { useSort } from "../hooks/useSort";
 import { translate, useT } from "../i18n";
 import type { Fail2banBan, Fail2banReport } from "../types";
-import Fail2banRules from "./Fail2banRules";
+import Fail2banJails from "./Fail2banJails";
 import IpBlocklist from "./IpBlocklist";
 import SortHeader from "./SortHeader";
 
 /**
- * The Proxy page's Security tab (admin only): who fail2ban banned, the jails that
- * watch the proxy's access log, and the IP blocklist. fail2ban and nftables run on
+ * The Proxy page's Security tab (admin only): fail2ban's jails with their bans, who it
+ * banned, and the IP blocklist. fail2ban and nftables run on
  * the host; DryDock reads their state and writes their config.
  */
 export default function ProxySecurity() {
@@ -48,14 +48,9 @@ export default function ProxySecurity() {
           <RefreshCw size={14} /> {t("Refresh")}
         </button>
       </div>
-      {error ? (
-        <div className="error">{error}</div>
-      ) : report ? (
-        <Fail2ban report={report} />
-      ) : (
-        <div className="empty">{t("Loading…")}</div>
-      )}
-      <Fail2banRules onApplied={load} />
+      {error && <div className="error">{error}</div>}
+      <Fail2banJails report={report} onApplied={load} />
+      {report && <Bans report={report} />}
       <IpBlocklist />
     </section>
   );
@@ -128,7 +123,7 @@ function BanTable({ bans, empty }: { bans: Fail2banBan[]; empty: string }) {
   );
 }
 
-function Fail2ban({ report }: { report: Fail2banReport }) {
+function Bans({ report }: { report: Fail2banReport }) {
   const t = useT();
   return (
     <>
@@ -138,40 +133,6 @@ function Fail2ban({ report }: { report: Fail2banReport }) {
         })}{" "}
         <code>dbpurgeage</code> {t("(1 day by default).")}
       </p>
-      <table className="projects-table">
-        <thead>
-          <tr>
-            <th>{t("Jail")}</th>
-            <th>{t("Active bans")}</th>
-            <th>{t("Bans in history")}</th>
-            <th>{t("Last ban")}</th>
-          </tr>
-        </thead>
-        <tbody>
-          {report.jails.map((jail) => (
-            <tr key={jail.name}>
-              <td>
-                <span className="row-name">{jail.name}</span>{" "}
-                {!jail.enabled && <span className="badge">{t("disabled")}</span>}
-                {jail.enabled && jail.bans === 0 && (
-                  <span
-                    className="badge"
-                    title={t(
-                      "This jail has banned nobody. Check that its log path and filter match your logs.",
-                    )}
-                  >
-                    {t("no bans")}
-                  </span>
-                )}
-              </td>
-              <td>{jail.active_bans}</td>
-              <td>{jail.bans}</td>
-              <td className="muted">{formatDate(jail.last_ban_at)}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-
       {report.top_users.length > 0 && (
         <>
           <h3>{t("User names tried on SSH")}</h3>

@@ -6,8 +6,10 @@ from app.core.security import require_admin
 from app.models.job import Job, JobKind
 from app.schemas.blocklist import IpBlocklistCheck, IpBlocklistConfig, IpBlocklistRead
 from app.schemas.fail2ban import (
-    Fail2banConfig,
-    Fail2banConfigRead,
+    Fail2banEdit,
+    Fail2banFileChange,
+    Fail2banJails,
+    Fail2banPlan,
     Fail2banTestRequest,
     Fail2banTestResult,
 )
@@ -22,6 +24,7 @@ from app.services import (
     scheduler_service,
     tasks,
 )
+from app.services import fail2ban_jails as fail2ban_jails_service
 
 router = APIRouter(prefix="/api/host", tags=["host"])
 
@@ -45,25 +48,30 @@ def fail2ban() -> Fail2banReport:
     return fail2ban_service.report()
 
 
-# DryDock's own jails against the proxy's access log. Writing them changes the host,
-# so the whole config is admin only.
-@router.get(
-    "/fail2ban/config", response_model=Fail2banConfigRead, dependencies=[Depends(require_admin)]
-)
-def fail2ban_config(db: Session = Depends(get_db)) -> Fail2banConfigRead:
-    config = fail2ban_config_service.get_config(db)
-    return Fail2banConfigRead(config=config, applied=fail2ban_config_service.applied(config))
+# fail2ban's jails, read from the host's files and edited in place. Writing them changes
+# the host, so it is admin only. Reading and planning block a few seconds instead of being
+# jobs: the user waits for the answer, and they only read the host.
+@router.get("/fail2ban/jails", response_model=Fail2banJails, dependencies=[Depends(require_admin)])
+def fail2ban_jails() -> Fail2banJails:
+    snapshot = fail2ban_config_service.snapshot()
+    return Fail2banJails(
+        jails=fail2ban_jails_service.read_jails(snapshot),
+        legacy=fail2ban_jails_service.LEGACY_FILE in snapshot.files,
+        templates=fail2ban_jails_service.TEMPLATES,
+    )
 
 
-@router.put(
-    "/fail2ban/config", response_model=Fail2banConfigRead, dependencies=[Depends(require_admin)]
-)
-def save_fail2ban_config(
-    body: Fail2banConfig, db: Session = Depends(get_db)
-) -> Fail2banConfigRead:
-    """Store the config. Nothing changes on the host until it is applied."""
-    fail2ban_config_service.save_config(db, body)
-    return Fail2banConfigRead(config=body, applied=fail2ban_config_service.applied(body))
+@router.post("/fail2ban/plan", response_model=Fail2banPlan, dependencies=[Depends(require_admin)])
+def plan_fail2ban(body: Fail2banEdit) -> Fail2banPlan:
+    """The files an edit would change, before and after, without writing them."""
+    snapshot = fail2ban_config_service.snapshot()
+    changes = fail2ban_jails_service.plan(snapshot, body)
+    return Fail2banPlan(
+        files=[
+            Fail2banFileChange(path=path, before=snapshot.files.get(path), after=after)
+            for path, after in changes.items()
+        ]
+    )
 
 
 @router.post(
@@ -72,20 +80,17 @@ def save_fail2ban_config(
     status_code=status.HTTP_202_ACCEPTED,
     dependencies=[Depends(require_admin)],
 )
-def apply_fail2ban_config(db: Session = Depends(get_db)) -> Job:
-    config = fail2ban_config_service.get_config(db)
+def apply_fail2ban(body: Fail2banEdit) -> Job:
     return job_service.submit(
-        JobKind.FAIL2BAN_APPLY, "Apply fail2ban jails", tasks.fail2ban_apply_runner(config)
+        JobKind.FAIL2BAN_APPLY, "Apply fail2ban changes", tasks.fail2ban_apply_runner(body)
     )
 
 
-# Blocks a few seconds instead of being a job: the user waits for the answer, and it
-# only reads the host.
 @router.post(
     "/fail2ban/test", response_model=Fail2banTestResult, dependencies=[Depends(require_admin)]
 )
 def test_fail2ban_jail(body: Fail2banTestRequest) -> Fail2banTestResult:
-    return fail2ban_config_service.test(body.config, body.jail)
+    return fail2ban_config_service.test(body)
 
 
 # Known bad IPs dropped by the host's nftables. It changes the host's firewall, so the

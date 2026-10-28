@@ -1220,25 +1220,31 @@ pre.diff .diff-gap { color: var(--muted); }
 .label-reference dd { margin: 0; color: var(--muted); }
 .badge svg { vertical-align: -2px; }
 
-/* --- fail2ban jails managed by DryDock (Host page) --------------------- */
+/* --- fail2ban jails managed by DryDock (Proxy page, Security tab) ------ */
 .fail2ban-fields {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
   gap: 0 1rem;
 }
 .fail2ban-fields .field { max-width: none; }
-.fail2ban-fields .field input,
-.fail2ban-fields .field select { width: 100%; }
 .table-scroll { overflow-x: auto; }
 .fail2ban-jails td { vertical-align: middle; }
 .fail2ban-name { width: 9rem; }
 .fail2ban-number { width: 5.5rem; }
 .fail2ban-regex { width: 100%; font-family: "Cascadia Code", Consolas, Menlo, monospace; }
+textarea.fail2ban-regex,
+textarea.fail2ban-log { resize: vertical; font-family: "Cascadia Code", Consolas, Menlo, monospace; }
+.fail2ban-log { width: 16rem; font-family: "Cascadia Code", Consolas, Menlo, monospace; }
+.fail2ban-deleted td { opacity: 0.5; text-decoration: line-through; }
+.fail2ban-new { margin-top: 0.5rem; }
+.fail2ban-filter { display: flex; flex-direction: column; gap: 0.35rem; max-width: 60rem; }
+.fail2ban-filter .field { max-width: none; }
+.fail2ban-filter .match-lines { margin: 0; }
 .fail2ban-detail td { border-top: 0; padding-top: 0; }
 .fail2ban-test { display: flex; flex-direction: column; gap: 0.35rem; font-size: 0.85rem; }
 pre.error { white-space: pre-wrap; }
 
-/* --- IP blocklist (Host page) ------------------------------------------ */
+/* --- IP blocklist (Proxy page, Security tab) -------------------------- */
 .blocklist-sources {
   width: 100%;
   font-family: "Cascadia Code", Consolas, Menlo, monospace;
