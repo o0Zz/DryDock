@@ -8,7 +8,9 @@ from app.schemas.blocklist import IpBlocklistCheck, IpBlocklistConfig, IpBlockli
 from app.schemas.fail2ban import (
     Fail2banEdit,
     Fail2banFileChange,
+    Fail2banJailConfig,
     Fail2banJails,
+    Fail2banNewJail,
     Fail2banPlan,
     Fail2banTestRequest,
     Fail2banTestResult,
@@ -57,8 +59,16 @@ def fail2ban_jails() -> Fail2banJails:
     return Fail2banJails(
         jails=fail2ban_jails_service.read_jails(snapshot),
         legacy=fail2ban_jails_service.LEGACY_FILE in snapshot.files,
-        templates=fail2ban_jails_service.TEMPLATES,
+        templates=list(fail2ban_jails_service.TEMPLATES),
     )
+
+
+@router.post(
+    "/fail2ban/new", response_model=Fail2banJailConfig, dependencies=[Depends(require_admin)]
+)
+def new_fail2ban_jail(body: Fail2banNewJail) -> Fail2banJailConfig:
+    """A new jail's two files from a template, to edit before applying. Nothing is written."""
+    return fail2ban_jails_service.new_jail(body)
 
 
 @router.post("/fail2ban/plan", response_model=Fail2banPlan, dependencies=[Depends(require_admin)])

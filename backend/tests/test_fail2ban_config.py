@@ -13,7 +13,7 @@ from fastapi.testclient import TestClient
 from app.core.database import get_db
 from app.core.security import get_current_user
 from app.main import app
-from app.schemas.fail2ban import Fail2banEdit, Fail2banTestRequest
+from app.schemas.fail2ban import Fail2banEdit, Fail2banNewJail, Fail2banTestRequest
 from app.services import docker_service, fail2ban_config_service, job_service
 from app.services import fail2ban_ini as ini
 from app.services import fail2ban_jails as jails_service
@@ -131,153 +131,165 @@ def _plan(snapshot: Snapshot | None = None, **edit: Any) -> dict[str, str | None
     return jails_service.plan(snapshot or _snapshot(), Fail2banEdit.model_validate(edit))
 
 
-def _jail(name: str) -> Any:
-    return next(jail for jail in jails_service.read_jails(_snapshot()) if jail.name == name)
+def _jail(name: str, snapshot: Snapshot | None = None) -> Any:
+    jails = jails_service.read_jails(snapshot or _snapshot())
+    return next(jail for jail in jails if jail.name == name)
 
 
-# --- INI editing ------------------------------------------------------------------------
+# --- INI blocks -------------------------------------------------------------------------
 
 
-def test_ini_edits_one_key_and_keeps_the_rest() -> None:
-    text = "# mine\n[sshd]\nmaxretry = 5  \nfailregex = a\n    b\n\n[other]\nmaxretry = 1\n"
-
-    assert ini.get(text, "sshd", "failregex") == ["a", "b"]
-    changed = ini.set_value(text, "sshd", "failregex", ["x", "y"])
-    assert (
-        changed
-        == "# mine\n[sshd]\nmaxretry = 5  \nfailregex = x\n            y\n\n[other]\nmaxretry = 1\n"
+def test_a_block_is_replaced_where_it_is() -> None:
+    text = (
+        "# mine\n[sshd]\nmaxretry = 5\n#bantime = 1h\n\n# The next jail.\n[other]\nmaxretry = 1\n"
     )
-    added = ini.set_value(text, "sshd", "bantime", ["1d"])
-    assert "    b\nbantime = 1d\n\n[other]" in added
-    assert ini.set_value(text, "new", "enabled", ["true"]).endswith(
+
+    # The comment paragraph after a blank line introduces [other]: not part of [sshd].
+    assert ini.blocks(text, "sshd") == [(2, "[sshd]\nmaxretry = 5\n#bantime = 1h")]
+    assert ini.replace_section(text, "sshd", "[sshd]\nmaxretry = 3\n") == text.replace(
+        "maxretry = 5\n#bantime = 1h", "maxretry = 3"
+    )
+    assert ini.replace_section(text, "sshd", "") == (
+        "# mine\n\n# The next jail.\n[other]\nmaxretry = 1\n"
+    )
+    assert ini.replace_section(text, "new", "[new]\nenabled = true").endswith(
         "maxretry = 1\n\n[new]\nenabled = true\n"
     )
-    assert (
-        ini.set_value(text, "sshd", "failregex", None)
-        == "# mine\n[sshd]\nmaxretry = 5  \n\n[other]\nmaxretry = 1\n"
-    )
+    assert ini.get(text, "sshd", "maxretry") == ["5"]
 
 
 # --- Reading ----------------------------------------------------------------------------
 
 
-def test_sshd_is_read_through_every_layer() -> None:
+def test_sshd_shows_every_block_in_read_order() -> None:
     sshd = _jail("sshd")
 
+    assert [(block.path, block.line, block.owner) for block in sshd.blocks] == [
+        ("jail.conf", 10, "package"),
+        ("jail.d/defaults-debian.conf", 4, "package"),
+        ("jail.local", 1, "local"),
+        ("filter.d/sshd.conf", None, "package"),
+        # No override of the filter yet: where it would go.
+        ("filter.d/sshd.local", None, "local"),
+    ]
+    assert sshd.blocks[2].text == FILES["jail.local"].rstrip("\n")
+    assert sshd.blocks[-1].text == ""
     assert sshd.enabled and not sshd.managed
-    assert sshd.backend == "systemd"
+    assert (sshd.backend, sshd.filter) == ("systemd", "sshd")
     # jail.local sets a logpath, but the systemd backend reads the journal.
     assert sshd.logpath == []
-    assert sshd.sources["logpath"] == "jail.local:5"
-    assert sshd.filter == "sshd"
-    assert sshd.failregex == ["^Failed \\S+ for <HOST>", "^Invalid \\S+ from <HOST>"]
     assert (sshd.maxretry, sshd.findtime, sshd.bantime) == ("5", "600", "86400")
-    assert sshd.sources["maxretry"] == "jail.local:6"
-    assert sshd.sources["failregex"] == "filter.d/sshd.conf:5"
     assert sshd.dump[0] == "['add', 'sshd', 'systemd']"
     # Not started, not touched by a .local file: not listed.
     assert "apache-badbots" not in [jail.name for jail in jails_service.read_jails(_snapshot())]
 
 
 def test_a_disabled_jail_is_read_from_its_files() -> None:
-    snapshot = _snapshot(
-        **{"jail.local": FILES["jail.local"].replace("enabled = true", "enabled = false")}
-    )
-    snapshot.files["jail.d/defaults-debian.conf"] = ""
+    local = FILES["jail.local"].replace("enabled = true", "enabled = false")
+    snapshot = _snapshot(**{"jail.local": local, "jail.d/defaults-debian.conf": None})
     snapshot.dump = ""
 
-    sshd = next(jail for jail in jails_service.read_jails(snapshot) if jail.name == "sshd")
+    sshd = _jail("sshd", snapshot)
 
     assert not sshd.enabled
     assert sshd.logpath == ["/var/log/auth.log"]
-    assert sshd.failregex[0] == "^Failed \\S+ for <HOST>"
+    assert sshd.backend == "%(sshd_backend)s"
 
 
-# --- Editing in place -------------------------------------------------------------------
+def test_a_jail_only_in_package_files_gets_a_place_in_jail_local() -> None:
+    sshd = _jail("sshd", _snapshot(**{"jail.local": None}))
 
-
-def test_a_key_set_in_jail_local_is_edited_there() -> None:
-    changes = _plan(changes=[{"name": "sshd", "maxretry": "3", "bantime": "1d"}])
-
-    assert list(changes) == ["jail.local"]
-    assert "maxretry = 3\nfindtime = 600\nbantime = 1d\n" in changes["jail.local"]
-
-
-def test_a_key_from_a_package_file_goes_to_jail_local() -> None:
-    # `enabled` is last set by jail.local here; drop it there so it comes from the package.
-    local = FILES["jail.local"].replace("enabled = true\n", "")
-
-    changes = _plan(
-        _snapshot(**{"jail.local": local}), changes=[{"name": "sshd", "enabled": False}]
+    assert (sshd.blocks[2].path, sshd.blocks[2].text, sshd.blocks[2].owner) == (
+        "jail.local",
+        "",
+        "local",
     )
 
-    assert list(changes) == ["jail.local"]
-    assert ini.get(changes["jail.local"] or "", "sshd", "enabled") == ["false"]
+
+# --- Editing ----------------------------------------------------------------------------
 
 
-def test_a_regex_of_a_package_filter_goes_to_its_local_twin() -> None:
-    changes = _plan(changes=[{"name": "sshd", "failregex": ["^Failed \\S+ for <HOST>"]}])
+def test_a_block_goes_back_in_its_file() -> None:
+    block = FILES["jail.local"].replace("maxretry = 5", "maxretry = 3")
 
-    assert list(changes) == ["filter.d/sshd.local"]
-    assert ini.get(changes["filter.d/sshd.local"] or "", "Definition", "failregex") == [
-        "^Failed \\S+ for <HOST>"
-    ]
+    changes = _plan(files=[{"path": "jail.local", "section": "sshd", "text": block}])
+
+    assert changes == {"jail.local": block}
 
 
-def test_bad_edits_are_refused() -> None:
-    with pytest.raises(Fail2banPlanError, match="<HOST>"):
-        _plan(changes=[{"name": "sshd", "failregex": ["no host"]}])
-    with pytest.raises(Fail2banPlanError, match="no jail"):
-        _plan(changes=[{"name": "nope", "maxretry": "3"}])
+def test_an_override_is_added_to_a_local_file() -> None:
+    changes = _plan(
+        _snapshot(**{"jail.local": "[DEFAULT]\nbantime = 1h\n"}),
+        files=[{"path": "jail.local", "section": "sshd", "text": "[sshd]\nmaxretry = 3"}],
+    )
+
+    assert changes == {"jail.local": "[DEFAULT]\nbantime = 1h\n\n[sshd]\nmaxretry = 3\n"}
+
+
+def test_a_filter_is_overridden_in_its_local_twin() -> None:
+    text = "[Definition]\nfailregex = ^Failed \\S+ for <HOST>\n"
+
+    changes = _plan(files=[{"path": "filter.d/sshd.local", "text": text}])
+
+    assert changes == {"filter.d/sshd.local": text}
+
+
+def test_package_files_and_stray_sections_are_refused() -> None:
+    with pytest.raises(Fail2banPlanError, match="apt owns"):
+        _plan(files=[{"path": "filter.d/sshd.conf", "text": "[Definition]\n"}])
+    with pytest.raises(ValueError):  # jail.conf is not even a writable path
+        _plan(files=[{"path": "jail.conf", "section": "sshd", "text": "[sshd]\n"}])
+    for text in ("[sshd]\nmaxretry = 3\n[recidive]\nenabled = true", "maxretry = 3"):
+        with pytest.raises(Fail2banPlanError, match=r"\[sshd\] section only"):
+            _plan(files=[{"path": "jail.local", "section": "sshd", "text": text}])
+    with pytest.raises(Fail2banPlanError, match="only removes"):
+        _plan(files=[{"path": "jail.local", "text": None}])
 
 
 # --- One file pair per jail -------------------------------------------------------------
 
 
+def _new(name: str = "scanners", **fields: Any) -> list[dict[str, Any]]:
+    new = Fail2banNewJail(name=name, template="botsearch", log_format="json", **fields)
+    files = jails_service.render_new(new)
+    return [{"path": path, "text": text, "new": True} for path, text in files.items()]
+
+
 def test_a_new_jail_gets_its_own_files() -> None:
-    changes = _plan(
-        changes=[
-            {
-                "name": "scanners",
-                "create": {"template": "botsearch", "log_format": "json"},
-                "failregex": ['"client_ip":"<HOST>".*"status":404'],
-                "maxretry": "2",
-            }
-        ]
-    )
+    changes = _plan(files=_new())
 
     jail, filter_ = changes["jail.d/scanners.local"] or "", changes["filter.d/scanners.conf"] or ""
     assert jail.startswith(jails_service.MARKER)
     assert ini.get(jail, "scanners", "filter") == ["scanners"]
     assert ini.get(jail, "scanners", "banaction") == ["nftables[type=allports, chain_hook=forward]"]
-    assert ini.get(jail, "scanners", "maxretry") == ["2"]
     assert "before = botsearch-common.conf" in filter_
     assert 'datepattern = "ts":{EPOCH}' in filter_
-    # Once created, it is edited in its own files.
-    snapshot = _snapshot(**changes)
-    edited = _plan(snapshot, changes=[{"name": "scanners", "bantime": "1h", "ignoreregex": ["x"]}])
-    assert sorted(edited) == ["filter.d/scanners.conf", "jail.d/scanners.local"]
-    assert next(
-        jail for jail in jails_service.read_jails(snapshot) if jail.name == "scanners"
-    ).managed
+    scanners = _jail("scanners", _snapshot(**changes))
+    assert scanners.managed
+    assert [block.owner for block in scanners.blocks] == ["drydock", "drydock"]
+    # Shown before it exists like after: its jail section and its whole filter.
+    shown = jails_service.new_jail(Fail2banNewJail(name="scanners", template="botsearch"))
+    assert [block.path for block in shown.blocks] == [block.path for block in scanners.blocks]
 
 
 def test_a_new_jail_needs_a_free_name() -> None:
-    for name in ("sshd", "apache-badbots", "drydock-auth"):
+    for name in ("sshd", "drydock-auth"):
         with pytest.raises(Fail2banPlanError, match="taken"):
-            _plan(changes=[{"name": name, "create": {"template": "auth"}, "failregex": ["<HOST>"]}])
+            _plan(files=_new(name))
 
 
-def test_only_drydocks_jails_are_deleted() -> None:
-    created = _plan(
-        changes=[{"name": "auth", "create": {"template": "auth"}, "failregex": ["<HOST>"]}]
+def test_only_drydocks_files_are_removed() -> None:
+    snapshot = _snapshot(**_plan(files=_new()))
+
+    removed = _plan(
+        snapshot,
+        files=[
+            {"path": "jail.d/scanners.local", "text": None},
+            {"path": "filter.d/scanners.conf", "text": None},
+        ],
     )
 
-    removed = _plan(_snapshot(**created), changes=[{"name": "auth", "delete": True}])
-
-    assert removed == {"filter.d/auth.conf": None, "jail.d/auth.local": None}
-    with pytest.raises(Fail2banPlanError, match="turn it off"):
-        _plan(changes=[{"name": "sshd", "delete": True}])
+    assert removed == {"filter.d/scanners.conf": None, "jail.d/scanners.local": None}
 
 
 def test_the_old_single_file_is_split() -> None:
@@ -317,14 +329,19 @@ def test_snapshot_reads_the_dump_and_the_files(host: list[dict[str, Any]]) -> No
     assert "writable" not in host[0]
 
 
-def test_test_includes_the_jails_own_filter(host: list[dict[str, Any]]) -> None:
+def test_a_test_runs_the_edited_filter(host: list[dict[str, Any]]) -> None:
     host_output["value"] = REGEX_OUTPUT
-    request = Fail2banTestRequest(logpath="/var/log/auth.log", failregex=["<HOST>"], filter="sshd")
+    edited = {"filter.d/sshd.local": "[Definition]\nfailregex = <HOST>\n", "jail.local": "x"}
+    request = Fail2banTestRequest(logpath="/var/log/auth.log", filter="sshd", files=edited)
 
     result = fail2ban_config_service.test(request)
 
-    rendered = base64.b64decode(host[0]["environment"]["DRYDOCK_FILTER"]).decode()
-    assert "before = /etc/fail2ban/filter.d/sshd.conf" in rendered
+    environment = host[0]["environment"]
+    assert environment["FILTER"] == "sshd"
+    archive = base64.b64decode(environment["DRYDOCK_FILES"])
+    with tarfile.open(fileobj=io.BytesIO(archive)) as tar:
+        assert tar.getnames() == ["filter.d/sshd.local"]
+    assert host[0]["writable"] == ("/tmp",)
     assert (result.lines, result.matched) == (3, 2)
     assert [(hit.ip, hit.count) for hit in result.top_ips] == [("203.0.113.5", 2)]
 
@@ -335,9 +352,9 @@ def test_parse_regex_output_reads_json_ips() -> None:
         '|  {"ts":1,"request":{"client_ip":"198.51.100.4"},"status":401}\n`-\n'
     )
 
-    assert [hit.ip for hit in fail2ban_config_service.parse_test(output).top_ips] == [
-        "198.51.100.4"
-    ]
+    result = fail2ban_config_service.parse_test(output)
+
+    assert [hit.ip for hit in result.top_ips] == ["198.51.100.4"]
 
 
 def test_unexpected_output_is_an_error() -> None:
@@ -380,23 +397,33 @@ def test_api_lists_the_hosts_jails(client: TestClient) -> None:
     read = client.get("/api/host/fail2ban/jails").json()
 
     assert [jail["name"] for jail in read["jails"]] == ["drydock-auth", "sshd"]
+    assert read["jails"][1]["blocks"][2]["path"] == "jail.local"
     assert read["legacy"] is True
-    assert read["templates"]["botsearch"]["before"] == "botsearch-common.conf"
+    assert "botsearch" in read["templates"]
+
+
+def test_api_renders_a_new_jail_without_writing(
+    client: TestClient, host: list[dict[str, Any]]
+) -> None:
+    jail = client.post("/api/host/fail2ban/new", json={"name": "auth", "template": "auth"}).json()
+
+    assert [block["path"] for block in jail["blocks"]] == [
+        "jail.d/auth.local",
+        "filter.d/auth.conf",
+    ]
+    assert host == []
 
 
 def test_api_plans_without_writing(client: TestClient, host: list[dict[str, Any]]) -> None:
-    response = client.post(
-        "/api/host/fail2ban/plan", json={"changes": [{"name": "sshd", "maxretry": "3"}]}
-    )
+    block = FILES["jail.local"].replace("maxretry = 5", "maxretry = 3")
+    edit = {"files": [{"path": "jail.local", "section": "sshd", "text": block}]}
 
-    [change] = response.json()["files"]
-    assert change["path"] == "jail.local"
-    assert "maxretry = 5" in change["before"] and "maxretry = 3" in change["after"]
+    [change] = client.post("/api/host/fail2ban/plan", json=edit).json()["files"]
+
+    assert change == {"path": "jail.local", "before": FILES["jail.local"], "after": block}
     assert all("writable" not in call for call in host)
-    refused = client.post(
-        "/api/host/fail2ban/plan", json={"changes": [{"name": "sshd", "delete": True}]}
-    )
-    assert refused.status_code == 400
+    refused = {"files": [{"path": "filter.d/sshd.conf", "text": "x"}]}
+    assert client.post("/api/host/fail2ban/plan", json=refused).status_code == 400
 
 
 def test_api_apply_writes_through_a_job(
@@ -410,9 +437,11 @@ def test_api_apply_writes_through_a_job(
         job_service, "submit", lambda kind, label, runner: submitted.append(runner) or _job()
     )
     monkeypatch.setattr("app.core.config.settings.data_path", tmp_path)
+    block = FILES["jail.local"].replace("maxretry = 5", "maxretry = 3")
 
     response = client.post(
-        "/api/host/fail2ban/apply", json={"changes": [{"name": "sshd", "maxretry": "3"}]}
+        "/api/host/fail2ban/apply",
+        json={"files": [{"path": "jail.local", "section": "sshd", "text": block}]},
     )
     assert response.status_code == 202
     submitted[0](_Context())

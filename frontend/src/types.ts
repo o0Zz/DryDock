@@ -618,7 +618,21 @@ export interface ProxyOverview {
   routes: ProxyRoute[];
 }
 
-/** A jail as the host's fail2ban sees it, from its files and `fail2ban-client -d`. */
+/** A piece of fail2ban's config as it is in its file. */
+export interface Fail2banBlock {
+  /** Path under /etc/fail2ban. */
+  path: string;
+  /** The jail's [section] in a jail file; null for a whole filter file. */
+  section: string | null;
+  /** Line of the section's header; null for a whole file, or a block not written yet. */
+  line: number | null;
+  /** Empty for a block not written yet: where an override of the jail would go. */
+  text: string;
+  /** package: apt owns it, read only. local: the owner's. drydock: DryDock made it. */
+  owner: "package" | "local" | "drydock";
+}
+
+/** A jail of the host: what fail2ban makes of it, and the blocks that define it. */
 export interface Fail2banJailConfig {
   name: string;
   /** DryDock created its files: jail.d/<name>.local and filter.d/<name>.conf. */
@@ -628,57 +642,48 @@ export interface Fail2banJailConfig {
   backend: string | null;
   /** The filter.d file of its regexes; null when DryDock cannot tell. */
   filter: string | null;
+  /** Effective values, from `fail2ban-client -d` when the jail is on. */
   logpath: string[];
-  failregex: string[];
-  ignoreregex: string[];
   maxretry: string;
   findtime: string;
   bantime: string;
-  /** field -> `file:line` that sets it. */
-  sources: Record<string, string>;
+  /** In the order fail2ban reads them: the last value of a key wins. */
+  blocks: Fail2banBlock[];
   /** Its lines of `fail2ban-client -d`. Empty when the jail is off. */
   dump: string[];
-}
-
-/** A starting point for a new jail on the proxy's access log. */
-export interface Fail2banTemplate {
-  /** The filter.d file the new filter includes for its variables. */
-  before: string | null;
-  failregex: Record<"text" | "json", string>;
 }
 
 export interface Fail2banJails {
   jails: Fail2banJailConfig[];
   /** The single jail.d/drydock.local of older DryDock versions is still there. */
   legacy: boolean;
-  templates: Record<string, Fail2banTemplate>;
+  /** Starting points for a new jail. */
+  templates: string[];
 }
 
 export interface Fail2banNewJail {
+  name: string;
   template: string;
   /** text: Traefik, nginx (SWAG). json: Caddy. */
   log_format: "text" | "json";
   /** forward: the proxy's ports are published by Docker. input: it runs on the host network. */
   ban_hook: "forward" | "input";
+  logpath: string;
 }
 
-/** What changes in one jail. A field left out stays as it is. */
-export interface Fail2banJailChange {
-  name: string;
-  create?: Fail2banNewJail;
-  delete?: boolean;
-  enabled?: boolean;
-  logpath?: string[];
-  failregex?: string[];
-  ignoreregex?: string[];
-  maxretry?: string;
-  findtime?: string;
-  bantime?: string;
+export interface Fail2banFileEdit {
+  path: string;
+  /** Set: replace that [section] block of the file. Null: replace the whole file. */
+  section: string | null;
+  /** Empty removes the section; null removes the whole file. */
+  text: string | null;
+  /** The file must not exist yet: a new jail. */
+  new?: boolean;
 }
 
 export interface Fail2banEdit {
-  changes: Fail2banJailChange[];
-  /** Split the old jail.d/drydock.local into one file per jail. */
+  files: Fail2banFileEdit[];
+  /** Split the old jail.d/drydock.local into one file pair per jail. */
   convert_legacy?: boolean;
 }
 
@@ -689,13 +694,10 @@ export interface Fail2banPlan {
 
 export interface Fail2banTestRequest {
   logpath: string;
-  failregex: string[];
-  ignoreregex: string[];
-  /** The jail's filter, whose other settings apply too. */
-  filter: string | null;
-  /** For a new jail: its template and log format. */
-  template: string | null;
-  log_format: "text" | "json";
+  /** The filter.d file to test, loaded like fail2ban does (with its .local). */
+  filter: string;
+  /** Filter files as edited, path -> text. */
+  files: Record<string, string>;
 }
 
 export interface Fail2banTestResult {

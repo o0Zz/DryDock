@@ -22,7 +22,7 @@ from datetime import UTC, datetime
 
 from app.core.config import settings
 from app.schemas.fail2ban import Fail2banHit, Fail2banTestRequest, Fail2banTestResult
-from app.services import docker_service, fail2ban_jails, volume_files_service
+from app.services import docker_service, volume_files_service
 from app.services.fail2ban_jails import Snapshot
 
 CONFIG_DIR = "/etc/fail2ban"
@@ -151,42 +151,33 @@ def apply(changes: dict[str, str | None]) -> str:
     )
 
 
+# The filter runs from a copy of filter.d with the edited files on top: fail2ban-regex
+# loads a filter inside a `filter.d` folder like fail2ban does, with its `.local` and its
+# includes.
 _TEST = r"""
 set -e
 [ -e "$LOG_PATH" ] || { echo "The log $LOG_PATH does not exist on the host" >&2; exit 2; }
 dir=$(mktemp -d /tmp/drydock-f2b.XXXXXX)
 trap 'rm -rf "$dir"' EXIT
-tail -n "$TEST_LINES" "$LOG_PATH" > "$dir/access.log"
-echo "$DRYDOCK_FILTER" | base64 -d > "$dir/filter.conf"
-fail2ban-regex --print-all-matched "$dir/access.log" "$dir/filter.conf"
+cp -r /etc/fail2ban/filter.d "$dir/filter.d"
+[ -z "$DRYDOCK_FILES" ] || echo "$DRYDOCK_FILES" | base64 -d | tar -x -C "$dir" --no-same-owner
+tail -n "$TEST_LINES" "$LOG_PATH" > "$dir/test.log"
+fail2ban-regex --print-all-matched "$dir/test.log" "$dir/filter.d/$FILTER.conf"
 """
+_FILTER_FILE = re.compile(r"^filter\.d/[A-Za-z0-9_.-]+\.(?:conf|local)$")
 
 
 def test(request: Fail2banTestRequest) -> Fail2banTestResult:
-    """Run regexes over the end of a log with the host's fail2ban-regex.
-
-    The test filter includes the jail's own filter, so its prefregex and datepattern
-    apply, and replaces its regexes with the ones being edited.
-    """
-    if request.filter:
-        before, log_format = f"{request.filter}.conf", ""
-    else:
-        template = fail2ban_jails.TEMPLATES.get(request.template or "custom")
-        before, log_format = (template.before if template else None), request.log_format
-    rendered = fail2ban_jails.render_filter(
-        before,
-        request.failregex,
-        request.ignoreregex,
-        log_format,
-        include_dir=f"{CONFIG_DIR}/filter.d/",
-    )
+    """Run a jail's filter, as edited, over the end of its log with the host's fail2ban-regex."""
+    files = {path: text for path, text in request.files.items() if _FILTER_FILE.match(path)}
     output = _run(
         _TEST,
         writable=("/tmp",),
         environment={
             "LOG_PATH": request.logpath,
+            "FILTER": request.filter,
             "TEST_LINES": str(TEST_LINES),
-            "DRYDOCK_FILTER": base64.b64encode(rendered.encode("utf-8")).decode("ascii"),
+            "DRYDOCK_FILES": _tar(files) if files else "",
         },
     )
     return parse_test(output)

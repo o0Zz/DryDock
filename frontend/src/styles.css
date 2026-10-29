@@ -436,6 +436,7 @@ input[type="password"],
 input[type="search"],
 input[type="number"],
 select,
+textarea,
 .login-card input,
 .button-row input {
   background: var(--bg);
@@ -447,7 +448,8 @@ select,
 }
 
 input:focus,
-select:focus {
+select:focus,
+textarea:focus {
   outline: none;
   border-color: var(--accent);
 }
@@ -1220,27 +1222,52 @@ pre.diff .diff-gap { color: var(--muted); }
 .label-reference dd { margin: 0; color: var(--muted); }
 .badge svg { vertical-align: -2px; }
 
-/* --- fail2ban jails managed by DryDock (Proxy page, Security tab) ------ */
+/* --- fail2ban jails (Proxy page, Security tab) -------------------------- */
 .fail2ban-fields {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
   gap: 0 1rem;
 }
 .fail2ban-fields .field { max-width: none; }
-.table-scroll { overflow-x: auto; }
-.fail2ban-jails td { vertical-align: middle; }
+.fail2ban-jail {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  margin-bottom: 0.5rem;
+  background: var(--panel);
+}
+.fail2ban-jail > summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 0.75rem;
+  padding: 0.6rem 0.75rem;
+  cursor: pointer;
+  font-size: 0.875rem;
+}
+.fail2ban-jail > summary code { overflow-wrap: anywhere; }
+.fail2ban-jail[open] > summary { border-bottom: 1px solid var(--border); }
+.fail2ban-jail > :not(summary) { margin-left: 0.75rem; margin-right: 0.75rem; }
+.fail2ban-jail > :last-child { margin-bottom: 0.75rem; }
+.fail2ban-removed { opacity: 0.55; }
+.fail2ban-block { display: flex; flex-direction: column; gap: 0.25rem; margin-top: 0.75rem; }
+.fail2ban-block > summary { cursor: pointer; }
+.fail2ban-block-path { font-size: 0.8rem; }
+.fail2ban-block-path code { overflow-wrap: anywhere; }
+.fail2ban-block > .secondary { align-self: flex-start; }
+textarea.fail2ban-text {
+  width: 100%;
+  resize: vertical;
+  font-family: "Cascadia Code", Consolas, Menlo, monospace;
+  font-size: 0.8rem;
+  padding: 0.4rem 0.6rem;
+  white-space: pre;
+  overflow-x: auto;
+}
+textarea.fail2ban-text[readonly] { color: var(--muted); }
+textarea:disabled { opacity: 0.6; }
 .fail2ban-name { width: 9rem; }
-.fail2ban-number { width: 5.5rem; }
-.fail2ban-regex { width: 100%; font-family: "Cascadia Code", Consolas, Menlo, monospace; }
-textarea.fail2ban-regex,
-textarea.fail2ban-log { resize: vertical; font-family: "Cascadia Code", Consolas, Menlo, monospace; }
-.fail2ban-log { width: 16rem; font-family: "Cascadia Code", Consolas, Menlo, monospace; }
-.fail2ban-deleted td { opacity: 0.5; text-decoration: line-through; }
-.fail2ban-new { margin-top: 0.5rem; }
-.fail2ban-filter { display: flex; flex-direction: column; gap: 0.35rem; max-width: 60rem; }
-.fail2ban-filter .field { max-width: none; }
-.fail2ban-filter .match-lines { margin: 0; }
-.fail2ban-detail td { border-top: 0; padding-top: 0; }
+.fail2ban-log { width: 16rem; max-width: 100%; font-family: "Cascadia Code", Consolas, Menlo, monospace; }
+.fail2ban-new { margin-top: 0.75rem; }
 .fail2ban-test { display: flex; flex-direction: column; gap: 0.35rem; font-size: 0.85rem; }
 pre.error { white-space: pre-wrap; }
 

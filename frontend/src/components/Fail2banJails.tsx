@@ -1,12 +1,14 @@
-import { FileCode, FlaskConical, Plus, RotateCcw, Save, Trash2, Undo2 } from "lucide-react";
+import { Copy, FileCode, FlaskConical, Plus, RotateCcw, Save, Trash2, Undo2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../api";
+import { copyText } from "../clipboard";
 import { formatDate } from "../format";
 import { msg, useT } from "../i18n";
 import { waitForJob } from "../stackActions";
 import type {
+  Fail2banBlock,
   Fail2banEdit,
-  Fail2banJailChange,
+  Fail2banFileEdit,
   Fail2banJailConfig,
   Fail2banJails as Jails,
   Fail2banNewJail,
@@ -21,90 +23,29 @@ const TEMPLATE_LABELS: Record<string, string> = {
   forbidden: msg("Refused (403)"),
   botsearch: msg("Scanners (404 on /wp-login.php, /.env...)"),
   badbots: msg("Bad bots (user agent)"),
-  custom: msg("Empty"),
+  custom: msg("Your own regex"),
 };
-const PROXY_LOG = "/data/proxy/logs/access.log";
+const OWNER_LABELS = {
+  package: msg("package file, read only"),
+  local: msg("your file"),
+  drydock: msg("made by DryDock"),
+};
+// A package filter is long (sshd: 139 lines): it opens on demand.
+const LONG_BLOCK = 30;
 
-/** A jail as edited: the multi-line fields are textarea text, one item per line. */
-interface Row {
-  name: string;
-  /** As read from the host; null for a jail not created yet. */
-  original: Fail2banJailConfig | null;
-  create: Fail2banNewJail | null;
-  deleted: boolean;
-  enabled: boolean;
-  logpath: string;
-  failregex: string;
-  ignoreregex: string;
-  maxretry: string;
-  findtime: string;
-  bantime: string;
+function blockKey(block: Fail2banBlock): string {
+  return `${block.path}#${block.section ?? ""}`;
 }
 
-type TextField = "logpath" | "failregex" | "ignoreregex" | "maxretry" | "findtime" | "bantime";
-const LIST_FIELDS = ["logpath", "failregex", "ignoreregex"] as const;
-const VALUE_FIELDS = ["maxretry", "findtime", "bantime"] as const;
-
-function toRow(jail: Fail2banJailConfig): Row {
-  return {
-    name: jail.name,
-    original: jail,
-    create: null,
-    deleted: false,
-    enabled: jail.enabled,
-    logpath: jail.logpath.join("\n"),
-    failregex: jail.failregex.join("\n"),
-    ignoreregex: jail.ignoreregex.join("\n"),
-    maxretry: jail.maxretry,
-    findtime: jail.findtime,
-    bantime: jail.bantime,
-  };
-}
-
-function lines(text: string): string[] {
-  return text
-    .split("\n")
-    .map((line) => line.trim())
-    .filter(Boolean);
-}
-
-/** What the server must change, from the rows as edited. */
-function changesOf(rows: Row[]): Fail2banJailChange[] {
-  const changes: Fail2banJailChange[] = [];
-  for (const row of rows) {
-    const { original } = row;
-    if (!original) {
-      if (row.deleted || !row.create) continue;
-      changes.push({
-        name: row.name,
-        create: row.create,
-        enabled: row.enabled,
-        ...Object.fromEntries(LIST_FIELDS.map((key) => [key, lines(row[key])])),
-        ...Object.fromEntries(VALUE_FIELDS.map((key) => [key, row[key].trim()])),
-      });
-      continue;
-    }
-    if (row.deleted) {
-      changes.push({ name: row.name, delete: true });
-      continue;
-    }
-    const change: Fail2banJailChange = { name: row.name };
-    if (row.enabled !== original.enabled) change.enabled = row.enabled;
-    for (const key of LIST_FIELDS) {
-      if (lines(row[key]).join("\n") !== original[key].join("\n")) change[key] = lines(row[key]);
-    }
-    for (const key of VALUE_FIELDS) {
-      if (row[key].trim() !== original[key]) change[key] = row[key].trim();
-    }
-    if (Object.keys(change).length > 1) changes.push(change);
-  }
-  return changes;
+function where(block: Fail2banBlock): string {
+  return `/etc/fail2ban/${block.path}${block.line ? `:${block.line}` : ""}`;
 }
 
 /**
- * Every fail2ban jail of the host in one table: its log, its regexes, its limits and its
- * bans. Values are the host's own; an edit goes where the value lives (see
- * fail2ban_jails on the server), and applying checks the config before reloading.
+ * Every fail2ban jail of the host, shown as the raw blocks that define it, in the order
+ * fail2ban reads them: its [section] in each jail file, then its filter files. The
+ * package's files are read only; an override goes in the .local file after them. A block
+ * goes back where it was, and applying checks the config before reloading.
  */
 export default function Fail2banJails({
   report,
@@ -116,19 +57,30 @@ export default function Fail2banJails({
 }) {
   const t = useT();
   const [data, setData] = useState<Jails | null>(null);
-  const [rows, setRows] = useState<Row[]>([]);
+  // Jails added here and not applied yet, shown after the host's.
+  const [added, setAdded] = useState<Fail2banJailConfig[]>([]);
+  // Edited block text, by blockKey.
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
+  // DryDock's jails to remove.
+  const [removed, setRemoved] = useState<string[]>([]);
   const [plan, setPlan] = useState<Fail2banPlan | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [tests, setTests] = useState<Record<string, Fail2banTestResult | string>>({});
 
+  const discard = (): void => {
+    setAdded([]);
+    setDrafts({});
+    setRemoved([]);
+    setPlan(null);
+  };
+
   const load = useCallback(async (): Promise<void> => {
     try {
-      const read = await api.fail2banJails();
-      setData(read);
-      setRows(read.jails.map(toRow));
-      setPlan(null);
+      setData(await api.fail2banJails());
+      setError(null);
+      discard();
     } catch (loadError) {
       setError((loadError as Error).message);
     }
@@ -141,10 +93,27 @@ export default function Fail2banJails({
   if (!data) {
     return error ? <pre className="error">{error}</pre> : <div className="empty">{t("Loading…")}</div>;
   }
-  const changes = changesOf(rows);
 
-  function edit(name: string, patch: Partial<Row>): void {
-    setRows((current) => current.map((row) => (row.name === name ? { ...row, ...patch } : row)));
+  const textOf = (block: Fail2banBlock): string => drafts[blockKey(block)] ?? block.text;
+  const isNew = (jail: Fail2banJailConfig): boolean => added.includes(jail);
+
+  // What the server must write, from the blocks as edited.
+  const files: Fail2banFileEdit[] = [];
+  for (const jail of [...data.jails, ...added]) {
+    for (const block of jail.blocks) {
+      if (removed.includes(jail.name)) {
+        if (block.owner === "drydock") files.push({ path: block.path, section: null, text: null });
+      } else if (isNew(jail)) {
+        files.push({ path: block.path, section: null, text: textOf(block), new: true });
+      } else if (textOf(block) !== block.text) {
+        files.push({ path: block.path, section: block.section, text: textOf(block) });
+      }
+    }
+  }
+  const edit: Fail2banEdit = { files };
+
+  function setText(block: Fail2banBlock, text: string): void {
+    setDrafts((current) => ({ ...current, [blockKey(block)]: text }));
     setPlan(null);
     setNotice(null);
   }
@@ -167,8 +136,8 @@ export default function Fail2banJails({
     setNotice(null);
     try {
       await waitForJob(await api.applyFail2ban(request));
-      setNotice(t("Applied: fail2ban checked the config and reloaded."));
       await load();
+      setNotice(t("Applied: fail2ban checked the config and reloaded."));
       onApplied();
     } catch (applyError) {
       setError((applyError as Error).message);
@@ -177,43 +146,47 @@ export default function Fail2banJails({
     }
   }
 
-  async function test(row: Row): Promise<void> {
+  async function test(jail: Fail2banJailConfig): Promise<void> {
+    if (!jail.filter) return;
     setBusy(t("Testing…"));
+    const edited = jail.blocks.filter(
+      (block) => block.section === null && (isNew(jail) || textOf(block) !== block.text),
+    );
     try {
       const result = await api.testFail2ban({
-        logpath: lines(row.logpath)[0] ?? "",
-        failregex: lines(row.failregex),
-        ignoreregex: lines(row.ignoreregex),
-        filter: row.original?.filter ?? null,
-        template: row.create?.template ?? null,
-        log_format: row.create?.log_format ?? "text",
+        logpath: jail.logpath[0],
+        filter: jail.filter,
+        files: Object.fromEntries(edited.map((block) => [block.path, textOf(block)])),
       });
-      setTests((current) => ({ ...current, [row.name]: result }));
+      setTests((current) => ({ ...current, [jail.name]: result }));
     } catch (testError) {
-      setTests((current) => ({ ...current, [row.name]: (testError as Error).message }));
+      setTests((current) => ({ ...current, [jail.name]: (testError as Error).message }));
     } finally {
       setBusy(null);
     }
   }
 
-  function add(name: string, create: Fail2banNewJail, logpath: string): void {
-    const regex = data?.templates[create.template]?.failregex[create.log_format] ?? "";
-    setRows((current) => [
-      ...current,
-      {
-        name,
-        original: null,
-        create,
-        deleted: false,
-        enabled: true,
-        logpath,
-        failregex: regex,
-        ignoreregex: "",
-        maxretry: "5",
-        findtime: "600",
-        bantime: "86400",
-      },
-    ]);
+  async function add(jail: Fail2banNewJail): Promise<void> {
+    setError(null);
+    try {
+      const created = await api.newFail2banJail(jail);
+      setAdded((current) => [...current, created]);
+      setPlan(null);
+    } catch (addError) {
+      setError((addError as Error).message);
+    }
+  }
+
+  function remove(jail: Fail2banJailConfig): void {
+    if (isNew(jail)) {
+      setAdded((current) => current.filter((other) => other !== jail));
+    } else {
+      setRemoved((current) =>
+        current.includes(jail.name)
+          ? current.filter((name) => name !== jail.name)
+          : [...current, jail.name],
+      );
+    }
     setPlan(null);
   }
 
@@ -221,7 +194,7 @@ export default function Fail2banJails({
     <div className="subsection">
       <p className="muted">
         {t(
-          "Every jail of the host, read from /etc/fail2ban. An edit goes where the value lives: a .local file is changed in place; a value from a package .conf file goes to its .local twin, since apt replaces the .conf files. Jails DryDock creates get their own jail.d/<name>.local and filter.d/<name>.conf.",
+          "Every jail of the host, as the blocks of /etc/fail2ban that define it, in the order fail2ban reads them: the last value of a key wins. The package's files are read only, since apt replaces them; put a change in the .local file after them. Jails DryDock creates get their own jail.d/<name>.local and filter.d/<name>.conf.",
         )}
       </p>
       {data.legacy && (
@@ -231,93 +204,62 @@ export default function Fail2banJails({
             type="button"
             className="secondary small"
             disabled={busy !== null}
-            onClick={() => void preview({ changes: [], convert_legacy: true })}
+            onClick={() => void preview({ files: [], convert_legacy: true })}
           >
             <FileCode size={13} /> {t("Preview the split")}
           </button>{" "}
           <button
             type="button"
             className="small"
-            disabled={busy !== null || changes.length > 0}
-            title={changes.length > 0 ? t("Apply or discard your changes first") : undefined}
-            onClick={() => void apply({ changes: [], convert_legacy: true })}
+            disabled={busy !== null || files.length > 0}
+            title={files.length > 0 ? t("Apply or discard your changes first") : undefined}
+            onClick={() => void apply({ files: [], convert_legacy: true })}
           >
             {t("Split into one file per jail")}
           </button>
         </div>
       )}
 
-      <div className="table-scroll">
-        <table className="projects-table fail2ban-jails">
-          <thead>
-            <tr>
-              <th>{t("On")}</th>
-              <th>{t("Jail")}</th>
-              <th>{t("Log")}</th>
-              <th title={t("Failures before a ban")}>maxretry</th>
-              <th title={t("Failures count within this window")}>findtime</th>
-              <th>bantime</th>
-              <th>{t("Active bans")}</th>
-              <th>{t("Bans in history")}</th>
-              <th>{t("Last ban")}</th>
-              <th />
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((row) => (
-              <JailRows
-                key={row.name}
-                row={row}
-                stats={report?.jails.find((jail) => jail.name === row.name)}
-                result={tests[row.name]}
-                busy={busy !== null}
-                onChange={(patch) => {
-                  edit(row.name, patch);
-                  setTests(({ [row.name]: _dropped, ...rest }) => rest);
-                }}
-                onTest={() => void test(row)}
-                onRemove={() =>
-                  row.original
-                    ? edit(row.name, { deleted: !row.deleted })
-                    : setRows((current) => current.filter((other) => other !== row))
-                }
-              />
-            ))}
-          </tbody>
-        </table>
-      </div>
+      {[...data.jails, ...added].map((jail) => (
+        <JailCard
+          key={jail.name}
+          jail={jail}
+          isNew={isNew(jail)}
+          removed={removed.includes(jail.name)}
+          stats={report?.jails.find((other) => other.name === jail.name)}
+          result={tests[jail.name]}
+          busy={busy !== null}
+          textOf={textOf}
+          onText={setText}
+          onTest={() => void test(jail)}
+          onRemove={() => remove(jail)}
+        />
+      ))}
 
       <NewJail
-        templates={Object.keys(data.templates)}
-        taken={rows.map((row) => row.name)}
-        onAdd={add}
+        templates={data.templates}
+        taken={[...data.jails, ...added].map((jail) => jail.name)}
+        onAdd={(jail) => void add(jail)}
       />
 
       <div className="button-row">
         <button
           type="button"
-          disabled={busy !== null || changes.length === 0}
-          onClick={() => void apply({ changes })}
+          disabled={busy !== null || files.length === 0}
+          onClick={() => void apply(edit)}
         >
           <Save size={15} /> {busy ?? t("Apply")}
         </button>
         <button
           type="button"
           className="secondary"
-          disabled={busy !== null || changes.length === 0}
-          onClick={() => void preview({ changes })}
+          disabled={busy !== null || files.length === 0}
+          onClick={() => void preview(edit)}
         >
           <FileCode size={15} /> {t("Preview the files")}
         </button>
-        {changes.length > 0 && (
-          <button
-            type="button"
-            className="secondary"
-            onClick={() => {
-              setRows(data.jails.map(toRow));
-              setPlan(null);
-            }}
-          >
+        {files.length > 0 && (
+          <button type="button" className="secondary" onClick={discard}>
             <Undo2 size={15} /> {t("Discard changes")}
           </button>
         )}
@@ -347,144 +289,196 @@ export default function Fail2banJails({
   );
 }
 
-function JailRows({
-  row,
+function JailCard({
+  jail,
+  isNew,
+  removed,
   stats,
   result,
   busy,
-  onChange,
+  textOf,
+  onText,
   onTest,
   onRemove,
 }: {
-  row: Row;
+  jail: Fail2banJailConfig;
+  isNew: boolean;
+  removed: boolean;
   stats: Fail2banReport["jails"][number] | undefined;
   result: Fail2banTestResult | string | undefined;
   busy: boolean;
-  onChange: (patch: Partial<Row>) => void;
+  textOf: (block: Fail2banBlock) => string;
+  onText: (block: Fail2banBlock, text: string) => void;
   onTest: () => void;
   onRemove: () => void;
 }) {
   const t = useT();
-  const sources = row.original?.sources ?? {};
-  const journal = row.original?.backend === "systemd";
-  const text = (field: TextField, className: string, placeholder?: string) => (
-    <textarea
-      className={className}
-      rows={Math.min(8, Math.max(1, row[field].split("\n").length))}
-      placeholder={placeholder}
-      title={sources[field]}
-      value={row[field]}
-      disabled={row.deleted}
-      onChange={(event) => onChange({ [field]: event.target.value })}
-    />
-  );
-  const value = (field: TextField) => (
-    <input
-      type="text"
-      className="fail2ban-number"
-      title={sources[field]}
-      value={row[field]}
-      disabled={row.deleted}
-      onChange={(event) => onChange({ [field]: event.target.value })}
-    />
-  );
+  const [copied, setCopied] = useState(false);
+  const journal = jail.backend === "systemd";
+  const edited = jail.blocks.some((block) => textOf(block) !== block.text);
+
+  // Every block with its file, ready to paste into an AI or a terminal.
+  async function copy(): Promise<void> {
+    const text = jail.blocks
+      .filter((block) => textOf(block))
+      .map((block) => `# ${where(block)} (${block.owner})\n${textOf(block).trimEnd()}\n`)
+      .join("\n");
+    if (await copyText(text)) {
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 2000);
+    }
+  }
 
   return (
-    <>
-      <tr className={row.deleted ? "fail2ban-deleted" : undefined}>
-        <td>
-          <input
-            type="checkbox"
-            checked={row.enabled}
-            disabled={row.deleted}
-            onChange={(event) => onChange({ enabled: event.target.checked })}
-          />
-        </td>
-        <td>
-          <span className="row-name">{row.name}</span>{" "}
-          {!row.original && <span className="badge paused">{t("new")}</span>}
-          {row.original?.managed && <span className="badge">DryDock</span>}
-          {row.original?.enabled && stats?.bans === 0 && (
-            <span
-              className="badge"
-              title={t(
-                "This jail has banned nobody. Check that its log path and filter match your logs.",
-              )}
-            >
-              {t("no bans")}
-            </span>
-          )}
-        </td>
-        <td>
-          {journal ? (
-            <code title={t("The systemd backend reads the journal, not a file.")}>journal</code>
-          ) : (
-            text("logpath", "fail2ban-log", PROXY_LOG)
-          )}
-        </td>
-        <td>{value("maxretry")}</td>
-        <td>{value("findtime")}</td>
-        <td>{value("bantime")}</td>
-        <td>{stats?.active_bans ?? "—"}</td>
-        <td>{stats?.bans ?? "—"}</td>
-        <td className="muted">{stats ? formatDate(stats.last_ban_at) : "—"}</td>
-        <td>
-          <div className="button-row inline">
-            <button
-              type="button"
-              className="secondary small"
-              disabled={busy || journal || row.deleted}
-              title={
-                journal
-                  ? t("The systemd backend reads the journal: test it on the host.")
-                  : t("Run these regexes over the end of the log")
-              }
-              onClick={onTest}
-            >
-              <FlaskConical size={13} /> {t("Test")}
-            </button>
-            {(!row.original || row.original.managed) && (
-              <button
-                type="button"
-                className="secondary small icon-only"
-                title={row.deleted ? t("Keep") : t("Remove")}
-                onClick={onRemove}
-              >
-                {row.deleted ? <Undo2 size={13} /> : <Trash2 size={13} />}
-              </button>
+    <details className={`fail2ban-jail${removed ? " fail2ban-removed" : ""}`} open={isNew || undefined}>
+      <summary>
+        <span className="row-name">{jail.name}</span>
+        {isNew && <span className="badge paused">{t("new")}</span>}
+        {jail.managed && !isNew && <span className="badge">DryDock</span>}
+        {removed && <span className="badge paused">{t("removed on apply")}</span>}
+        {edited && <span className="badge paused">{t("edited")}</span>}
+        <span className={`badge ${jail.enabled ? "running" : ""}`}>
+          {jail.enabled ? t("on") : t("off")}
+        </span>
+        <code className="muted">
+          {journal ? "journal" : jail.logpath.join(" ") || "—"} · maxretry {jail.maxretry || "—"} ·
+          findtime {jail.findtime || "—"} · bantime {jail.bantime || "—"}
+        </code>
+        {stats && (
+          <span className="muted">
+            {t("{active} banned now, {bans} in history", {
+              active: stats.active_bans,
+              bans: stats.bans,
+            })}
+            {stats.last_ban_at && ` · ${t("last {date}", { date: formatDate(stats.last_ban_at) })}`}
+          </span>
+        )}
+        {jail.enabled && stats?.bans === 0 && (
+          <span
+            className="badge"
+            title={t(
+              "This jail has banned nobody. Check that its log path and filter match your logs.",
             )}
-          </div>
-        </td>
-      </tr>
-      <tr className={`fail2ban-detail${row.deleted ? " fail2ban-deleted" : ""}`}>
-        <td colSpan={10}>
-          <div className="fail2ban-filter">
-            <label className="field">
-              <span>
-                <code>failregex</code>{" "}
-                <span className="muted">{sources.failregex ?? row.original?.filter ?? ""}</span>
-              </span>
-              {text("failregex", "fail2ban-regex")}
-            </label>
-            <label className="field">
-              <span>
-                <code>ignoreregex</code>{" "}
-                <span className="muted">{sources.ignoreregex ?? ""}</span>
-              </span>
-              {text("ignoreregex", "fail2ban-regex")}
-            </label>
-            {row.original && row.original.dump.length > 0 && (
-              <details>
-                <summary className="muted">fail2ban-client -d</summary>
-                <pre className="match-lines">{row.original.dump.join("\n")}</pre>
-              </details>
-            )}
-            {typeof result === "string" && <pre className="error">{result}</pre>}
-            {result !== undefined && typeof result !== "string" && <TestResult result={result} />}
-          </div>
-        </td>
-      </tr>
-    </>
+          >
+            {t("no bans")}
+          </span>
+        )}
+      </summary>
+
+      <div className="button-row">
+        <button
+          type="button"
+          className="secondary small"
+          title={t("Every block with its file, to paste into an AI or a terminal")}
+          onClick={() => void copy()}
+        >
+          <Copy size={13} /> {copied ? t("Copied") : t("Copy")}
+        </button>
+        <button
+          type="button"
+          className="secondary small"
+          disabled={busy || journal || !jail.filter || jail.logpath.length === 0 || removed}
+          title={
+            journal
+              ? t("The systemd backend reads the journal: test it on the host.")
+              : t("Run the filter, as edited, over the end of the log")
+          }
+          onClick={onTest}
+        >
+          <FlaskConical size={13} /> {t("Test")}
+        </button>
+        {jail.managed && (
+          <button type="button" className="secondary small" onClick={onRemove}>
+            {removed ? <Undo2 size={13} /> : <Trash2 size={13} />}{" "}
+            {removed ? t("Keep") : t("Remove")}
+          </button>
+        )}
+      </div>
+      {typeof result === "string" && <pre className="error">{result}</pre>}
+      {result !== undefined && typeof result !== "string" && <TestResult result={result} />}
+
+      {jail.blocks.map((block) => (
+        <Block
+          key={blockKey(block)}
+          block={block}
+          text={textOf(block)}
+          disabled={removed}
+          onText={(text) => onText(block, text)}
+        />
+      ))}
+      {jail.dump.length > 0 && (
+        <details>
+          <summary className="muted">fail2ban-client -d</summary>
+          <pre className="match-lines">{jail.dump.join("\n")}</pre>
+        </details>
+      )}
+    </details>
+  );
+}
+
+function Block({
+  block,
+  text,
+  disabled,
+  onText,
+}: {
+  block: Fail2banBlock;
+  text: string;
+  disabled: boolean;
+  onText: (text: string) => void;
+}) {
+  const t = useT();
+  const readOnly = block.owner === "package";
+  const lines = text.split("\n").length;
+  const header = (
+    <span className="fail2ban-block-path">
+      <code>{where(block)}</code> <span className="muted">{t(OWNER_LABELS[block.owner])}</span>
+    </span>
+  );
+  // A place for an override that is not there yet.
+  if (!block.text && !text) {
+    return (
+      <div className="fail2ban-block">
+        {header}
+        <button
+          type="button"
+          className="secondary small"
+          disabled={disabled}
+          onClick={() =>
+            onText(block.section ? `[${block.section}]\n` : "[Definition]\nfailregex = \n")
+          }
+        >
+          <Plus size={13} /> {t("Override here")}
+        </button>
+      </div>
+    );
+  }
+  const area = (
+    <textarea
+      className="fail2ban-text"
+      rows={Math.min(LONG_BLOCK, Math.max(2, lines))}
+      spellCheck={false}
+      readOnly={readOnly}
+      disabled={disabled}
+      value={text}
+      onChange={(event) => onText(event.target.value)}
+    />
+  );
+  if (readOnly && lines > LONG_BLOCK) {
+    return (
+      <details className="fail2ban-block">
+        <summary>
+          {header} <span className="muted">{t("{count} lines", { count: lines })}</span>
+        </summary>
+        {area}
+      </details>
+    );
+  }
+  return (
+    <div className="fail2ban-block">
+      {header}
+      {area}
+    </div>
   );
 }
 
@@ -495,17 +489,17 @@ function NewJail({
 }: {
   templates: string[];
   taken: string[];
-  onAdd: (name: string, create: Fail2banNewJail, logpath: string) => void;
+  onAdd: (jail: Fail2banNewJail) => void;
 }) {
   const t = useT();
-  const [name, setName] = useState("");
-  const [create, setCreate] = useState<Fail2banNewJail>({
+  const [jail, setJail] = useState<Fail2banNewJail>({
+    name: "",
     template: "auth",
     log_format: "text",
     ban_hook: "forward",
+    logpath: "/data/proxy/logs/access.log",
   });
-  const [logpath, setLogpath] = useState(PROXY_LOG);
-  const valid = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,62}$/.test(name) && !taken.includes(name);
+  const valid = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,62}$/.test(jail.name) && !taken.includes(jail.name);
 
   return (
     <div className="fail2ban-new button-row">
@@ -513,13 +507,13 @@ function NewJail({
         type="text"
         className="fail2ban-name"
         placeholder={t("new jail name")}
-        value={name}
-        onChange={(event) => setName(event.target.value.trim())}
+        value={jail.name}
+        onChange={(event) => setJail({ ...jail, name: event.target.value.trim() })}
       />
       <select
-        value={create.template}
-        title={t("Fills the regex; edit it as you like")}
-        onChange={(event) => setCreate({ ...create, template: event.target.value })}
+        value={jail.template}
+        title={t("Fills the new files; edit them as you like")}
+        onChange={(event) => setJail({ ...jail, template: event.target.value })}
       >
         {templates.map((template) => (
           <option key={template} value={template}>
@@ -528,18 +522,18 @@ function NewJail({
         ))}
       </select>
       <select
-        value={create.log_format}
+        value={jail.log_format}
         onChange={(event) =>
-          setCreate({ ...create, log_format: event.target.value as "text" | "json" })
+          setJail({ ...jail, log_format: event.target.value as "text" | "json" })
         }
       >
         <option value="text">{t("Text log (Traefik, nginx / SWAG)")}</option>
         <option value="json">{t("JSON log (Caddy)")}</option>
       </select>
       <select
-        value={create.ban_hook}
+        value={jail.ban_hook}
         onChange={(event) =>
-          setCreate({ ...create, ban_hook: event.target.value as "forward" | "input" })
+          setJail({ ...jail, ban_hook: event.target.value as "forward" | "input" })
         }
       >
         <option value="forward">{t("Ban forwarded traffic (ports published by Docker)")}</option>
@@ -548,16 +542,16 @@ function NewJail({
       <input
         type="text"
         className="fail2ban-log"
-        value={logpath}
-        onChange={(event) => setLogpath(event.target.value.trim())}
+        value={jail.logpath}
+        onChange={(event) => setJail({ ...jail, logpath: event.target.value.trim() })}
       />
       <button
         type="button"
         className="secondary"
-        disabled={!valid || !logpath}
+        disabled={!valid || !jail.logpath}
         onClick={() => {
-          onAdd(name, create, logpath);
-          setName("");
+          onAdd(jail);
+          setJail({ ...jail, name: "" });
         }}
       >
         <Plus size={15} /> {t("Add a jail")}

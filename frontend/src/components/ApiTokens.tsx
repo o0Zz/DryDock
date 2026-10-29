@@ -1,6 +1,7 @@
 import { Copy, KeyRound, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { api } from "../api";
+import { copyText } from "../clipboard";
 import { formatDate } from "../format";
 import { useT } from "../i18n";
 import type { ApiToken, ApiTokenCreated } from "../types";
@@ -81,7 +82,7 @@ export default function ApiTokens() {
             <button
               type="button"
               className="secondary small"
-              onClick={() => navigator.clipboard?.writeText(created.token)}
+              onClick={() => void copyText(created.token)}
             >
               <Copy size={14} /> {t("Copy")}
             </button>

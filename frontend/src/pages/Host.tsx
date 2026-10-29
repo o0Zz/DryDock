@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api";
 import { useAuth } from "../auth";
+import { copyText } from "../clipboard";
 import Fact from "../components/Fact";
 import JobList from "../components/JobList";
 import SortHeader from "../components/SortHeader";
@@ -30,7 +31,7 @@ function Command({ command }: { command: string }) {
         <button
           type="button"
           className="secondary small"
-          onClick={() => navigator.clipboard?.writeText(command)}
+          onClick={() => void copyText(command)}
         >
           <Copy size={14} /> {t("Copy")}
         </button>

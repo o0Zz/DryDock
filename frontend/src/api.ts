@@ -23,7 +23,9 @@ import type {
   EnvSaveResult,
   ExposeRequest,
   Fail2banEdit,
+  Fail2banJailConfig,
   Fail2banJails,
+  Fail2banNewJail,
   Fail2banPlan,
   Fail2banReport,
   Fail2banTestRequest,
@@ -134,6 +136,11 @@ export const api = {
   checkHostUpdates: () => request<Job>("/api/host/updates/check", { method: "POST" }),
   fail2ban: () => request<Fail2banReport>("/api/host/fail2ban"),
   fail2banJails: () => request<Fail2banJails>("/api/host/fail2ban/jails"),
+  newFail2banJail: (jail: Fail2banNewJail) =>
+    request<Fail2banJailConfig>("/api/host/fail2ban/new", {
+      method: "POST",
+      body: JSON.stringify(jail),
+    }),
   planFail2ban: (edit: Fail2banEdit) =>
     request<Fail2banPlan>("/api/host/fail2ban/plan", {
       method: "POST",
