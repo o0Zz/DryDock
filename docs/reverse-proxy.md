@@ -32,7 +32,7 @@ A config the proxy refuses is put back to the previous one, so a bad label never
 - One wildcard certificate covers every service, so your service names never appear in public certificate logs.
 - Exposed services join the shared `proxy` network and keep their `default` one. The proxy reaches them by container name, so a recreate breaks nothing. **Remove** in the panel takes the labels and the network out again.
 - A service with `network_mode: host` (Home Assistant) is reached through `host.docker.internal`, which the templates map to the host.
-- fail2ban on the host reads the proxy's access log (`PROXY_DATA/logs/access.log`) and never bans the allowlist (`PROXY_DATA/allowlist.txt`). Set its jails on the **Proxy** page, **Security** tab. The rules match a log format, not a proxy: text for Traefik and SWAG, JSON for Caddy.
+- fail2ban on the host reads the proxy's access log (`PROXY_DATA/logs/access.log`) and never bans the allowlist (`PROXY_DATA/allowlist.txt`). Set its jails on the **Proxy** page, **Security** tab. The rules match a log format, not a proxy: text for Traefik and SWAG, JSON for Caddy. The "unknown host names" template bans clients that ask for names no route claims (`tototo.example.org`), which a wildcard DNS record answers for: Traefik and Caddy only, since nginx's log does not say whether a 404 came from a route.
 - The panel rewrites the file in the editor, comments included, and shows the diff. Nothing is saved until you save. Older `traefik.*` or `swag*` labels on a service are replaced.
 
 The labels are listed in the README: [Labels](../README.md#labels).

@@ -60,7 +60,7 @@ Give a service a host name from its stack page. DryDock writes neutral labels; t
 - **CVE scans:** Trivy scans your images on a schedule and shows what has a fix.
 - **Updates:** rebuilt tags, newer versions (`16.2` → newest `16.x` and newest overall), new commits for git builds, and pending OS updates on the host with "reboot required".
 - **Opt-in auto-update:** tick a service and DryDock updates it at night, then checks it comes back healthy. Never a new version tag, never a stopped stack.
-- **fail2ban:** every jail of the host, sshd included, as the raw blocks of `/etc/fail2ban` that define it, with its bans. Edit a block (or copy it to an AI), test the filter on your real log, preview the diff, then apply. New jails for failed logins, scanners and bad bots on the proxy.
+- **fail2ban:** every jail of the host, sshd included, as the raw blocks of `/etc/fail2ban` that define it, with its bans. Edit a block (or copy it to an AI), test the filter on your real log, preview the diff, then apply. New jails for failed logins, scanners, bad bots and unknown host names on the proxy.
 - **IP blocklist:** known bad IPs (FireHOL level1) dropped by the host's firewall before they reach a container.
 - **Access and alerts:** login, admin and user roles, API tokens, and a webhook when something needs you.
 

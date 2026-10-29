@@ -23,6 +23,7 @@ const TEMPLATE_LABELS: Record<string, string> = {
   forbidden: msg("Refused (403)"),
   botsearch: msg("Scanners (404 on /wp-login.php, /.env...)"),
   badbots: msg("Bad bots (user agent)"),
+  unknownhost: msg("Unknown host names (no route)"),
   custom: msg("Your own regex"),
 };
 const OWNER_LABELS = {

@@ -73,6 +73,16 @@ TEMPLATES: dict[str, tuple[str | None, dict[str, str]]] = {
             "json": r'"client_ip":"<HOST>".*"User-Agent":\["(?:%(badbots)s|%(badbotscustom)s)',
         },
     ),
+    # A name no route claims (a typo, or a scan of the wildcard DNS record). Traefik answers
+    # 404 with no router, which its CLF log writes as `"-" "-"` after the request count;
+    # a 404 from a service has its router there. Caddy aborts the request (status 0).
+    "unknownhost": (
+        None,
+        {
+            "text": _TEXT + r'[A-Z]+ [^"]*" 404 \S+ "[^"]*" "[^"]*" \d+ "-" "-" ',
+            "json": r'"client_ip":"<HOST>".*"status":0',
+        },
+    ),
     # Matches only /change-me until edited: a bare <HOST> would ban every visitor.
     "custom": (
         None,

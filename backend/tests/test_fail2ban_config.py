@@ -3,6 +3,7 @@
 import base64
 import gzip
 import io
+import re
 import tarfile
 from collections.abc import Iterator
 from typing import Any
@@ -497,3 +498,15 @@ def _job() -> dict[str, Any]:
         "started_at": None,
         "finished_at": None,
     }
+
+
+def test_unknown_host_template_matches_a_404_with_no_router() -> None:
+    _, regexes = jails_service.TEMPLATES["unknownhost"]
+    regex = re.compile(regexes["text"].replace("<HOST>", r"(?P<host>\S+)"))
+    # Traefik's CLF line, the date already cut out by fail2ban.
+    no_route = '1.2.3.4 - - [] "GET / HTTP/2.0" 404 19 "-" "curl/8.0" 7 "-" "-" 0ms'
+    routed = '1.2.3.4 - - [] "GET /x HTTP/2.0" 404 19 "-" "curl" 8 "app@file" "http://app" 3ms'
+
+    match = regex.search(no_route)
+    assert match and match.group("host") == "1.2.3.4"
+    assert regex.search(routed) is None
