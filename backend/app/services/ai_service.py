@@ -421,7 +421,7 @@ Nextcloud) unless the user asks.
 An exposed service must also join the proxy's Docker network (named proxy unless the \
 file already uses another one, declared at the top level with external: true) and \
 stay on default. The Services panel beside the editor does this for the user. Do \
-not write traefik.*, caddy or swag labels: DryDock's proxy sync writes the proxy's \
+not write traefik.* labels: DryDock's proxy sync writes Traefik's \
 config from the expose.* labels. Labels that start with drydock. other than \
 drydock.update are set by DryDock itself; never add them."""
 

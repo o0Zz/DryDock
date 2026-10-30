@@ -572,7 +572,7 @@ export interface ServiceExposure {
   ports: number[];
   /** Why the service cannot be exposed, or null. */
   blocked: string | null;
-  /** Still has labels of an older proxy setup (traefik.*, swag*); exposing drops them. */
+  /** Still has hand-written traefik.* labels; exposing drops them. */
   legacy: boolean;
   /** Labelled `drydock.update=auto`. */
   auto_update: boolean;
@@ -600,7 +600,7 @@ export interface ProxyContainer {
   id: string;
   name: string;
   running: boolean;
-  /** For the proxy: traefik, swag or caddy. */
+  /** For the proxy: its drydock.proxy label, else its image name (traefik). */
   kind?: string | null;
 }
 
@@ -655,8 +655,6 @@ export interface Fail2banJailConfig {
 
 export interface Fail2banJails {
   jails: Fail2banJailConfig[];
-  /** The single jail.d/drydock.local of older DryDock versions is still there. */
-  legacy: boolean;
   /** Starting points for a new jail. */
   templates: string[];
 }
@@ -664,8 +662,6 @@ export interface Fail2banJails {
 export interface Fail2banNewJail {
   name: string;
   template: string;
-  /** text: Traefik, nginx (SWAG). json: Caddy. */
-  log_format: "text" | "json";
   /** forward: the proxy's ports are published by Docker. input: it runs on the host network. */
   ban_hook: "forward" | "input";
   logpath: string;
@@ -683,8 +679,6 @@ export interface Fail2banFileEdit {
 
 export interface Fail2banEdit {
   files: Fail2banFileEdit[];
-  /** Split the old jail.d/drydock.local into one file pair per jail. */
-  convert_legacy?: boolean;
 }
 
 export interface Fail2banPlan {

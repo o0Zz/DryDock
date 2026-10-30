@@ -168,7 +168,7 @@ function ServiceRow({
       )}
       {exposure.legacy && (
         <span className="notice">
-          {t("Has labels of an older proxy setup (traefik.*, swag). Expose replaces them.")}
+          {t("Has hand-written traefik.* labels. Expose replaces them.")}
         </span>
       )}
       {exposure.blocked ? (

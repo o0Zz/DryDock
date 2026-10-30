@@ -154,9 +154,6 @@ services:
     labels:
       - traefik.enable=true
       - traefik.http.routers.app.rule=Host(`old.example.org`)
-      - swag=enable
-      - swag_url=old.example.org
-      - expose.hsts=true
       - com.example.owner=me
 """
     [before] = proxy_service.services(content)
@@ -349,30 +346,32 @@ def _listed(name: str, image: str, state: str = "running") -> object:
 def test_proxy_found_by_label_then_by_image(monkeypatch: pytest.MonkeyPatch) -> None:
     def list_containers(*, all_states: bool = True, label: str | None = None) -> list:
         if label == proxy_service.PROXY_LABEL:
-            return [_listed("edge", "caddy-ovh:local")]
+            return [_listed("edge", "my-traefik:local")]
         if label == proxy_service.SYNC_LABEL:
             return [_listed("proxy-sync", "drydock")]
         return []
 
-    detail = type("D", (), {"labels": {"drydock.proxy": "caddy"}})()
+    detail = type("D", (), {"labels": {"drydock.proxy": "traefik"}})()
     monkeypatch.setattr(docker_service, "list_containers", list_containers)
     monkeypatch.setattr(docker_service, "get_container_detail", lambda *a, **k: detail)
 
     proxy, sync = proxy_service.proxy_containers()
 
-    assert (proxy.name, proxy.kind) == ("edge", "caddy")
+    assert (proxy.name, proxy.kind) == ("edge", "traefik")
     assert sync.name == "proxy-sync"
 
     # No label: the image says which proxy it is.
     monkeypatch.setattr(
         docker_service,
         "list_containers",
-        lambda *, all_states=True, label=None: []
-        if label
-        else [_listed("old", "traefik:v3", "exited"), _listed("swag", "lscr.io/linuxserver/swag")],
+        lambda *, all_states=True, label=None: (
+            []
+            if label
+            else [_listed("old", "traefik:v3", "exited"), _listed("edge", "traefik:v3.2")]
+        ),
     )
     proxy, sync = proxy_service.proxy_containers()
-    assert (proxy.name, proxy.kind, proxy.running) == ("swag", "swag", True)
+    assert (proxy.name, proxy.kind, proxy.running) == ("edge", "traefik", True)
     assert sync is None
 
 

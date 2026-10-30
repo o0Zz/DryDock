@@ -12,11 +12,16 @@ text, and the block goes back where it was. apt owns the `.conf` files, so they 
 only: a value from one is changed in its `.local` twin (`jail.local`,
 `filter.d/<filter>.local`), which fail2ban reads after it. A jail DryDock creates has its
 own pair, `jail.d/<name>.local` and `filter.d/<name>.conf`, both starting with MARKER.
+
+The templates match Traefik's access log (common log format). The allowlist the proxy sync
+writes sits next to the log folder (`PROXY_DATA/allowlist.txt`, `PROXY_DATA/logs/access.log`),
+so a jail never bans the public IP or a trusted one.
 """
 
 from __future__ import annotations
 
 import ast
+import posixpath
 import re
 from dataclasses import dataclass, field
 
@@ -30,8 +35,6 @@ from app.schemas.fail2ban import (
 from app.services import fail2ban_ini as ini
 
 MARKER = "# Managed by DryDock"
-# Older DryDock versions wrote every jail in this one file, as `[drydock-<name>]`.
-LEGACY_FILE = "jail.d/drydock.local"
 _SPECIAL = {"DEFAULT", "INCLUDES", "Definition", "Init"}
 # `fail2ban-client -d` option -> summary field.
 _DUMP_FIELDS = {
@@ -41,56 +44,23 @@ _DUMP_FIELDS = {
     "bantime": "bantime",
 }
 
-# The request part of a `text` access log line, the date already cut out by fail2ban.
-_TEXT = r'^<HOST> \S+ \S+ \[\] "'
-# template -> (filter.d file to include for its variables, failregex per log format)
-TEMPLATES: dict[str, tuple[str | None, dict[str, str]]] = {
-    "auth": (
-        None,
-        {
-            "text": _TEXT + r'[A-Z]+ [^"]*" 401 ',
-            "json": r'"client_ip":"<HOST>".*"status":401\b',
-        },
-    ),
-    "forbidden": (
-        None,
-        {
-            "text": _TEXT + r'[A-Z]+ [^"]*" 403 ',
-            "json": r'"client_ip":"<HOST>".*"status":403\b',
-        },
-    ),
-    "botsearch": (
-        "botsearch-common.conf",
-        {
-            "text": _TEXT + r'(?:GET|POST|HEAD) /<block> [^"]*" 404 ',
-            "json": r'"client_ip":"<HOST>".*"uri":"/<block>[^"]*".*"status":404\b',
-        },
-    ),
+# The request part of an access log line, the date already cut out by fail2ban.
+_LINE = r'^<HOST> \S+ \S+ \[\] "'
+# template -> (filter.d file to include for its variables, failregex)
+TEMPLATES: dict[str, tuple[str | None, str]] = {
+    "auth": (None, _LINE + r'[A-Z]+ [^"]*" 401 '),
+    "forbidden": (None, _LINE + r'[A-Z]+ [^"]*" 403 '),
+    "botsearch": ("botsearch-common.conf", _LINE + r'(?:GET|POST|HEAD) /<block> [^"]*" 404 '),
     "badbots": (
         "apache-badbots.conf",
-        {
-            "text": _TEXT + r'[A-Z]+ [^"]*" \d+ \d+ "[^"]*" "(?:%(badbots)s|%(badbotscustom)s)"',
-            "json": r'"client_ip":"<HOST>".*"User-Agent":\["(?:%(badbots)s|%(badbotscustom)s)',
-        },
+        _LINE + r'[A-Z]+ [^"]*" \d+ \d+ "[^"]*" "(?:%(badbots)s|%(badbotscustom)s)"',
     ),
     # A name no route claims (a typo, or a scan of the wildcard DNS record). Traefik answers
     # 404 with no router, which its CLF log writes as `"-" "-"` after the request count;
-    # a 404 from a service has its router there. Caddy aborts the request (status 0).
-    "unknownhost": (
-        None,
-        {
-            "text": _TEXT + r'[A-Z]+ [^"]*" 404 \S+ "[^"]*" "[^"]*" \d+ "-" "-" ',
-            "json": r'"client_ip":"<HOST>".*"status":0',
-        },
-    ),
+    # a 404 from a service has its router there.
+    "unknownhost": (None, _LINE + r'[A-Z]+ [^"]*" 404 \S+ "[^"]*" "[^"]*" \d+ "-" "-" '),
     # Matches only /change-me until edited: a bare <HOST> would ban every visitor.
-    "custom": (
-        None,
-        {
-            "text": _TEXT + r'[A-Z]+ /change-me[^"]*" \d+ ',
-            "json": r'"client_ip":"<HOST>".*"uri":"/change-me',
-        },
-    ),
+    "custom": (None, _LINE + r'[A-Z]+ /change-me[^"]*" \d+ '),
 }
 
 
@@ -255,10 +225,11 @@ def render_new(new: Fail2banNewJail) -> dict[str, str]:
     """The two files of a new jail, as path -> text."""
     if new.template not in TEMPLATES:
         raise Fail2banPlanError(f"unknown template: {new.template}")
-    before, regexes = TEMPLATES[new.template]
+    before, failregex = TEMPLATES[new.template]
     # Docker forwards the proxy's published ports: the input hook never sees them.
     forward = new.ban_hook == "forward"
     banaction = f"nftables[type=allports{', chain_hook=forward' if forward else ''}]"
+    allowlist = posixpath.join(posixpath.dirname(posixpath.dirname(new.logpath)), "allowlist.txt")
     jail = [
         f"{MARKER}. Edited in place from the Proxy page.",
         f"[{new.name}]",
@@ -272,16 +243,14 @@ def render_new(new: Fail2banNewJail) -> dict[str, str]:
         "bantime       = 86400",
         "ignoreip      = 127.0.0.1/8 ::1 192.168.0.0/16 10.0.0.0/8 172.16.0.0/12",
         # The proxy sync's allowlist: the public IP and trusted IPs are never banned.
-        "ignorecommand = grep -qsxF <ip> /data/proxy/allowlist.txt",
+        f"ignorecommand = grep -qsxF <ip> {allowlist}",
     ]
     filter_ = [
         f"{MARKER}. Edited in place from the Proxy page.",
         *(["[INCLUDES]", f"before = {before}", ""] if before else []),
         "[Definition]",
-        f"failregex = {regexes[new.log_format]}",
+        f"failregex = {failregex}",
         "ignoreregex =",
-        # Caddy logs an epoch timestamp.
-        *(['datepattern = "ts":{EPOCH}'] if new.log_format == "json" else []),
     ]
     return {
         f"jail.d/{new.name}.local": "\n".join(jail) + "\n",
@@ -315,31 +284,9 @@ def _taken(files: dict[str, str], name: str) -> bool:
     return any(path in files for path in paths)
 
 
-def _convert_legacy(files: dict[str, str]) -> None:
-    """One file pair per jail out of `jail.d/drydock.local`: `[drydock-auth]` becomes `auth`."""
-    legacy = files.pop(LEGACY_FILE, None)
-    if legacy is None:
-        return
-    for old in ini.sections(legacy):
-        new = old.removeprefix("drydock-")
-        if new == old or _taken(files, new):
-            new = old
-        body = ini.blocks(legacy, old)[0][1].split("\n")[1:]
-        body = [
-            f"filter        = {new}" if re.match(r"filter\s*[=:]", line) else line for line in body
-        ]
-        lines = [f"{MARKER}. Edited in place from the Proxy page.", f"[{new}]", *body]
-        files[f"jail.d/{new}.local"] = "\n".join(lines) + "\n"
-        old_filter = files.pop(f"filter.d/{old}.conf", None)
-        if old_filter is not None:
-            files[f"filter.d/{new}.conf"] = old_filter
-
-
 def plan(snapshot: Snapshot, edit: Fail2banEdit) -> dict[str, str | None]:
     """The files an edit changes: path -> new content, None to remove it."""
     files = dict(snapshot.files)
-    if edit.convert_legacy:
-        _convert_legacy(files)
     for change in edit.files:
         current = files.get(change.path)
         if change.new:

@@ -251,7 +251,7 @@ def test_package_files_and_stray_sections_are_refused() -> None:
 
 
 def _new(name: str = "scanners", **fields: Any) -> list[dict[str, Any]]:
-    new = Fail2banNewJail(name=name, template="botsearch", log_format="json", **fields)
+    new = Fail2banNewJail(name=name, template="botsearch", **fields)
     files = jails_service.render_new(new)
     return [{"path": path, "text": text, "new": True} for path, text in files.items()]
 
@@ -264,7 +264,12 @@ def test_a_new_jail_gets_its_own_files() -> None:
     assert ini.get(jail, "scanners", "filter") == ["scanners"]
     assert ini.get(jail, "scanners", "banaction") == ["nftables[type=allports, chain_hook=forward]"]
     assert "before = botsearch-common.conf" in filter_
-    assert 'datepattern = "ts":{EPOCH}' in filter_
+    # The allowlist sits next to the log folder, wherever PROXY_DATA is.
+    assert "ignorecommand = grep -qsxF <ip> /data/proxy/allowlist.txt" in jail
+    moved = Fail2banNewJail(name="x", template="auth", logpath="/srv/p/logs/access.log")
+    assert (
+        "grep -qsxF <ip> /srv/p/allowlist.txt" in jails_service.render_new(moved)["jail.d/x.local"]
+    )
     scanners = _jail("scanners", _snapshot(**changes))
     assert scanners.managed
     assert [block.owner for block in scanners.blocks] == ["drydock", "drydock"]
@@ -291,18 +296,6 @@ def test_only_drydocks_files_are_removed() -> None:
     )
 
     assert removed == {"filter.d/scanners.conf": None, "jail.d/scanners.local": None}
-
-
-def test_the_old_single_file_is_split() -> None:
-    changes = _plan(convert_legacy=True)
-
-    assert changes["jail.d/drydock.local"] is None
-    assert changes["filter.d/drydock-auth.conf"] is None
-    jail = changes["jail.d/auth.local"] or ""
-    assert jail.startswith(jails_service.MARKER)
-    assert ini.get(jail, "auth", "filter") == ["auth"]
-    assert ini.get(jail, "auth", "maxretry") == ["3"]
-    assert changes["filter.d/auth.conf"] == FILES["filter.d/drydock-auth.conf"]
 
 
 # --- Host side --------------------------------------------------------------------------
@@ -347,17 +340,6 @@ def test_a_test_runs_the_edited_filter(host: list[dict[str, Any]]) -> None:
     assert [(hit.ip, hit.count) for hit in result.top_ips] == [("203.0.113.5", 2)]
 
 
-def test_parse_regex_output_reads_json_ips() -> None:
-    output = (
-        "Lines: 1 lines, 0 ignored, 1 matched, 0 missed\n|- Matched line(s):\n"
-        '|  {"ts":1,"request":{"client_ip":"198.51.100.4"},"status":401}\n`-\n'
-    )
-
-    result = fail2ban_config_service.parse_test(output)
-
-    assert [hit.ip for hit in result.top_ips] == ["198.51.100.4"]
-
-
 def test_unexpected_output_is_an_error() -> None:
     with pytest.raises(fail2ban_config_service.Fail2banConfigError):
         fail2ban_config_service.parse_test("Traceback ...")
@@ -399,7 +381,6 @@ def test_api_lists_the_hosts_jails(client: TestClient) -> None:
 
     assert [jail["name"] for jail in read["jails"]] == ["drydock-auth", "sshd"]
     assert read["jails"][1]["blocks"][2]["path"] == "jail.local"
-    assert read["legacy"] is True
     assert "botsearch" in read["templates"]
 
 
@@ -501,8 +482,8 @@ def _job() -> dict[str, Any]:
 
 
 def test_unknown_host_template_matches_a_404_with_no_router() -> None:
-    _, regexes = jails_service.TEMPLATES["unknownhost"]
-    regex = re.compile(regexes["text"].replace("<HOST>", r"(?P<host>\S+)"))
+    _, failregex = jails_service.TEMPLATES["unknownhost"]
+    regex = re.compile(failregex.replace("<HOST>", r"(?P<host>\S+)"))
     # Traefik's CLF line, the date already cut out by fail2ban.
     no_route = '1.2.3.4 - - [] "GET / HTTP/2.0" 404 19 "-" "curl/8.0" 7 "-" "-" 0ms'
     routed = '1.2.3.4 - - [] "GET /x HTTP/2.0" 404 19 "-" "curl" 8 "app@file" "http://app" 3ms'

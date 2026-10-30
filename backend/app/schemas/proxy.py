@@ -13,7 +13,7 @@ class ServiceExposure(BaseModel):
     ports: list[int] = []
     # Why the service cannot be exposed (e.g. `network_mode: service:vpn`), or None.
     blocked: str | None = None
-    # It still has labels of an older proxy setup (`traefik.*`, `swag*`); exposing drops them.
+    # It still has hand-written `traefik.*` labels; exposing drops them.
     legacy: bool = False
     # `drydock.update=auto`: the scheduled auto-update may recreate it.
     auto_update: bool = False
@@ -33,7 +33,7 @@ class ProxyContainer(BaseModel):
     id: str
     name: str
     running: bool
-    # For the proxy: traefik, swag or caddy (its `drydock.proxy` label, else its image).
+    # For the proxy: its `drydock.proxy` label, else its image name (`traefik`).
     kind: str | None = None
 
 

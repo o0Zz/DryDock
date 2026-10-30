@@ -25,7 +25,7 @@ Point DryDock at your folder of Compose files. It runs your stacks, gives them H
 A homelab often needs four tools: Portainer to run containers, a proxy manager for host names, Watchtower for updates and a scanner for CVEs. DryDock does all four from your Compose files. It shows each risk where it lives: CVEs on the image, exposure on the route, bans on the host.
 
 - 📁 **Your files, not a database.** Every Compose file in the folder is a stack. Each edit is validated and backed up before it is written.
-- 🌐 **One label, one HTTPS route.** Add `expose.host=music.example.org` and Traefik, SWAG or Caddy serves it, private by default. Switch proxy without touching a stack.
+- 🌐 **One label, one HTTPS route.** Add `expose.host=music.example.org` and Traefik serves it, private by default. The labels name no proxy.
 - 🛡️ **Safe by default.** Private routes, HTTPS with HSTS everywhere, no update unless you opt a service in.
 - 🔌 **Never in the data path.** The proxy carries traffic, fail2ban bans, Trivy scans. A DryDock restart cuts nothing.
 - 🍓 **Light enough for a Pi.** One image, SQLite, `amd64` and `arm64`. No cloud, no agent, no Kubernetes.
@@ -48,7 +48,7 @@ Give a service a host name from its stack page. DryDock writes neutral labels; t
 
 ![Stack page: Compose editor with the Services panel exposing navidrome at music.example.org](docs/screenshots/stack-editor.png)
 
-- **Pick your proxy:** ready-made stacks for Traefik, SWAG or Caddy, with Let's Encrypt through OVH, Cloudflare, another DNS provider or the HTTP challenge.
+- **Ready-made proxy stack:** Traefik with Let's Encrypt through OVH, Cloudflare, any other DNS provider lego knows, or the HTTP challenge.
 - **Wildcard certificates:** your service names stay out of public certificate logs.
 - **Private or public:** a private route answers only your LAN, your public IP and the IPs you trust.
 - **One map of everything:** the Proxy page shows which host name leads to which stack, service and port, and whether it runs.

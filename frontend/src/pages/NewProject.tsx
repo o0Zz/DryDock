@@ -16,7 +16,7 @@ const YamlEditor = lazy(() => import("../components/YamlEditor"));
 
 // Same rule as the backend: it becomes the folder and Compose project name.
 const NAME_PATTERN = /^[a-z0-9][a-z0-9_-]*$/;
-// A DNS provider's name as Traefik (lego) or SWAG (certbot) spells it.
+// A DNS provider's name as Traefik (lego) spells it.
 const PROVIDER_PATTERN = /^[a-z0-9][a-z0-9.-]*$/;
 
 /** Create `<repo>/<name>/docker-compose.yml` from the browser. */

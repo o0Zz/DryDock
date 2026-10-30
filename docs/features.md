@@ -15,7 +15,7 @@ Everything DryDock does, by job. The [README](../README.md) has the short versio
 
 - **Host names:** give a service a host name (`jellyfin.example.org`) with HTTPS, private (an IP allowlist) or public. The **Services** panel beside the Compose editor writes neutral `expose.*` labels that name no proxy.
 - **Proxy page:** every host name in your Compose files, with its stack, service, container port, visibility and state, plus the health of the proxy and its sync. A host name already used by another stack is refused.
-- **Your choice of proxy:** stack templates for Traefik, SWAG (nginx) or Caddy, each with a wildcard certificate. The labels work with all three. See [Reverse proxy](reverse-proxy.md).
+- **Proxy stack:** a Traefik template with a wildcard certificate, or one certificate per name through the HTTP challenge. See [Reverse proxy](reverse-proxy.md).
 
 ## Secure
 

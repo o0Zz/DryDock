@@ -1,7 +1,7 @@
 import { msg } from "./i18n";
 
 /**
- * How a proxy gets its certificates. A DNS provider gives a wildcard certificate (names
+ * How Traefik gets its certificates. A DNS provider gives a wildcard certificate (names
  * stay out of public certificate logs) but needs its API token; the HTTP challenge works
  * with any domain and no API, one certificate per name, through port 80.
  */
@@ -9,7 +9,7 @@ export type CertChoice = "ovh" | "cloudflare" | "http" | "other";
 
 export interface CertSetup {
   choice: CertChoice;
-  /** The DNS provider's name as the proxy knows it; only typed for `other`. */
+  /** The DNS provider's name as lego spells it; only typed for `other`. */
   provider: string;
 }
 
@@ -35,7 +35,7 @@ export const CERT_CHOICES: { id: CertChoice; label: string; description: string 
     id: "other",
     label: msg("Other DNS provider"),
     description: msg(
-      "Type your provider's name as the proxy knows it, then add its variables to the .env (Traefik) or its .ini file (SWAG).",
+      "Type your provider's name as Traefik (lego) spells it, then add its variables to the .env.",
     ),
   },
 ];
@@ -89,22 +89,20 @@ function dnsEnvironment(choice: CertChoice): string {
 }
 
 // The proxy sync (app/proxy_sync.py) turns the expose.* labels the Expose panel writes
-// into the proxy's own config. {image} is DryDock's own image, filled in on creation.
-function proxySync(proxy: string, output: string, extra = ""): string {
-  return `  # Turns the expose.* labels of running containers into ${proxy}'s config.
+// into Traefik's dynamic config. {image} is DryDock's own image, filled in on creation.
+function proxySync(): string {
+  return `  # Turns the expose.* labels of running containers into Traefik's config.
   proxy-sync:
     image: {image}
     restart: unless-stopped
     command: ["python", "-m", "app.proxy_sync"]
     environment:
-      PROXY: ${proxy}
-      PROXY_CONTAINER: ${proxy}
-      OUTPUT: ${output}
+      OUTPUT: /data/dynamic
       ALLOWLIST_FILE: /data/allowlist.txt
       NETWORK: proxy
       LAN_RANGES: \${LAN_RANGES:-192.168.0.0/16}
       TRUSTED_IPS: \${TRUSTED_IPS:-}
-${extra}    volumes:
+    volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - \${PROXY_DATA:-/data/proxy}:/data
     labels:
@@ -126,8 +124,8 @@ function commonHelp(cert: CertSetup): string {
 # service names never appear in public certificate logs.`;
   return `#
 # Your stacks carry neutral labels (expose.host, expose.port, expose.private), so they
-# stay the same whatever proxy runs. proxy-sync, DryDock's own image, reads them from the
-# running containers and writes this proxy's config.
+# name no proxy. proxy-sync, DryDock's own image, reads them from the running containers
+# and writes Traefik's dynamic config.
 #
 # Private services only answer an IP allowlist: LAN_RANGES, your current public IP
 # (LAN and VPN clients often come back through it) and TRUSTED_IPS.
@@ -205,120 +203,18 @@ ${environment}${envFile}    ports:
       - traefik.http.routers.traefik.middlewares=private@file,hsts@file
       - traefik.http.routers.traefik.service=api@internal
 
-${proxySync("traefik", "/data/dynamic")}`;
+${proxySync()}`;
 }
 
-function swag(cert: CertSetup): string {
-  return `# Reverse proxy: SWAG (nginx and certbot), for the services you expose from DryDock
-# (Expose, beside the Compose editor). Fill in the .env tab, stop any other proxy on ports
-# 80 and 443, then up. SWAG reads the DNS token from a file, not from .env: after the
-# first up, fill in PROXY_DATA/swag/dns-conf/${cert.provider}.ini and restart swag.
-${commonHelp(cert)}
-#
-# proxy-sync writes one server block per service to site-confs/drydock-expose.conf,
-# checks it with nginx -t and reloads nginx. A config nginx refuses is put back.
-services:
-  swag:
-    image: lscr.io/linuxserver/swag:latest
-    container_name: swag
-    restart: unless-stopped
-    cap_add:
-      - NET_ADMIN
-    environment:
-      PUID: "1000"
-      PGID: "1000"
-      TZ: Etc/UTC
-      URL: \${PROXY_DOMAIN}
-      SUBDOMAINS: wildcard
-      VALIDATION: dns
-      DNSPLUGIN: ${cert.provider}
-      EMAIL: \${ACME_EMAIL}
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - \${PROXY_DATA:-/data/proxy}/swag:/config
-      # nginx's logs, where DryDock's fail2ban jails read them.
-      - \${PROXY_DATA:-/data/proxy}/logs:/config/log/nginx
-    # Services with network_mode: host are reached through the host's gateway address.
-    extra_hosts:
-      - host.docker.internal:host-gateway
-    networks:
-      - proxy
-    labels:
-      - drydock.proxy=swag
-
-${proxySync("swag", "/data/swag/nginx/site-confs")}`;
-}
-
-// Caddy's caddy-dns module per DNS provider; the sync writes the matching acme_dns block.
-const CADDY_MODULES: Record<string, string> = {
-  ovh: "github.com/caddy-dns/ovh",
-  cloudflare: "github.com/caddy-dns/cloudflare",
-};
-
-function caddy(cert: CertSetup): string {
-  const module = CADDY_MODULES[cert.choice];
-  const image = module
-    ? `    build:
-      dockerfile_inline: |
-        FROM caddy:2-builder AS builder
-        RUN xcaddy build --with ${module}
-        FROM caddy:2
-        COPY --from=builder /usr/bin/caddy /usr/bin/caddy
-    image: caddy-${cert.choice}:local
-`
-    : "    image: caddy:2\n";
-  const build = module
-    ? `# Caddy's official image has no DNS modules, so the first up builds one with the
-# ${cert.provider} module: a few minutes on a Pi.
-`
-    : "";
-  return `# Reverse proxy: Caddy, for the services you expose from DryDock (Expose, beside the
-# Compose editor). Fill in the .env tab, stop any other proxy on ports 80 and 443, then up.
-${build}${commonHelp(cert)}
-#
-# proxy-sync writes the whole Caddyfile (PROXY_DATA/caddy/Caddyfile) and runs caddy
-# reload, which refuses a bad config and keeps the running one. Caddy logs JSON: set
-# the log format to JSON in DryDock's fail2ban jails (Proxy page, Security tab).
-services:
-  caddy:
-${image}    container_name: caddy
-    restart: unless-stopped
-    environment:
-      ACME_EMAIL: \${ACME_EMAIL}
-${dnsEnvironment(cert.choice)}    ports:
-      - "80:80"
-      - "443:443"
-      - "443:443/udp"
-    volumes:
-      - \${PROXY_DATA:-/data/proxy}/caddy:/etc/caddy
-      - \${PROXY_DATA:-/data/proxy}/caddy-data:/data
-      - \${PROXY_DATA:-/data/proxy}/logs:/logs
-    # Services with network_mode: host are reached through the host's gateway address.
-    extra_hosts:
-      - host.docker.internal:host-gateway
-    networks:
-      - proxy
-    labels:
-      - drydock.proxy=caddy
-
-${proxySync("caddy", "/data/caddy", `      DNS_PROVIDER: ${cert.choice}\n`)}`;
-}
-
-/** The .env of a proxy stack: shared settings, then what the certificate needs. */
-function proxyEnv(proxy: string) {
-  return (cert: CertSetup): string => {
-    let dns = DNS_ENV[cert.choice] ?? "";
-    if (cert.choice === "http") {
-      dns = "# Certificates through the HTTP challenge: forward port 80 to this host.\n";
-    } else if (proxy === "swag") {
-      // SWAG reads its token from dns-conf/<provider>.ini, never from the environment.
-      dns = `# SWAG reads the DNS token from PROXY_DATA/swag/dns-conf/${cert.provider}.ini.\n`;
-    } else if (cert.choice === "other") {
-      dns = `# The variables of your DNS provider (${cert.provider}): https://go-acme.github.io/lego/dns/\n`;
-    }
-    return `# Host folder for certificates, config, allowlist and access log.
+/** The .env of the proxy stack: shared settings, then what the certificate needs. */
+function proxyEnv(cert: CertSetup): string {
+  let dns = DNS_ENV[cert.choice] ?? "";
+  if (cert.choice === "http") {
+    dns = "# Certificates through the HTTP challenge: forward port 80 to this host.\n";
+  } else if (cert.choice === "other") {
+    dns = `# The variables of your DNS provider (${cert.provider}): https://go-acme.github.io/lego/dns/\n`;
+  }
+  return `# Host folder for certificates, config, allowlist and access log.
 PROXY_DATA=/data/proxy
 # Domain of the certificates: services get <name>.<domain>.
 PROXY_DOMAIN={domain}
@@ -328,7 +224,6 @@ ACME_EMAIL=
 LAN_RANGES=192.168.0.0/16
 TRUSTED_IPS=
 ${dns}`;
-  };
 }
 
 const PROXY_DESCRIPTION = msg(
@@ -349,33 +244,12 @@ export const STACK_TEMPLATES: StackTemplate[] = [
     description: PROXY_DESCRIPTION,
     name: "traefik",
     compose: traefik,
-    env: proxyEnv("traefik"),
+    env: proxyEnv,
     certs: ["ovh", "cloudflare", "http", "other"],
-  },
-  {
-    id: "swag",
-    label: msg("SWAG reverse proxy (nginx)"),
-    description: PROXY_DESCRIPTION,
-    name: "swag",
-    compose: swag,
-    env: proxyEnv("swag"),
-    // SWAG's HTTP validation needs every name up front, so new services would need a
-    // restart and a new certificate: DNS only.
-    certs: ["ovh", "cloudflare", "other"],
-  },
-  {
-    id: "caddy",
-    label: msg("Caddy reverse proxy"),
-    description: PROXY_DESCRIPTION,
-    name: "caddy",
-    compose: caddy,
-    env: proxyEnv("caddy"),
-    // Another DNS provider needs its module in the image and its block in the sync.
-    certs: ["ovh", "cloudflare", "http"],
   },
 ];
 
-/** The reverse proxy templates, for the Proxy page. */
+/** The reverse proxy template, for the Proxy page. */
 export const PROXY_TEMPLATES = STACK_TEMPLATES.filter((template) => template.certs);
 
 /** The certificate setup a template starts with. */

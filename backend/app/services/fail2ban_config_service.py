@@ -30,7 +30,6 @@ CONFIG_DIR = "/etc/fail2ban"
 TEST_LINES = 5000
 TEST_SAMPLES = 20
 
-_JSON_IP = re.compile(r'"client_ip":"([^"]+)"')
 _SUMMARY = re.compile(r"^Lines: (\d+) lines, \d+ ignored, (\d+) matched", re.MULTILINE)
 _FILES_MARK = "--DRYDOCK-FILES--"
 
@@ -198,9 +197,8 @@ def parse_test(output: str) -> Fail2banTestResult:
             in_matched = False
     ips: Counter[str] = Counter()
     for line in matched_lines:
-        # A JSON line (Caddy) names its client; a text line starts with it.
-        found = _JSON_IP.search(line)
-        ip = found.group(1) if found else (line.split(" ", 1)[0] or None)
+        # An access log line starts with the client IP.
+        ip = line.split(" ", 1)[0]
         if ip:
             ips[ip] += 1
     return Fail2banTestResult(

@@ -58,7 +58,6 @@ def fail2ban_jails() -> Fail2banJails:
     snapshot = fail2ban_config_service.snapshot()
     return Fail2banJails(
         jails=fail2ban_jails_service.read_jails(snapshot),
-        legacy=fail2ban_jails_service.LEGACY_FILE in snapshot.files,
         templates=list(fail2ban_jails_service.TEMPLATES),
     )
 

@@ -95,10 +95,6 @@ def _client() -> docker.DockerClient:
         raise DockerUnavailable(str(exc)) from exc
 
 
-def _reset_client() -> None:
-    _client.cache_clear()
-
-
 def _get_container(container_id: str) -> DockerContainer:
     try:
         return _client().containers.get(container_id)

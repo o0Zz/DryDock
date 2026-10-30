@@ -31,12 +31,12 @@ from app.services import compose_service, docker_service, repo_service
 LABEL_PREFIX = "expose."
 # The proxies the sync writes for. Their stack templates label the proxy's container
 # `drydock.proxy=<kind>`; an unlabelled one is recognised by its image name.
-PROXY_KINDS = ("traefik", "swag", "caddy")
+PROXY_KINDS = ("traefik",)
 PROXY_LABEL = "drydock.proxy"
 # Set on the proxy sync's container by the proxy stack, to find it.
 SYNC_LABEL = "drydock.proxy-sync"
-# Labels of an older setup: a proxy reading them would route the service twice.
-_LEGACY_PREFIXES = ("traefik.", "swag_")
+# Hand-written Traefik labels: with the sync's route, Traefik would route the service twice.
+_LEGACY_PREFIX = "traefik."
 
 _ENV_LINE = re.compile(r"^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*?)\s*$")
 _VARIABLE = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)(?::?-([^}]*))?\}")
@@ -50,8 +50,7 @@ class ProxyError(compose_service.ComposeError):
 
 
 def _legacy(key: str) -> bool:
-    # expose.hsts was dropped: every route gets HSTS now.
-    return key in ("swag", "expose.hsts") or key.startswith(_LEGACY_PREFIXES)
+    return key.startswith(_LEGACY_PREFIX)
 
 
 # --- Reading --------------------------------------------------------------------------

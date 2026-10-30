@@ -24,7 +24,7 @@ def daemon() -> docker.DockerClient:
         client.ping()
     except docker.errors.DockerException as exc:
         pytest.skip(f"Docker daemon not available: {exc}")
-    docker_service._reset_client()
+    docker_service._client.cache_clear()
     return client
 
 

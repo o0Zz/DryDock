@@ -19,7 +19,7 @@ import { PROXY_TEMPLATES } from "../stackTemplates";
 import type { ProxyContainer, ProxyOverview } from "../types";
 
 // Product names, the same in every language.
-const PROXY_NAMES: Record<string, string> = { traefik: "Traefik", swag: "SWAG", caddy: "Caddy" };
+const PROXY_NAMES: Record<string, string> = { traefik: "Traefik" };
 
 /**
  * What the reverse proxy exposes, from the labels in the repo, and whether it runs.
@@ -145,11 +145,6 @@ function RoutesTab({ proxy, onSaved }: { proxy: ProxyOverview; onSaved: () => Pr
               ))}
             </div>
           </>
-        )}
-        {proxy.container?.kind === "caddy" && (
-          <div className="notice">
-            {t("Caddy logs JSON: set the log format to JSON in the fail2ban jails (Security tab).")}
-          </div>
         )}
       </section>
 

@@ -2,9 +2,6 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-# Access log formats: one text line per request (Traefik, nginx/SWAG), or JSON (Caddy).
-LogFormat = Literal["text", "json"]
-
 # A jail name is also a file name (`jail.d/<name>.local`, `filter.d/<name>.conf`).
 JAIL_NAME = r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,62}$"
 # An absolute host path, on one line: it ends up in fail2ban's config and a shell script.
@@ -57,8 +54,6 @@ class Fail2banJailConfig(BaseModel):
 
 class Fail2banJails(BaseModel):
     jails: list[Fail2banJailConfig]
-    # The single `jail.d/drydock.local` of older DryDock versions is still there.
-    legacy: bool = False
     # Starting points for a new jail.
     templates: list[str] = []
 
@@ -68,7 +63,6 @@ class Fail2banNewJail(BaseModel):
 
     name: str = Field(pattern=JAIL_NAME)
     template: str
-    log_format: LogFormat = "text"
     # Docker publishes the proxy's ports, so its traffic is forwarded, not input.
     ban_hook: Literal["forward", "input"] = "forward"
     logpath: str = Field(default="/data/proxy/logs/access.log", pattern=_HOST_PATH)
@@ -86,8 +80,6 @@ class Fail2banFileEdit(BaseModel):
 
 class Fail2banEdit(BaseModel):
     files: list[Fail2banFileEdit] = []
-    # Split the old `jail.d/drydock.local` into one file pair per jail.
-    convert_legacy: bool = False
 
 
 class Fail2banFileChange(BaseModel):

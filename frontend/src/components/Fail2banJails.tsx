@@ -198,29 +198,6 @@ export default function Fail2banJails({
           "Every jail of the host, as the blocks of /etc/fail2ban that define it, in the order fail2ban reads them: the last value of a key wins. The package's files are read only, since apt replaces them; put a change in the .local file after them. Jails DryDock creates get their own jail.d/<name>.local and filter.d/<name>.conf.",
         )}
       </p>
-      {data.legacy && (
-        <div className="output padded">
-          {t("Jails from an older DryDock are all in jail.d/drydock.local, as drydock-<name>.")}{" "}
-          <button
-            type="button"
-            className="secondary small"
-            disabled={busy !== null}
-            onClick={() => void preview({ files: [], convert_legacy: true })}
-          >
-            <FileCode size={13} /> {t("Preview the split")}
-          </button>{" "}
-          <button
-            type="button"
-            className="small"
-            disabled={busy !== null || files.length > 0}
-            title={files.length > 0 ? t("Apply or discard your changes first") : undefined}
-            onClick={() => void apply({ files: [], convert_legacy: true })}
-          >
-            {t("Split into one file per jail")}
-          </button>
-        </div>
-      )}
-
       {[...data.jails, ...added].map((jail) => (
         <JailCard
           key={jail.name}
@@ -496,7 +473,6 @@ function NewJail({
   const [jail, setJail] = useState<Fail2banNewJail>({
     name: "",
     template: "auth",
-    log_format: "text",
     ban_hook: "forward",
     logpath: "/data/proxy/logs/access.log",
   });
@@ -521,15 +497,6 @@ function NewJail({
             {TEMPLATE_LABELS[template] ? t(TEMPLATE_LABELS[template]) : template}
           </option>
         ))}
-      </select>
-      <select
-        value={jail.log_format}
-        onChange={(event) =>
-          setJail({ ...jail, log_format: event.target.value as "text" | "json" })
-        }
-      >
-        <option value="text">{t("Text log (Traefik, nginx / SWAG)")}</option>
-        <option value="json">{t("JSON log (Caddy)")}</option>
       </select>
       <select
         value={jail.ban_hook}
