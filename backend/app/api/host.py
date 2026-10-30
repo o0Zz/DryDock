@@ -10,6 +10,7 @@ from app.schemas.fail2ban import (
     Fail2banFileChange,
     Fail2banJailConfig,
     Fail2banJails,
+    Fail2banJailTarget,
     Fail2banNewJail,
     Fail2banPlan,
     Fail2banTestRequest,
@@ -68,6 +69,15 @@ def fail2ban_jails() -> Fail2banJails:
 def new_fail2ban_jail(body: Fail2banNewJail) -> Fail2banJailConfig:
     """A new jail's two files from a template, to edit before applying. Nothing is written."""
     return fail2ban_jails_service.new_jail(body)
+
+
+@router.post(
+    "/fail2ban/defaults", response_model=Fail2banEdit, dependencies=[Depends(require_admin)]
+)
+def default_fail2ban_jails(body: Fail2banJailTarget) -> Fail2banEdit:
+    """The edit that replaces every `drydock-*` jail with the default set. Nothing is
+    written: the UI plans it, then applies it like any other edit."""
+    return fail2ban_jails_service.default_edit(fail2ban_config_service.snapshot(), body)
 
 
 @router.post("/fail2ban/plan", response_model=Fail2banPlan, dependencies=[Depends(require_admin)])

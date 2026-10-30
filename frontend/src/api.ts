@@ -25,6 +25,7 @@ import type {
   Fail2banEdit,
   Fail2banJailConfig,
   Fail2banJails,
+  Fail2banJailTarget,
   Fail2banNewJail,
   Fail2banPlan,
   Fail2banReport,
@@ -140,6 +141,11 @@ export const api = {
     request<Fail2banJailConfig>("/api/host/fail2ban/new", {
       method: "POST",
       body: JSON.stringify(jail),
+    }),
+  fail2banDefaults: (target: Fail2banJailTarget) =>
+    request<Fail2banEdit>("/api/host/fail2ban/defaults", {
+      method: "POST",
+      body: JSON.stringify(target),
     }),
   planFail2ban: (edit: Fail2banEdit) =>
     request<Fail2banPlan>("/api/host/fail2ban/plan", {

@@ -14,7 +14,12 @@ from fastapi.testclient import TestClient
 from app.core.database import get_db
 from app.core.security import get_current_user
 from app.main import app
-from app.schemas.fail2ban import Fail2banEdit, Fail2banNewJail, Fail2banTestRequest
+from app.schemas.fail2ban import (
+    Fail2banEdit,
+    Fail2banJailTarget,
+    Fail2banNewJail,
+    Fail2banTestRequest,
+)
 from app.services import docker_service, fail2ban_config_service, job_service
 from app.services import fail2ban_ini as ini
 from app.services import fail2ban_jails as jails_service
@@ -296,6 +301,38 @@ def test_only_drydocks_files_are_removed() -> None:
     )
 
     assert removed == {"filter.d/scanners.conf": None, "jail.d/scanners.local": None}
+
+
+def test_reset_replaces_every_drydock_jail_with_the_default_set() -> None:
+    # The old single file and a jail made from the UI both go; a user's drydock-* file stays.
+    snapshot = _snapshot(
+        **{
+            "jail.d/drydock-forbidden.local": f"{jails_service.MARKER}\n[drydock-forbidden]\n",
+            "filter.d/drydock-forbidden.conf": f"{jails_service.MARKER}\n[Definition]\n",
+            "jail.d/drydock-mine.local": "[drydock-mine]\nenabled = true\n",
+        }
+    )
+
+    edit = jails_service.default_edit(snapshot, Fail2banJailTarget(logpath="/srv/p/logs/a.log"))
+    changes = jails_service.plan(snapshot, edit)
+
+    assert [file.path for file in edit.files if file.text is None] == [
+        "filter.d/drydock-auth.conf",
+        "filter.d/drydock-forbidden.conf",
+        "jail.d/drydock-forbidden.local",
+        "jail.d/drydock.local",
+    ]
+    assert changes["jail.d/drydock.local"] is None
+    assert "jail.d/drydock-mine.local" not in changes
+    written = {path for path, text in changes.items() if text is not None}
+    assert written == {
+        f"{folder}/drydock-{name}.{ext}"
+        for name in jails_service.DEFAULT_JAILS
+        for folder, ext in (("jail.d", "local"), ("filter.d", "conf"))
+    }
+    assert "/srv/p/allowlist.txt" in (changes["jail.d/drydock-auth.local"] or "")
+    names = [jail.name for jail in jails_service.read_jails(_snapshot(**changes))]
+    assert names == sorted([f"drydock-{name}" for name in jails_service.DEFAULT_JAILS] + ["sshd"])
 
 
 # --- Host side --------------------------------------------------------------------------

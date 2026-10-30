@@ -58,14 +58,19 @@ class Fail2banJails(BaseModel):
     templates: list[str] = []
 
 
-class Fail2banNewJail(BaseModel):
+class Fail2banJailTarget(BaseModel):
+    """What a jail watches and how it bans."""
+
+    # Docker publishes the proxy's ports, so its traffic is forwarded, not input.
+    ban_hook: Literal["forward", "input"] = "forward"
+    logpath: str = Field(default="/data/proxy/logs/access.log", pattern=_HOST_PATH)
+
+
+class Fail2banNewJail(Fail2banJailTarget):
     """A jail on a log, rendered from a template into its own two files."""
 
     name: str = Field(pattern=JAIL_NAME)
     template: str
-    # Docker publishes the proxy's ports, so its traffic is forwarded, not input.
-    ban_hook: Literal["forward", "input"] = "forward"
-    logpath: str = Field(default="/data/proxy/logs/access.log", pattern=_HOST_PATH)
 
 
 class Fail2banFileEdit(BaseModel):

@@ -57,5 +57,8 @@
   "Run the filter, as edited, over the end of the log": "Lancer le filtre, tel que modifié, sur la fin du log",
   "Override here": "Surcharger ici",
   "{count} lines": "{count} lignes",
-  "Fills the new files; edit them as you like": "Remplit les nouveaux fichiers ; modifiez-les librement"
+  "Fills the new files; edit them as you like": "Remplit les nouveaux fichiers ; modifiez-les librement",
+  "Reset pending: every drydock-* jail is replaced by the default set (401, 403, scanners, bad bots, unknown host names). Apply writes it.": "Réinitialisation en attente : chaque jail drydock-* est remplacé par le jeu par défaut (401, 403, scanners, bad bots, noms d'hôte inconnus). Appliquer l'écrit.",
+  "Replaces every drydock-* jail with the default set for this log": "Remplace chaque jail drydock-* par le jeu par défaut pour ce log",
+  "Reset default jails": "Réinitialiser les jails par défaut"
 }

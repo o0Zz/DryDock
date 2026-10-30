@@ -659,12 +659,15 @@ export interface Fail2banJails {
   templates: string[];
 }
 
-export interface Fail2banNewJail {
-  name: string;
-  template: string;
+export interface Fail2banJailTarget {
   /** forward: the proxy's ports are published by Docker. input: it runs on the host network. */
   ban_hook: "forward" | "input";
   logpath: string;
+}
+
+export interface Fail2banNewJail extends Fail2banJailTarget {
+  name: string;
+  template: string;
 }
 
 export interface Fail2banFileEdit {

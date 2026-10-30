@@ -29,12 +29,19 @@ from app.schemas.fail2ban import (
     JAIL_NAME,
     Fail2banBlock,
     Fail2banEdit,
+    Fail2banFileEdit,
     Fail2banJailConfig,
+    Fail2banJailTarget,
     Fail2banNewJail,
 )
 from app.services import fail2ban_ini as ini
 
 MARKER = "# Managed by DryDock"
+# The jail set for a reverse proxy's access log, one per template, named `drydock-<template>`.
+DEFAULT_PREFIX = "drydock-"
+DEFAULT_JAILS = ("auth", "forbidden", "botsearch", "badbots", "unknownhost")
+# The files of that set, the single `jail.d/drydock.local` of older versions included.
+_DEFAULT_FILE = re.compile(r"^(?:jail\.d/drydock(?:-[^/]+)?\.local|filter\.d/drydock-[^/]+\.conf)$")
 _SPECIAL = {"DEFAULT", "INCLUDES", "Definition", "Init"}
 # `fail2ban-client -d` option -> summary field.
 _DUMP_FIELDS = {
@@ -272,6 +279,27 @@ def new_jail(new: Fail2banNewJail) -> Fail2banJailConfig:
             for path, text in render_new(new).items()
         ],
     )
+
+
+def default_edit(snapshot: Snapshot, target: Fail2banJailTarget) -> Fail2banEdit:
+    """The edit that resets the default set: every `drydock-*` file DryDock wrote goes,
+    then the set is rendered again. A `drydock-*` file someone else wrote stays, and the
+    plan then refuses the name as taken."""
+    removed = [
+        Fail2banFileEdit(path=path, text=None)
+        for path, text in sorted(snapshot.files.items())
+        if _DEFAULT_FILE.match(path) and text.startswith(MARKER)
+    ]
+    added = [
+        Fail2banFileEdit(path=path, text=text, new=True)
+        for template in DEFAULT_JAILS
+        for path, text in render_new(
+            Fail2banNewJail(
+                name=f"{DEFAULT_PREFIX}{template}", template=template, **target.model_dump()
+            )
+        ).items()
+    ]
+    return Fail2banEdit(files=removed + added)
 
 
 # --- Planning an edit -------------------------------------------------------------------

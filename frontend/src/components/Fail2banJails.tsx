@@ -11,6 +11,7 @@ import type {
   Fail2banFileEdit,
   Fail2banJailConfig,
   Fail2banJails as Jails,
+  Fail2banJailTarget,
   Fail2banNewJail,
   Fail2banPlan,
   Fail2banReport,
@@ -64,6 +65,8 @@ export default function Fail2banJails({
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   // DryDock's jails to remove.
   const [removed, setRemoved] = useState<string[]>([]);
+  // A reset of the default jail set, from the server; replaces the edits above until applied.
+  const [reset, setReset] = useState<Fail2banEdit | null>(null);
   const [plan, setPlan] = useState<Fail2banPlan | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -74,6 +77,7 @@ export default function Fail2banJails({
     setAdded([]);
     setDrafts({});
     setRemoved([]);
+    setReset(null);
     setPlan(null);
   };
 
@@ -111,10 +115,11 @@ export default function Fail2banJails({
       }
     }
   }
-  const edit: Fail2banEdit = { files };
+  const edit: Fail2banEdit = reset ?? { files };
 
   function setText(block: Fail2banBlock, text: string): void {
     setDrafts((current) => ({ ...current, [blockKey(block)]: text }));
+    setReset(null);
     setPlan(null);
     setNotice(null);
   }
@@ -172,6 +177,7 @@ export default function Fail2banJails({
     try {
       const created = await api.newFail2banJail(jail);
       setAdded((current) => [...current, created]);
+      setReset(null);
       setPlan(null);
     } catch (addError) {
       setError((addError as Error).message);
@@ -188,7 +194,26 @@ export default function Fail2banJails({
           : [...current, jail.name],
       );
     }
+    setReset(null);
     setPlan(null);
+  }
+
+  // The default set for the proxy's access log, planned at once so the diff shows what goes.
+  async function resetDefaults(target: Fail2banJailTarget): Promise<void> {
+    setError(null);
+    setBusy(t("Reading the host…"));
+    try {
+      const request = await api.fail2banDefaults(target);
+      setAdded([]);
+      setDrafts({});
+      setRemoved([]);
+      setReset(request);
+      setPlan(await api.planFail2ban(request));
+    } catch (resetError) {
+      setError((resetError as Error).message);
+    } finally {
+      setBusy(null);
+    }
   }
 
   return (
@@ -218,12 +243,20 @@ export default function Fail2banJails({
         templates={data.templates}
         taken={[...data.jails, ...added].map((jail) => jail.name)}
         onAdd={(jail) => void add(jail)}
+        onReset={(target) => void resetDefaults(target)}
       />
 
+      {reset && (
+        <div className="output padded">
+          {t(
+            "Reset pending: every drydock-* jail is replaced by the default set (401, 403, scanners, bad bots, unknown host names). Apply writes it.",
+          )}
+        </div>
+      )}
       <div className="button-row">
         <button
           type="button"
-          disabled={busy !== null || files.length === 0}
+          disabled={busy !== null || edit.files.length === 0}
           onClick={() => void apply(edit)}
         >
           <Save size={15} /> {busy ?? t("Apply")}
@@ -231,12 +264,12 @@ export default function Fail2banJails({
         <button
           type="button"
           className="secondary"
-          disabled={busy !== null || files.length === 0}
+          disabled={busy !== null || edit.files.length === 0}
           onClick={() => void preview(edit)}
         >
           <FileCode size={15} /> {t("Preview the files")}
         </button>
-        {files.length > 0 && (
+        {edit.files.length > 0 && (
           <button type="button" className="secondary" onClick={discard}>
             <Undo2 size={15} /> {t("Discard changes")}
           </button>
@@ -464,10 +497,12 @@ function NewJail({
   templates,
   taken,
   onAdd,
+  onReset,
 }: {
   templates: string[];
   taken: string[];
   onAdd: (jail: Fail2banNewJail) => void;
+  onReset: (target: Fail2banJailTarget) => void;
 }) {
   const t = useT();
   const [jail, setJail] = useState<Fail2banNewJail>({
@@ -523,6 +558,15 @@ function NewJail({
         }}
       >
         <Plus size={15} /> {t("Add a jail")}
+      </button>
+      <button
+        type="button"
+        className="secondary"
+        title={t("Replaces every drydock-* jail with the default set for this log")}
+        disabled={!jail.logpath}
+        onClick={() => onReset({ ban_hook: jail.ban_hook, logpath: jail.logpath })}
+      >
+        <RotateCcw size={15} /> {t("Reset default jails")}
       </button>
     </div>
   );
