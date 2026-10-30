@@ -16,7 +16,7 @@ from alembic import command
 from alembic.config import Config
 from alembic.runtime.migration import MigrationContext
 from alembic.script import ScriptDirectory
-from sqlalchemy import create_engine, event, inspect
+from sqlalchemy import create_engine, event
 from sqlalchemy.engine import Connection, Engine
 from sqlalchemy.pool import ConnectionPoolEntry, NullPool
 
@@ -75,7 +75,6 @@ def upgrade_database() -> None:
     try:
         with migration_engine.connect() as connection:
             current = MigrationContext.configure(connection).get_current_revision()
-            has_tables = bool(inspect(connection).get_table_names())
 
         if current == head:
             return
@@ -86,10 +85,10 @@ def upgrade_database() -> None:
                 "know. It was likely written by a newer release: upgrade DryDock, or restore "
                 f"a backup from {settings.backups_path / 'db'}."
             )
-        if has_tables:
+        if current is not None:
             _backup_database(current)
 
-        logger.info("Migrating database from %s to %s", current or "an unversioned schema", head)
+        logger.info("Migrating database from %s to %s", current or "empty", head)
         with migration_engine.begin() as connection:
             config.attributes["connection"] = connection
             command.upgrade(config, "head")
@@ -97,12 +96,12 @@ def upgrade_database() -> None:
         migration_engine.dispose()
 
 
-def _backup_database(revision: str | None) -> None:
+def _backup_database(revision: str) -> None:
     """Snapshot the database with SQLite's online backup API (WAL-safe)."""
     backup_dir = settings.backups_path / "db"
     backup_dir.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
-    target = backup_dir / f"drydock-{stamp}-{revision or 'unversioned'}.db"
+    target = backup_dir / f"drydock-{stamp}-{revision}.db"
 
     with (
         closing(sqlite3.connect(settings.db_path)) as source,

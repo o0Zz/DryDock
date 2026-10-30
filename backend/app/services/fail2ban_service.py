@@ -79,16 +79,11 @@ def parse_database(data: bytes, now: datetime) -> Fail2banReport:
     try:
         db.deserialize(data)
         tables = _tables(db)
-        if not {"jails", "bans"} <= tables:
-            raise Fail2banError(f"{settings.fail2ban_db} is not a fail2ban database")
+        if not {"jails", "bans", "bips"} <= tables:
+            raise Fail2banError(f"{settings.fail2ban_db} is not a fail2ban 0.11+ database")
         history = list(db.execute("SELECT * FROM bans ORDER BY timeofban DESC"))
-        # bips (fail2ban 0.11+) holds the current ban per IP, including long
-        # bans older than the purge age. Older versions only have the history.
-        current = (
-            list(db.execute("SELECT * FROM bips ORDER BY timeofban DESC"))
-            if "bips" in tables
-            else history
-        )
+        # bips holds the current ban per IP, including long bans older than the purge age.
+        current = list(db.execute("SELECT * FROM bips ORDER BY timeofban DESC"))
         jail_rows = list(db.execute("SELECT name, enabled FROM jails ORDER BY name"))
     except sqlite3.DatabaseError as exc:
         raise Fail2banError(f"cannot read {settings.fail2ban_db}: {exc}") from exc

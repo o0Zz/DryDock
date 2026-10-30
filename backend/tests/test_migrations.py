@@ -6,7 +6,6 @@ from alembic import command
 from alembic.autogenerate import compare_metadata
 from alembic.runtime.migration import MigrationContext
 from alembic.script import ScriptDirectory
-from sqlalchemy import create_engine, text
 
 import app.models  # noqa: F401
 from app.core import migrations
@@ -64,38 +63,6 @@ def test_upgrade_at_head_is_noop() -> None:
 
     assert _revision() == _head()
     assert _backups() == []
-
-
-def test_adopts_pre_alembic_database() -> None:
-    # Simulate an install built by create_all before update_checks gained its
-    # tag columns, with data that must survive.
-    legacy = create_engine(f"sqlite:///{settings.db_path}")
-    Base.metadata.create_all(legacy)
-    with legacy.begin() as connection:
-        for column in ("newest_tag", "newest_same_major_tag", "tag_error"):
-            connection.execute(text(f"ALTER TABLE update_checks DROP COLUMN {column}"))
-        # Added after the move to Alembic, so no legacy database has it.
-        connection.execute(text("ALTER TABLE jobs DROP COLUMN output"))
-        connection.execute(text("ALTER TABLE update_checks DROP COLUMN git_source"))
-        connection.execute(text("ALTER TABLE users DROP COLUMN must_change_password"))
-        connection.execute(text("DROP TABLE api_tokens"))
-        connection.execute(text("DROP TABLE host_update_checks"))
-        connection.execute(
-            text(
-                "INSERT INTO users (username, hashed_password, is_admin, is_active, created_at) "
-                "VALUES ('admin', 'x', 1, 1, '2026-01-01 00:00:00')"
-            )
-        )
-    legacy.dispose()
-
-    migrations.upgrade_database()
-
-    assert _revision() == _head()
-    assert _schema_diff() == []
-    with sqlite3.connect(settings.db_path) as connection:
-        assert connection.execute("SELECT username FROM users").fetchall() == [("admin",)]
-    [backup] = _backups()
-    assert backup.name.endswith("-unversioned.db")
 
 
 def test_refuses_revision_from_newer_release() -> None:

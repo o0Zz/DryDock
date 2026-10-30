@@ -40,8 +40,6 @@ def get_all(db: Session) -> dict[str, Any]:
     """Every setting, with stored values layered over the defaults."""
     values = dict(DEFAULTS)
     for row in db.scalars(select(Setting)):
-        if row.key not in DEFAULTS:
-            continue  # stale key from an older version - ignore it
         try:
             values[row.key] = json.loads(row.value)
         except json.JSONDecodeError:

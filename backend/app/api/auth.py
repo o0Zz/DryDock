@@ -1,7 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
-from app.core.config import DEFAULT_ADMIN_PASSWORD
 from app.core.database import get_db
 from app.core.security import (
     SESSION_USER_KEY,
@@ -23,10 +22,6 @@ def login(body: LoginRequest, request: Request, db: Session = Depends(get_db)) -
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid username or password"
         )
-    # Catches installs that created the admin before this flag existed.
-    if body.password == DEFAULT_ADMIN_PASSWORD and not user.must_change_password:
-        user.must_change_password = True
-        db.commit()
     request.session[SESSION_USER_KEY] = user.id
     return user
 

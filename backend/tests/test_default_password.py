@@ -91,16 +91,6 @@ def test_new_password_must_differ(db: Session) -> None:
     assert response.status_code == 400
 
 
-def test_older_installs_are_flagged_at_login(db: Session) -> None:
-    # Created before the flag existed: still on "admin", but not marked.
-    db.add(User(username="admin", hashed_password=hash_password("admin"), is_admin=True))
-    db.commit()
-    client = TestClient(app)
-
-    assert _login(client, "admin")["must_change_password"] is True
-    assert client.get("/api/tokens").status_code == 403
-
-
 def test_a_token_does_not_bypass_the_change(db: Session) -> None:
     main._seed_admin()
     admin = db.scalar(select(User))
