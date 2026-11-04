@@ -691,6 +691,9 @@ textarea:focus {
 
 /* Action clusters inside table rows sit flush with the row. */
 .button-row.inline { margin-top: 0; }
+/* Stack actions: main, interrupting, rare (pushed to the right). */
+.stack-actions { gap: 0.5rem 1.5rem; }
+.stack-actions > :last-child { margin-left: auto; }
 
 /* Container console: wider than the log panel, terminal fills the body */
 .log-panel.console-panel {

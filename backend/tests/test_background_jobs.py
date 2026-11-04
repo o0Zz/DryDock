@@ -89,6 +89,25 @@ def test_project_action_runner_fails_on_non_zero_exit(monkeypatch: pytest.Monkey
     assert ctx.output == "partial\npull access denied"
 
 
+def test_stack_update_rechecks_its_images(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls = _action_result(monkeypatch, 0, "", "")
+    source = object()
+    monkeypatch.setattr(tasks, "git_images", lambda path: {"app:local": source})
+    monkeypatch.setattr(tasks, "_stack_images", lambda path: ["app:local", "nginx:latest"])
+    checks: list[tuple[str, object, bool]] = []
+    monkeypatch.setattr(
+        tasks,
+        "store_update_check",
+        lambda db, image, git=None, built=False: checks.append((image, git, built)),
+    )
+
+    tasks.project_action_runner(COMPOSE, "update")(FakeJobContext())
+
+    assert calls == [(COMPOSE, "update")]
+    # The git build is now current; the registry image gets a fresh check.
+    assert checks == [("app:local", source, True), ("nginx:latest", None, False)]
+
+
 def test_image_prune_runner_summary(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         docker_service,

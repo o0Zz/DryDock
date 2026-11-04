@@ -63,7 +63,7 @@ export default function UpdateBadge({ update }: { update: UpdateSummary | undefi
               from: shortCommit(update.local_digest),
               to: shortCommit(update.remote_digest),
             }),
-            t('Update the container, or run "Pull & build" on the project, to rebuild it.'),
+            t('Update the container, or run "update" on the project, to rebuild it.'),
           ]
         : [
             t("Checked {date}", { date: checked }),

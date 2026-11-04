@@ -28,7 +28,7 @@ from app.services.repo_service import COMPOSE_FILENAMES
 
 logger = logging.getLogger(__name__)
 
-ALLOWED_ACTIONS = {"up", "down", "pull", "reload", "stop"}
+ALLOWED_ACTIONS = {"up", "down", "pull", "update", "reload", "stop"}
 
 
 class ComposeError(Exception):
@@ -416,6 +416,10 @@ def run_action(
         # in a registry). Pull the rest, then rebuild those on fresh base images.
         # `build` is a no-op for stacks without `build:` services.
         steps = [["pull", "--ignore-buildable"], ["build", "--pull"]]
+    elif action == "update":
+        # The same pull and build, then `up`: Compose only recreates the services whose
+        # image changed, so the others keep running.
+        steps = [["pull", "--ignore-buildable"], ["build", "--pull"], ["up", "-d"]]
     elif action == "up":
         steps = [["up", "-d"]]
     else:

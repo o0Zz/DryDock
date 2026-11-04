@@ -10,7 +10,6 @@
   "Delete this stack": "Supprimer cette stack",
   "Start the stack; recreates services whose config changed": "Démarre la stack ; recrée les services dont la configuration a changé",
   "Stop and remove the stack's containers and networks": "Arrête et supprime les conteneurs et les réseaux de la stack",
-  "Download newer images and rebuild services with a build: section (applied on up or reload)": "Télécharge les images plus récentes et reconstruit les services ayant une section build: (appliqué au prochain up ou reload)",
   "Stop the stack, then up: applies your Compose file changes": "Arrête la stack, puis up : applique les modifications du fichier Compose",
   "Stop the containers without removing them": "Arrête les conteneurs sans les supprimer",
   "Bring this stack down?": "Arrêter cette stack avec down ?",
@@ -112,5 +111,10 @@
   "Apply to editor": "Appliquer dans l'éditeur",
   "This file will not save: {error}": "Ce fichier ne pourra pas être enregistré : {error}",
   "The editor changed since this answer. Applying it replaces those edits.": "L'éditeur a changé depuis cette réponse. L'appliquer remplace ces modifications.",
-  "Ask AI": "Demander à l'IA"
+  "Ask AI": "Demander à l'IA",
+  "Pull newer images, rebuild services with a build: section, then up: only the services whose image changed are recreated": "Télécharge les images plus récentes, reconstruit les services avec une section build:, puis up : seuls les services dont l'image a changé sont recréés",
+  "Download newer images and rebuild services with a build: section, without recreating anything": "Télécharge les images plus récentes et reconstruit les services avec une section build:, sans rien recréer",
+  "Pull or rebuild its image, then recreate this container only (brief downtime). Volumes and their data are kept.": "Télécharge ou reconstruit son image, puis recrée ce conteneur seulement (courte coupure). Les volumes et leurs données sont conservés.",
+  "Pull or rebuild this service's image, then recreate its container": "Télécharger ou reconstruire l'image de ce service, puis recréer son conteneur",
+  "Updating…": "Mise à jour…"
 }

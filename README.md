@@ -36,7 +36,7 @@ Every stack, container, image, volume and network on the host, with the CVEs and
 
 ![Containers page: status, health, CPU and memory, CVE counts, available updates and auto-update badges](docs/screenshots/containers.png)
 
-- **Stacks:** up, down, pull & build, reload, rename, duplicate, delete. Edit the Compose file and its `.env` in the browser.
+- **Stacks:** up, update (pull, build and recreate in one click, per stack or per service), restart, stop, down, rename, duplicate, delete. Edit the Compose file and its `.env` in the browser.
 - **Containers:** live logs, a shell in the browser, health, restarts, CPU and memory sparklines.
 - **Images, volumes, networks:** see what is in use and prune the rest. Browse volume files read-only.
 - **Git built in:** commit, push and pull your Compose folder. Build services straight from a git URL.

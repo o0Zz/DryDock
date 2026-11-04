@@ -8,7 +8,7 @@ export interface User {
   must_change_password: boolean;
 }
 
-export type ProjectAction = "up" | "down" | "pull" | "reload" | "stop";
+export type ProjectAction = "up" | "down" | "pull" | "update" | "reload" | "stop";
 
 export type ContainerAction = "start" | "stop" | "restart" | "pause" | "unpause" | "kill";
 

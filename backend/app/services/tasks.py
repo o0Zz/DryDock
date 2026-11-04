@@ -136,6 +136,18 @@ def git_images(compose_path: Path | None = None) -> dict[str, git_service.GitSou
     return sources
 
 
+def _stack_images(compose_path: Path) -> list[str]:
+    """The images one Compose file names in `image:`."""
+    images = {
+        service.image
+        for project in repo_service.discover_projects()
+        if Path(project.compose_path) == compose_path
+        for service in project.services
+        if service.image
+    }
+    return sorted(images)
+
+
 def all_known_images() -> list[str]:
     """Every image worth tracking: in use by a container, or named in a Compose file."""
     images = set(repo_service.referenced_images())
@@ -574,10 +586,16 @@ def project_action_runner(
         )
         ctx.set_output(compose_service.joined_output(result["stdout"], result["stderr"]))
         compose_service.check(action, result["exit_code"], result["stdout"], result["stderr"])
-        if action == "pull":
-            # "Pull & build" rebuilt the git services: their current commit is now built.
-            for built_image, source in git_images(compose_path).items():
+        if action in ("pull", "update"):
+            # The git services were rebuilt: their current commit is now built.
+            sources = git_images(compose_path)
+            for built_image, source in sources.items():
                 store_update_check(ctx.db, built_image, git=source, built=True)
+        if action == "update":
+            # Refresh the stored checks so the "update available" badges clear.
+            for image in _stack_images(compose_path):
+                if image not in sources:
+                    store_update_check(ctx.db, image)
         ctx.advance(f"docker compose {action} done")
 
     return run

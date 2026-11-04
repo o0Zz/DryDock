@@ -147,6 +147,18 @@ def test_run_action_reports_failure_instead_of_raising(runs: SimpleNamespace) ->
     assert compose_service.run_action(COMPOSE, "pull")["exit_code"] == 1
 
 
+def test_update_pulls_builds_then_ups(runs: SimpleNamespace) -> None:
+    runs.results.extend([(0, "", ""), (0, "", ""), (0, "", "")])
+
+    compose_service.run_action(COMPOSE, "update")
+
+    assert [call[0][4:] for call in runs.calls] == [
+        ["pull", "--ignore-buildable"],
+        ["build", "--pull"],
+        ["up", "-d"],
+    ]
+
+
 def test_reload_stops_then_ups(runs: SimpleNamespace) -> None:
     runs.results += [(0, "", "Stopped\n"), (0, "", "Recreated\n")]
 

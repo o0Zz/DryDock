@@ -41,9 +41,16 @@ import type { Project, ProjectAction, UpdateSummary } from "../types";
 // CodeMirror is by far the heaviest dependency in the bundle, so it loads on demand.
 const YamlEditor = lazy(() => import("../components/YamlEditor"));
 
-const ACTIONS: ProjectAction[] = ["up", "down", "pull", "reload", "stop"];
+// Three groups: the main actions, the ones that interrupt the stack, and the rare ones.
+const ACTION_GROUPS: { actions: ProjectAction[]; style: string }[] = [
+  { actions: ["up", "update"], style: "" },
+  { actions: ["reload", "stop"], style: "secondary" },
+  { actions: ["pull", "down"], style: "secondary small" },
+];
+const ACTIONS: ProjectAction[] = ACTION_GROUPS.flatMap((group) => group.actions);
 const ACTION_ICONS: Record<ProjectAction, LucideIcon> = {
   up: Play,
+  update: ArrowUpCircle,
   down: ArrowDownCircle,
   pull: Download,
   reload: RotateCw,
@@ -52,13 +59,19 @@ const ACTION_ICONS: Record<ProjectAction, LucideIcon> = {
 
 // Button text when it differs from the action name. Action names are Compose
 // commands and stay untranslated in every language.
-const ACTION_TEXT: Partial<Record<ProjectAction, string>> = { pull: "pull & build" };
+const ACTION_TEXT: Partial<Record<ProjectAction, string>> = {
+  pull: "pull only",
+  reload: "restart",
+};
 
 const ACTION_HINTS: Record<ProjectAction, string> = {
   up: msg("Start the stack; recreates services whose config changed"),
+  update: msg(
+    "Pull newer images, rebuild services with a build: section, then up: only the services whose image changed are recreated",
+  ),
   down: msg("Stop and remove the stack's containers and networks"),
   pull: msg(
-    "Download newer images and rebuild services with a build: section (applied on up or reload)",
+    "Download newer images and rebuild services with a build: section, without recreating anything",
   ),
   reload: msg("Stop the stack, then up: applies your Compose file changes"),
   stop: msg("Stop the containers without removing them"),
@@ -191,6 +204,19 @@ export default function ProjectDetail() {
     [id, start, confirm, t],
   );
 
+  // One service: pull or rebuild its image, then recreate only its container.
+  const updateService = async (container: { id: string; name: string }): Promise<void> => {
+    const accepted = await confirm({
+      title: t("Update {name}?", { name: container.name }),
+      icon: ArrowUpCircle,
+      message: t(
+        "Pull or rebuild its image, then recreate this container only (brief downtime). Volumes and their data are kept.",
+      ),
+      confirmLabel: t("Update"),
+    });
+    if (accepted) await start(() => api.updateContainer(container.id));
+  };
+
   const applyTag = (tag: string): void => {
     if (!retag) return;
     const result = retagImage(compose, retag, tag);
@@ -304,7 +330,16 @@ export default function ProjectDetail() {
       job.kind === "project_action" &&
       ACTIONS.some((action) => job.label === actionLabel(action, project.name)),
   );
-  const lastJob = actionJobs[actionJobs.length - 1];
+  // Container updates of this stack's services (`Update web-app-1`).
+  const serviceJobs = jobs.filter(
+    (job) =>
+      job.kind === "container_update" &&
+      project.containers.some((container) => job.label === `Update ${container.name}`),
+  );
+  const stackJobs = jobs.filter((job) => actionJobs.includes(job) || serviceJobs.includes(job));
+  const lastJob = stackJobs[stackJobs.length - 1];
+  const updating = (name: string): boolean =>
+    serviceJobs.some((job) => isActive(job) && job.label === `Update ${name}`);
   const busyAction = ACTIONS.find((action) =>
     actionJobs.some((job) => isActive(job) && job.label === actionLabel(action, project.name)),
   );
@@ -360,24 +395,27 @@ export default function ProjectDetail() {
       )}
       <section className="section">
         <h2>{t("Actions")}</h2>
-        <div className="button-row">
-          {ACTIONS.map((action) => {
-            const Icon = ACTION_ICONS[action];
-            return (
-              <button
-                key={action}
-                type="button"
-                disabled={busyAction !== undefined}
-                title={t(ACTION_HINTS[action])}
-                onClick={() => runAction(action)}
-              >
-                <Icon size={15} />{" "}
-                {busyAction === action
-                  ? `${ACTION_TEXT[action] ?? action}…`
-                  : (ACTION_TEXT[action] ?? action)}
-              </button>
-            );
-          })}
+        <div className="button-row stack-actions">
+          {ACTION_GROUPS.map((group) => (
+            <div key={group.actions[0]} className="button-row inline">
+              {group.actions.map((action) => {
+                const Icon = ACTION_ICONS[action];
+                const text = ACTION_TEXT[action] ?? action;
+                return (
+                  <button
+                    key={action}
+                    type="button"
+                    className={group.style || undefined}
+                    disabled={busyAction !== undefined}
+                    title={t(ACTION_HINTS[action])}
+                    onClick={() => runAction(action)}
+                  >
+                    <Icon size={15} /> {busyAction === action ? `${text}…` : text}
+                  </button>
+                );
+              })}
+            </div>
+          ))}
         </div>
         {actionError && <div className="error">{actionError}</div>}
         {lastJob && (
@@ -444,6 +482,7 @@ export default function ProjectDetail() {
                   {t("Uptime")}
                 </SortHeader>
                 <th>{t("Ports")}</th>
+                <th />
               </tr>
             </thead>
             <tbody>
@@ -466,6 +505,20 @@ export default function ProjectDetail() {
                   </td>
                   <td>
                     {formatPorts(container.ports)}
+                  </td>
+                  <td>
+                    {container.compose_service && (
+                      <button
+                        type="button"
+                        className="secondary small"
+                        disabled={busyAction !== undefined || updating(container.name)}
+                        title={t("Pull or rebuild this service's image, then recreate its container")}
+                        onClick={() => void updateService(container)}
+                      >
+                        <ArrowUpCircle size={13} />{" "}
+                        {updating(container.name) ? t("Updating…") : t("Update")}
+                      </button>
+                    )}
                   </td>
                 </tr>
               ))}
