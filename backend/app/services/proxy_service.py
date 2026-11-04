@@ -158,7 +158,7 @@ def routes(projects: list[Project]) -> list[ProxyRoute]:
                     project_id=project.id,
                     project_name=project.name,
                     service=exposure.service,
-                    # `Host(`traefik.${PROXY_DOMAIN}`)`: Compose fills it in from the .env.
+                    # `expose.host=app.${PROXY_DOMAIN}`: Compose fills it in from the .env.
                     hosts=[_interpolate(host, env or {}) for host in exposure.hosts],
                     port=exposure.port,
                     public=exposure.public,

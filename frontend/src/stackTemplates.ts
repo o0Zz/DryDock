@@ -162,10 +162,9 @@ services:
     image: traefik:v3
     container_name: traefik
     restart: unless-stopped
+    # No Docker provider and no Docker socket: Traefik faces the internet, and the socket
+    # is root on the host. Routes come only from the files proxy-sync writes.
     command:
-      - --providers.docker=true
-      - --providers.docker.exposedbydefault=false
-      - --providers.docker.network=proxy
       - --providers.file.directory=/etc/traefik/dynamic
       - --providers.file.watch=true
       - --entrypoints.web.address=:80
@@ -180,12 +179,10 @@ services:
 ${resolver}      # One line per request with the client IP, for fail2ban.
       - --accesslog=true
       - --accesslog.filepath=/logs/access.log
-      - --api.dashboard=true
 ${environment}${envFile}    ports:
       - "80:80"
       - "443:443"
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
       - \${PROXY_DATA:-/data/proxy}/letsencrypt:/letsencrypt
       - \${PROXY_DATA:-/data/proxy}/dynamic:/etc/traefik/dynamic:ro
       - \${PROXY_DATA:-/data/proxy}/logs:/logs
@@ -195,13 +192,8 @@ ${environment}${envFile}    ports:
     networks:
       - proxy
     labels:
+      # DryDock finds the proxy by this label.
       - drydock.proxy=traefik
-      # The dashboard has no login: private only. private@file comes from proxy-sync.
-      - traefik.enable=true
-      - traefik.http.routers.traefik.rule=Host(\`traefik.\${PROXY_DOMAIN}\`)
-      - traefik.http.routers.traefik.entrypoints=websecure
-      - traefik.http.routers.traefik.middlewares=private@file,hsts@file
-      - traefik.http.routers.traefik.service=api@internal
 
 ${proxySync()}`;
 }

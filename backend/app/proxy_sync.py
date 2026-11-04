@@ -166,7 +166,7 @@ def render(routes: list[Route], sources: list[str]) -> str:
             "routers": routers,
             "services": services,
             "middlewares": {
-                # Also used by hand as private@file, e.g. on Traefik's own dashboard.
+                # Also used by hand as private@file, on routes written in another file.
                 "private": {"ipAllowList": {"sourceRange": sources}},
                 "hsts": {"headers": {"stsSeconds": HSTS_SECONDS}},
             },
