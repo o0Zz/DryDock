@@ -15,6 +15,7 @@ import SortHeader from "./SortHeader";
  * and writes their config. A jail opens on its own page to edit.
  */
 export default function ProxySecurity() {
+  const t = useT();
   const [report, setReport] = useState<Fail2banReport | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -37,17 +38,25 @@ export default function ProxySecurity() {
 
   useEffect(load, [load]);
 
+  // Laid out like the Routes tab: a line of context, then one section per part. The
+  // page's Reload button remounts this tab, so it has no refresh button of its own.
   return (
-    <section className="section">
-      {/* The page's Reload button remounts this tab: no refresh button of its own. */}
-      <h2>
-        <ShieldBan size={18} /> fail2ban
-      </h2>
-      {error && <div className="error">{error}</div>}
-      <Fail2banJails report={report} onApplied={load} />
+    <>
+      <p className="muted">
+        {t(
+          "What protects the services you expose. fail2ban bans the IPs that misbehave in the proxy's access log; the blocklist drops known bad IPs before they connect. Both run on the host: DryDock reads their state and writes their config.",
+        )}
+      </p>
+      <section className="section">
+        <h2>
+          <ShieldBan size={18} /> fail2ban
+        </h2>
+        {error && <div className="error">{error}</div>}
+        <Fail2banJails report={report} onApplied={load} />
+      </section>
       <IpBlocklist />
       {report && <Bans report={report} />}
-    </section>
+    </>
   );
 }
 
@@ -75,8 +84,8 @@ function Bans({ report }: { report: Fail2banReport }) {
   });
 
   return (
-    <div className="subsection">
-      <h3>{t("Active bans ({count})", { count: report.active_bans.length })}</h3>
+    <section className="section">
+      <h2>{t("Active bans ({count})", { count: report.active_bans.length })}</h2>
       {report.active_bans.length === 0 ? (
         <p className="muted">{t("Nobody is banned right now.")}</p>
       ) : (
@@ -129,7 +138,7 @@ function Bans({ report }: { report: Fail2banReport }) {
           </div>
         </details>
       )}
-    </div>
+    </section>
   );
 }
 

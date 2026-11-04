@@ -71,5 +71,6 @@
   "Bans when": "Bannit si",
   "Banned now": "Bannis",
   "Last ban": "Dernier ban",
-  "Every drydock-* jail is replaced by the default set (401, 403, scanners, bad bots, unknown host names).": "Chaque jail drydock-* est remplacé par le jeu par défaut (401, 403, scanners, bad bots, noms d'hôte inconnus)."
+  "Every drydock-* jail is replaced by the default set (401, 403, scanners, bad bots, unknown host names).": "Chaque jail drydock-* est remplacé par le jeu par défaut (401, 403, scanners, bad bots, noms d'hôte inconnus).",
+  "What protects the services you expose. fail2ban bans the IPs that misbehave in the proxy's access log; the blocklist drops known bad IPs before they connect. Both run on the host: DryDock reads their state and writes their config.": "Ce qui protège les services que vous exposez. fail2ban bannit les IP qui se comportent mal dans le log d'accès du proxy ; la liste de blocage bloque les IP malveillantes connues avant qu'elles ne se connectent. Les deux tournent sur l'hôte : DryDock lit leur état et écrit leur config."
 }

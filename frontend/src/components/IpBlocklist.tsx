@@ -72,9 +72,9 @@ export default function IpBlocklist() {
 
   const { status, host } = read;
   return (
-    <div className="subsection">
+    <section className="section">
       <div className="row-between">
-        <h3>{t("Known bad IPs")}</h3>
+        <h2>{t("Known bad IPs")}</h2>
         <HostBadge active={host.active} enabled={read.config.enabled} dirty={dirty} />
       </div>
       {status && (
@@ -190,7 +190,7 @@ export default function IpBlocklist() {
       </details>
       {notice && <div className="output ok padded">{notice}</div>}
       {error && <pre className="error">{error}</pre>}
-    </div>
+    </section>
   );
 }
 
