@@ -289,6 +289,38 @@ def test_a_new_jail_needs_a_free_name() -> None:
             _plan(files=_new(name))
 
 
+def test_a_copy_gets_the_jails_own_keys_and_its_filter() -> None:
+    copy = jails_service.duplicate(_snapshot(), "sshd", "sshd-strict")
+
+    texts = {block.path: block.text for block in copy.blocks}
+    assert list(texts) == ["jail.d/sshd-strict.local", "filter.d/sshd-strict.conf"]
+    jail = texts["jail.d/sshd-strict.local"]
+    assert jail.startswith(jails_service.MARKER)
+    # The last value of each key, in fail2ban's read order; [DEFAULT] is left out.
+    assert ini.get(jail, "sshd-strict", "logpath") == ["/var/log/auth.log"]
+    assert ini.get(jail, "sshd-strict", "backend") == ["systemd"]
+    assert ini.get(jail, "sshd-strict", "filter") == ["sshd-strict"]
+    assert ini.find(jail, "sshd-strict", "bantime") is not None
+    assert ini.find(jail, "sshd-strict", "banaction") is None
+    assert texts["filter.d/sshd-strict.conf"].startswith(jails_service.MARKER)
+    assert texts["filter.d/sshd-strict.conf"].endswith(FILES["filter.d/sshd.conf"])
+    # Written like a new jail: the plan accepts it, and DryDock can remove it later.
+    changes = _plan(files=[{"path": b.path, "text": b.text, "new": True} for b in copy.blocks])
+    assert _jail("sshd-strict", _snapshot(**changes)).managed
+
+
+def test_a_copy_keeps_the_filter_arguments_and_needs_a_free_name() -> None:
+    # Without its own `filter`, sshd uses [DEFAULT]'s `%(__name__)s[mode=%(mode)s]`.
+    files = {"jail.local": FILES["jail.local"].replace("filter = sshd\n", "")}
+    copy = jails_service.duplicate(_snapshot(**files), "sshd", "ssh2")
+    jail = copy.blocks[0].text
+    assert ini.get(jail, "ssh2", "filter") == ["ssh2[mode=%(mode)s]"]
+    with pytest.raises(Fail2banPlanError, match="taken"):
+        jails_service.duplicate(_snapshot(), "sshd", "drydock-auth")
+    with pytest.raises(Fail2banPlanError, match="no jail"):
+        jails_service.duplicate(_snapshot(), "nope", "x")
+
+
 def test_only_drydocks_files_are_removed() -> None:
     snapshot = _snapshot(**_plan(files=_new()))
 
@@ -431,6 +463,20 @@ def test_api_renders_a_new_jail_without_writing(
         "filter.d/auth.conf",
     ]
     assert host == []
+
+
+def test_api_duplicates_without_writing(
+    client: TestClient, host: list[dict[str, Any]]
+) -> None:
+    response = client.post("/api/host/fail2ban/duplicate", json={"source": "sshd", "name": "s2"})
+
+    assert [block["path"] for block in response.json()["blocks"]] == [
+        "jail.d/s2.local",
+        "filter.d/s2.conf",
+    ]
+    assert all("writable" not in call for call in host)
+    taken = client.post("/api/host/fail2ban/duplicate", json={"source": "sshd", "name": "sshd"})
+    assert taken.status_code == 400
 
 
 def test_api_plans_without_writing(client: TestClient, host: list[dict[str, Any]]) -> None:

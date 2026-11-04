@@ -34,6 +34,10 @@ export default function Proxy() {
   const tab = user?.is_admin && searchParams.get("tab") === "security" ? "security" : "routes";
   const [proxy, setProxy] = useState<ProxyOverview | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [reloading, setReloading] = useState(false);
+  // The Security tab loads its own parts (bans, jails, blocklist): a new key remounts it,
+  // so Reload reads all of them from the host again.
+  const [securityKey, setSecurityKey] = useState(0);
 
   const load = useCallback(async (): Promise<void> => {
     try {
@@ -48,6 +52,13 @@ export default function Proxy() {
     void load();
   }, [load]);
 
+  async function reload(): Promise<void> {
+    setReloading(true);
+    setSecurityKey((key) => key + 1);
+    await load();
+    setReloading(false);
+  }
+
   if (error && !proxy) return <div className="error">{t("Failed to load: {error}", { error })}</div>;
   if (!proxy) return <div>{t("Loading…")}</div>;
 
@@ -55,8 +66,13 @@ export default function Proxy() {
     <div>
       <div className="row-between">
         <h1>{t("Proxy")}</h1>
-        <button type="button" className="secondary" onClick={() => void load()}>
-          <RefreshCw size={15} /> {t("Reload")}
+        <button
+          type="button"
+          className="secondary"
+          disabled={reloading}
+          onClick={() => void reload()}
+        >
+          <RefreshCw size={15} className={reloading ? "spin" : undefined} /> {t("Reload")}
         </button>
       </div>
       {error && <div className="error">{error}</div>}
@@ -83,7 +99,11 @@ export default function Proxy() {
         </div>
       )}
 
-      {tab === "security" ? <ProxySecurity /> : <RoutesTab proxy={proxy} onSaved={load} />}
+      {tab === "security" ? (
+        <ProxySecurity key={securityKey} />
+      ) : (
+        <RoutesTab proxy={proxy} onSaved={load} />
+      )}
     </div>
   );
 }

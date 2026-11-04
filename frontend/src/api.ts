@@ -22,6 +22,7 @@ import type {
   EnvContent,
   EnvSaveResult,
   ExposeRequest,
+  Fail2banDuplicate,
   Fail2banEdit,
   Fail2banJailConfig,
   Fail2banJails,
@@ -141,6 +142,11 @@ export const api = {
     request<Fail2banJailConfig>("/api/host/fail2ban/new", {
       method: "POST",
       body: JSON.stringify(jail),
+    }),
+  duplicateFail2banJail: (copy: Fail2banDuplicate) =>
+    request<Fail2banJailConfig>("/api/host/fail2ban/duplicate", {
+      method: "POST",
+      body: JSON.stringify(copy),
     }),
   fail2banDefaults: (target: Fail2banJailTarget) =>
     request<Fail2banEdit>("/api/host/fail2ban/defaults", {

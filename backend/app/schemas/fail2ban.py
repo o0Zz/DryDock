@@ -73,6 +73,13 @@ class Fail2banNewJail(Fail2banJailTarget):
     template: str
 
 
+class Fail2banDuplicate(BaseModel):
+    """A copy of an existing jail under a new name."""
+
+    source: str = Field(pattern=JAIL_NAME)
+    name: str = Field(pattern=JAIL_NAME)
+
+
 class Fail2banFileEdit(BaseModel):
     path: str = Field(pattern=WRITABLE_PATH)
     # Set: replace that `[section]` block of the file. None: replace the whole file.

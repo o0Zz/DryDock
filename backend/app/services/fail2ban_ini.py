@@ -80,6 +80,16 @@ def blocks(text: str, section: str) -> list[tuple[int, str]]:
     ]
 
 
+def keys(text: str, section: str) -> list[str]:
+    """The keys set in `section`, lowercased, once each, in file order."""
+    found: list[str] = []
+    for line in (line for _, block in blocks(text, section) for line in block.split("\n")[1:]):
+        match = _KEY.match(line)
+        if match and (key := match.group(1).strip().lower()) not in found:
+            found.append(key)
+    return found
+
+
 def find(text: str, section: str, key: str) -> int | None:
     """1-based line of the last `key` in `section`, or None."""
     span = _span(text.split("\n"), section, key)

@@ -23,6 +23,7 @@ import { useT } from "./i18n";
 import ContainerDetail from "./pages/ContainerDetail";
 import Containers from "./pages/Containers";
 import Dashboard from "./pages/Dashboard";
+import Fail2banJail from "./pages/Fail2banJail";
 import Host from "./pages/Host";
 import Images from "./pages/Images";
 import Login from "./pages/Login";
@@ -144,6 +145,8 @@ export default function App() {
           {user.is_admin && <Route path="/volumes/:name" element={<VolumeFiles />} />}
           <Route path="/networks" element={<Networks />} />
           <Route path="/proxy" element={<Proxy />} />
+          {user.is_admin && <Route path="/proxy/jails/new" element={<Fail2banJail />} />}
+          {user.is_admin && <Route path="/proxy/jails/:name" element={<Fail2banJail />} />}
           <Route path="/images" element={<Images />} />
           <Route path="/scans" element={<Navigate to="/images" replace />} />
           <Route path="/host" element={<Host />} />

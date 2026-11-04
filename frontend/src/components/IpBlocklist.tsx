@@ -77,89 +77,17 @@ export default function IpBlocklist() {
         <h3>{t("Known bad IPs")}</h3>
         <HostBadge active={host.active} enabled={read.config.enabled} dirty={dirty} />
       </div>
-      <p className="muted">
-        {t(
-          "Ranges from public lists of known attackers, dropped by the host's firewall before they reach any container. DryDock owns the nftables table inet drydock_blocklist, reloads it every 24 hours and when it starts. Private ranges and the allowlist are never blocked.",
-        )}
-      </p>
-
-      <label className="checkbox-label">
-        <input
-          type="checkbox"
-          checked={draft.enabled}
-          onChange={(event) => edit({ enabled: event.target.checked })}
-        />
-        {t("Block known bad IPs")}
-      </label>
-      <div className="fail2ban-fields">
-        <label className="field">
-          {t("Lists (one URL per line)")}
-          <textarea
-            className="blocklist-sources"
-            rows={Math.max(2, draft.sources.length)}
-            value={draft.sources.join("\n")}
-            onChange={(event) =>
-              edit({ sources: event.target.value.split("\n").map((line) => line.trim()).filter(Boolean) })
-            }
-          />
-        </label>
-        <label className="field">
-          {t("Allowlist file (never blocked)")}
-          <input
-            type="text"
-            placeholder={t("none")}
-            value={draft.allowlist_file}
-            onChange={(event) => edit({ allowlist_file: event.target.value })}
-          />
-        </label>
-        <label className="field">
-          {t("Ignored IPs and networks")}
-          <input
-            type="text"
-            value={draft.ignore_ips.join(" ")}
-            onChange={(event) =>
-              edit({ ignore_ips: event.target.value.split(/[\s,]+/).filter(Boolean) })
-            }
-          />
-        </label>
-      </div>
-
       {status && (
-        <div className="blocklist-status muted">
-          <div>
-            {t("{entries} ranges loaded on {date}.", {
-              entries: status.entries,
-              date: formatDate(status.applied_at),
-            })}{" "}
-            {host.active && host.dropped !== null &&
-              t("{count} packets dropped since.", { count: host.dropped })}
-          </div>
-          {status.sources.map((source) => (
-            <div key={source.url}>
-              <code>{source.url}</code>{" "}
-              {t("{entries} ranges, downloaded {date}", {
-                entries: source.entries,
-                date: formatDate(source.fetched_at),
-              })}
-              {source.error && <span className="error-text"> · {source.error}</span>}
-            </div>
-          ))}
-        </div>
+        <p className="muted">
+          {t("{entries} ranges loaded on {date}.", {
+            entries: status.entries,
+            date: formatDate(status.applied_at),
+          })}{" "}
+          {host.active && host.dropped !== null &&
+            t("{count} packets dropped since.", { count: host.dropped })}
+        </p>
       )}
       {host.error && <div className="error">{host.error}</div>}
-
-      <div className="button-row">
-        <button type="button" disabled={busy !== null} onClick={() => void saveAndApply()}>
-          <Save size={15} /> {busy ?? t("Save & apply")}
-        </button>
-        {dirty && (
-          <button type="button" className="secondary" onClick={() => setDraft(read.config)}>
-            <Undo2 size={15} /> {t("Discard changes")}
-          </button>
-        )}
-      </div>
-      {notice && <div className="output ok padded">{notice}</div>}
-      {error && <pre className="error">{error}</pre>}
 
       <form
         className="button-row blocklist-check"
@@ -182,6 +110,86 @@ export default function IpBlocklist() {
         </button>
         {checked !== null && <CheckResult result={checked} />}
       </form>
+
+      <details className="subsection" open={dirty || undefined}>
+        <summary className="muted">{t("Settings")}</summary>
+        <p className="muted">
+          {t(
+            "Ranges from public lists of known attackers, dropped by the host's firewall before they reach any container. DryDock owns the nftables table inet drydock_blocklist, reloads it every 24 hours and when it starts. Private ranges and the allowlist are never blocked.",
+          )}
+        </p>
+        <label className="checkbox-label">
+          <input
+            type="checkbox"
+            checked={draft.enabled}
+            onChange={(event) => edit({ enabled: event.target.checked })}
+          />
+          {t("Block known bad IPs")}
+        </label>
+        <div className="fail2ban-fields">
+          <label className="field">
+            {t("Lists (one URL per line)")}
+            <textarea
+              className="blocklist-sources"
+              rows={Math.max(2, draft.sources.length)}
+              value={draft.sources.join("\n")}
+              onChange={(event) =>
+                edit({
+                  sources: event.target.value
+                    .split("\n")
+                    .map((line) => line.trim())
+                    .filter(Boolean),
+                })
+              }
+            />
+          </label>
+          <label className="field">
+            {t("Allowlist file (never blocked)")}
+            <input
+              type="text"
+              placeholder={t("none")}
+              value={draft.allowlist_file}
+              onChange={(event) => edit({ allowlist_file: event.target.value })}
+            />
+          </label>
+          <label className="field">
+            {t("Ignored IPs and networks")}
+            <input
+              type="text"
+              value={draft.ignore_ips.join(" ")}
+              onChange={(event) =>
+                edit({ ignore_ips: event.target.value.split(/[\s,]+/).filter(Boolean) })
+              }
+            />
+          </label>
+        </div>
+        {status && (
+          <div className="blocklist-status muted">
+            {status.sources.map((source) => (
+              <div key={source.url}>
+                <code>{source.url}</code>{" "}
+                {t("{entries} ranges, downloaded {date}", {
+                  entries: source.entries,
+                  date: formatDate(source.fetched_at),
+                })}
+                {source.error && <span className="error-text"> · {source.error}</span>}
+              </div>
+            ))}
+          </div>
+        )}
+        <div className="button-row">
+          <button type="button" disabled={busy !== null} onClick={() => void saveAndApply()}>
+            <Save size={15} /> {busy ?? t("Save & apply")}
+          </button>
+          {dirty && (
+            <button type="button" className="secondary" onClick={() => setDraft(read.config)}>
+              <Undo2 size={15} /> {t("Discard changes")}
+            </button>
+          )}
+        </div>
+      </details>
+      {notice && <div className="output ok padded">{notice}</div>}
+      {error && <pre className="error">{error}</pre>}
     </div>
   );
 }

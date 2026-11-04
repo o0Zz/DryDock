@@ -665,6 +665,12 @@ export interface Fail2banJailTarget {
   logpath: string;
 }
 
+/** A copy of an existing jail and its filter under a new name. */
+export interface Fail2banDuplicate {
+  source: string;
+  name: string;
+}
+
 export interface Fail2banNewJail extends Fail2banJailTarget {
   name: string;
   template: string;

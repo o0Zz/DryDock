@@ -6,6 +6,7 @@ from app.core.security import require_admin
 from app.models.job import Job, JobKind
 from app.schemas.blocklist import IpBlocklistCheck, IpBlocklistConfig, IpBlocklistRead
 from app.schemas.fail2ban import (
+    Fail2banDuplicate,
     Fail2banEdit,
     Fail2banFileChange,
     Fail2banJailConfig,
@@ -69,6 +70,16 @@ def fail2ban_jails() -> Fail2banJails:
 def new_fail2ban_jail(body: Fail2banNewJail) -> Fail2banJailConfig:
     """A new jail's two files from a template, to edit before applying. Nothing is written."""
     return fail2ban_jails_service.new_jail(body)
+
+
+@router.post(
+    "/fail2ban/duplicate", response_model=Fail2banJailConfig, dependencies=[Depends(require_admin)]
+)
+def duplicate_fail2ban_jail(body: Fail2banDuplicate) -> Fail2banJailConfig:
+    """A copy of a jail and its filter under a new name, to edit before applying. Nothing
+    is written."""
+    snapshot = fail2ban_config_service.snapshot()
+    return fail2ban_jails_service.duplicate(snapshot, body.source, body.name)
 
 
 @router.post(

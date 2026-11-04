@@ -1,4 +1,4 @@
-import { RefreshCw, ShieldBan } from "lucide-react";
+import { ShieldBan } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { ApiError, api } from "../api";
 import { formatDate } from "../format";
@@ -10,12 +10,11 @@ import IpBlocklist from "./IpBlocklist";
 import SortHeader from "./SortHeader";
 
 /**
- * The Proxy page's Security tab (admin only): fail2ban's jails with their bans, who it
- * banned, and the IP blocklist. fail2ban and nftables run on
- * the host; DryDock reads their state and writes their config.
+ * The Proxy page's Security tab (admin only): fail2ban's jails, the known bad IPs, then
+ * who is banned now. fail2ban and nftables run on the host; DryDock reads their state
+ * and writes their config. A jail opens on its own page to edit.
  */
 export default function ProxySecurity() {
-  const t = useT();
   const [report, setReport] = useState<Fail2banReport | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -40,24 +39,27 @@ export default function ProxySecurity() {
 
   return (
     <section className="section">
-      <div className="row-between">
-        <h2>
-          <ShieldBan size={18} /> fail2ban
-        </h2>
-        <button type="button" className="secondary small" onClick={load}>
-          <RefreshCw size={14} /> {t("Refresh")}
-        </button>
-      </div>
+      {/* The page's Reload button remounts this tab: no refresh button of its own. */}
+      <h2>
+        <ShieldBan size={18} /> fail2ban
+      </h2>
       {error && <div className="error">{error}</div>}
       <Fail2banJails report={report} onApplied={load} />
-      {report && <Bans report={report} />}
       <IpBlocklist />
+      {report && <Bans report={report} />}
     </section>
   );
 }
 
-function BanTable({ bans, empty }: { bans: Fail2banBan[]; empty: string }) {
+function Bans({ report }: { report: Fail2banReport }) {
   const t = useT();
+  const [filter, setFilter] = useState("");
+  const needle = filter.trim().toLowerCase();
+  const bans = needle
+    ? report.active_bans.filter(
+        (ban) => ban.ip.includes(needle) || ban.jail.toLowerCase().includes(needle),
+      )
+    : report.active_bans;
   // No default: the server lists the newest bans first.
   const sorting = useSort(bans, {
     storageKey: "drydock.sort.bans",
@@ -71,71 +73,53 @@ function BanTable({ bans, empty }: { bans: Fail2banBan[]; empty: string }) {
     },
     descendingFirst: ["banned", "until", "times"],
   });
-  if (bans.length === 0) return <p className="muted">{empty}</p>;
-  return (
-    <table className="projects-table">
-      <thead>
-        <tr>
-          <SortHeader sorting={sorting} column="ip">
-            IP
-          </SortHeader>
-          <SortHeader sorting={sorting} column="jail">
-            {t("Jail")}
-          </SortHeader>
-          <SortHeader sorting={sorting} column="banned">
-            {t("Banned")}
-          </SortHeader>
-          <SortHeader sorting={sorting} column="until">
-            {t("Until")}
-          </SortHeader>
-          <SortHeader sorting={sorting} column="times">
-            {t("Times")}
-          </SortHeader>
-          <th>{t("Log lines")}</th>
-        </tr>
-      </thead>
-      <tbody>
-        {sorting.rows.map((ban) => (
-          <tr key={`${ban.jail}-${ban.ip}-${ban.banned_at}`}>
-            <td>
-              <code>{ban.ip}</code>
-            </td>
-            <td>{ban.jail}</td>
-            <td className="muted">{formatDate(ban.banned_at)}</td>
-            <td className="muted">{formatDate(ban.expires_at, t("permanent"))}</td>
-            <td>{ban.ban_count}</td>
-            <td>
-              {ban.matches.length > 0 ? (
-                <details>
-                  <summary className="muted">
-                    {t("{count} line(s)", { count: ban.matches.length })}
-                  </summary>
-                  <pre className="match-lines">{ban.matches.join("\n")}</pre>
-                </details>
-              ) : (
-                "—"
-              )}
-            </td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
-  );
-}
 
-function Bans({ report }: { report: Fail2banReport }) {
-  const t = useT();
   return (
-    <>
-      <p className="muted">
-        {t("History since {date}. fail2ban keeps it for", {
-          date: formatDate(report.history_since),
-        })}{" "}
-        <code>dbpurgeage</code> {t("(1 day by default).")}
-      </p>
-      {report.top_users.length > 0 && (
+    <div className="subsection">
+      <h3>{t("Active bans ({count})", { count: report.active_bans.length })}</h3>
+      {report.active_bans.length === 0 ? (
+        <p className="muted">{t("Nobody is banned right now.")}</p>
+      ) : (
         <>
-          <h3>{t("User names tried on SSH")}</h3>
+          <div className="button-row">
+            <input
+              placeholder={t("Filter by IP or jail…")}
+              value={filter}
+              onChange={(event) => setFilter(event.target.value)}
+            />
+          </div>
+          <table className="projects-table">
+            <thead>
+              <tr>
+                <SortHeader sorting={sorting} column="ip">
+                  IP
+                </SortHeader>
+                <SortHeader sorting={sorting} column="jail">
+                  {t("Jail")}
+                </SortHeader>
+                <SortHeader sorting={sorting} column="banned">
+                  {t("Banned")}
+                </SortHeader>
+                <SortHeader sorting={sorting} column="until">
+                  {t("Until")}
+                </SortHeader>
+                <SortHeader sorting={sorting} column="times">
+                  {t("Times")}
+                </SortHeader>
+                <th>{t("Log lines")}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {sorting.rows.map((ban) => (
+                <BanRow key={`${ban.jail}-${ban.ip}-${ban.banned_at}`} ban={ban} />
+              ))}
+            </tbody>
+          </table>
+        </>
+      )}
+      {report.top_users.length > 0 && (
+        <details className="subsection">
+          <summary className="muted">{t("User names tried on SSH")}</summary>
           <div className="button-row">
             {report.top_users.map((user) => (
               <span key={user.name} className="badge">
@@ -143,14 +127,35 @@ function Bans({ report }: { report: Fail2banReport }) {
               </span>
             ))}
           </div>
-        </>
+        </details>
       )}
+    </div>
+  );
+}
 
-      <h3>{t("Active bans ({count})", { count: report.active_bans.length })}</h3>
-      <BanTable bans={report.active_bans} empty={t("Nobody is banned right now.")} />
-
-      <h3>{t("Recent bans")}</h3>
-      <BanTable bans={report.recent_bans} empty={t("No bans in fail2ban's history.")} />
-    </>
+function BanRow({ ban }: { ban: Fail2banBan }) {
+  const t = useT();
+  return (
+    <tr>
+      <td>
+        <code>{ban.ip}</code>
+      </td>
+      <td>{ban.jail}</td>
+      <td className="muted">{formatDate(ban.banned_at)}</td>
+      <td className="muted">{formatDate(ban.expires_at, t("permanent"))}</td>
+      <td>{ban.ban_count}</td>
+      <td>
+        {ban.matches.length > 0 ? (
+          <details>
+            <summary className="muted">
+              {t("{count} line(s)", { count: ban.matches.length })}
+            </summary>
+            <pre className="match-lines">{ban.matches.join("\n")}</pre>
+          </details>
+        ) : (
+          "—"
+        )}
+      </td>
+    </tr>
   );
 }

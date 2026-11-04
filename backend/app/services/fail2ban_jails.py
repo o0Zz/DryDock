@@ -43,6 +43,7 @@ DEFAULT_JAILS = ("auth", "forbidden", "botsearch", "badbots", "unknownhost")
 # The files of that set, the single `jail.d/drydock.local` of older versions included.
 _DEFAULT_FILE = re.compile(r"^(?:jail\.d/drydock(?:-[^/]+)?\.local|filter\.d/drydock-[^/]+\.conf)$")
 _SPECIAL = {"DEFAULT", "INCLUDES", "Definition", "Init"}
+_FILTER_BASE = re.compile(r"^[^\[]*")
 # `fail2ban-client -d` option -> summary field.
 _DUMP_FIELDS = {
     "addlogpath": "logpath",
@@ -277,6 +278,57 @@ def new_jail(new: Fail2banNewJail) -> Fail2banJailConfig:
         blocks=[
             Fail2banBlock(path=path, section=None, text=text, owner="drydock")
             for path, text in render_new(new).items()
+        ],
+    )
+
+
+def duplicate(snapshot: Snapshot, source: str, name: str) -> Fail2banJailConfig:
+    """A copy of a jail under a new name, not written yet, in DryDock's own files.
+
+    The copy gets the source's own keys (the last value of each, as fail2ban reads them),
+    not its [DEFAULT] ones, which apply to it anyway. Its filter files are copied too, so
+    its regexes can change without touching the source's; `filter` keeps its arguments
+    (`sshd[mode=...]`).
+    """
+    files = snapshot.files
+    paths = [path for path in jail_paths(files) if source in ini.sections(files[path])]
+    if not paths:
+        raise Fail2banPlanError(f"no jail named {source}")
+    if _taken(files, name):
+        raise Fail2banPlanError(f"{name} is taken: a jail or a file has that name")
+    keys: list[str] = []
+    for path in paths:
+        keys += [key for key in ini.keys(files[path], source) if key not in keys]
+    filter_ = filter_name(files, source)
+
+    jail = [f"{MARKER}. Copied from {source}.", f"[{name}]", "enabled       = true"]
+    if filter_ is not None:
+        raw = next(iter(_jail_value(files, source, "filter")), filter_)
+        # The name goes before the arguments: `sshd[mode=normal]` becomes `<name>[mode=normal]`.
+        named = _FILTER_BASE.sub(name, raw, count=1)
+        jail.append(f"filter        = {named}")
+    for key in keys:
+        if key in ("enabled", "filter"):
+            continue
+        last = [path for path in paths if ini.find(files[path], source, key)][-1]
+        first, *rest = ini.get(files[last], source, key) or [""]
+        jail += [f"{key:<13} = {first}", *(" " * 16 + line for line in rest)]
+
+    texts = {f"jail.d/{name}.local": "\n".join(jail) + "\n"}
+    for suffix in (".conf", ".local") if filter_ is not None else ():
+        text = files.get(f"filter.d/{filter_}{suffix}")
+        if text is not None:
+            head = "" if text.startswith(MARKER) else f"{MARKER}. Copied from {filter_}{suffix}.\n"
+            texts[f"filter.d/{name}{suffix}"] = head + text
+    return Fail2banJailConfig(
+        name=name,
+        managed=True,
+        enabled=True,
+        filter=name if filter_ is not None else None,
+        logpath=_jail_value(files, source, "logpath"),
+        blocks=[
+            Fail2banBlock(path=path, section=None, text=text, owner="drydock")
+            for path, text in texts.items()
         ],
     )
 

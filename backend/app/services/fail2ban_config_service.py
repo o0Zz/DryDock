@@ -82,12 +82,15 @@ def snapshot() -> Snapshot:
 
 def _tar(files: dict[str, str]) -> str:
     buffer = io.BytesIO()
+    # TarInfo's mtime defaults to 0: the host's files would show 1970.
+    now = int(datetime.now(UTC).timestamp())
     with tarfile.open(fileobj=buffer, mode="w") as tar:
         for path, content in files.items():
             data = content.encode("utf-8")
             info = tarfile.TarInfo(path)
             info.size = len(data)
             info.mode = 0o644
+            info.mtime = now
             tar.addfile(info, io.BytesIO(data))
     return base64.b64encode(buffer.getvalue()).decode("ascii")
 
