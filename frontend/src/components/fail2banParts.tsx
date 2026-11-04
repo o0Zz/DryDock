@@ -1,4 +1,3 @@
-import { Plus } from "lucide-react";
 import { msg, translate, useT } from "../i18n";
 import type { Fail2banBlock, Fail2banJailConfig, Fail2banPlan, Fail2banTestResult } from "../types";
 import DiffView from "./DiffView";
@@ -18,8 +17,6 @@ const OWNER_LABELS = {
   local: msg("your file"),
   drydock: msg("made by DryDock"),
 };
-// A package filter is long (sshd: 139 lines): it opens on demand.
-const LONG_BLOCK = 30;
 // The proxy's access log, where the default jails look.
 export const PROXY_LOG = "/data/proxy/logs/access.log";
 
@@ -64,70 +61,66 @@ export function watches(jail: Fail2banJailConfig): { label: string; title: strin
   return { label: label || "—", title };
 }
 
-export function Block({
-  block,
-  text,
-  disabled,
-  onText,
-}: {
-  block: Fail2banBlock;
-  text: string;
-  disabled: boolean;
-  onText: (text: string) => void;
-}) {
-  const t = useT();
-  const readOnly = block.owner === "package";
-  const lines = text.split("\n").length;
-  const header = (
-    <span className="fail2ban-block-path">
-      <code>{where(block)}</code> <span className="muted">{t(OWNER_LABELS[block.owner])}</span>
-    </span>
-  );
-  // A place for an override that is not there yet.
-  if (!block.text && !text) {
-    return (
-      <div className="fail2ban-block">
-        {header}
-        <button
-          type="button"
-          className="secondary small"
-          disabled={disabled}
-          onClick={() =>
-            onText(block.section ? `[${block.section}]\n` : "[Definition]\nfailregex = \n")
-          }
-        >
-          <Plus size={13} /> {t("Override here")}
-        </button>
-      </div>
-    );
+// One text for every block of a jail: each block starts with a header line naming its
+// file, so the whole jail can be copied into an AI and its answer pasted back at once.
+const HEADER = "# --- /etc/fail2ban/";
+const HEADER_LINE = /^# --- \/etc\/fail2ban\/(\S+)/;
+
+function headerKey(block: Fail2banBlock): string {
+  return `${block.path}${block.line ? `:${block.line}` : ""}`;
+}
+
+// Blank lines around a block do not count as a change.
+function normalise(text: string): string {
+  return text.replace(/^\s*\n/, "").trimEnd();
+}
+
+/** The jail's blocks as one text, in fail2ban's read order. */
+export function combineBlocks(blocks: Fail2banBlock[]): string {
+  return blocks
+    .map((block) => {
+      const note = !block.text
+        ? translate("empty, put your changes here")
+        : translate(OWNER_LABELS[block.owner]);
+      return `${HEADER}${headerKey(block)}  (${note})\n${normalise(block.text)}\n`;
+    })
+    .join("\n");
+}
+
+export interface SplitBlocks {
+  /** Changed text, by blockKey. */
+  texts: Record<string, string>;
+  /** Header lines that name no file of this jail. */
+  unknown: string[];
+  /** Read-only files whose text was changed; the change is not written. */
+  readOnly: string[];
+}
+
+/** The combined text cut back into its blocks, by their header lines. */
+export function splitBlocks(text: string, blocks: Fail2banBlock[]): SplitBlocks {
+  const result: SplitBlocks = { texts: {}, unknown: [], readOnly: [] };
+  const parts: { key: string; lines: string[] }[] = [];
+  for (const line of text.replace(/\r\n/g, "\n").split("\n")) {
+    const header = HEADER_LINE.exec(line);
+    if (header) parts.push({ key: header[1], lines: [] });
+    else parts[parts.length - 1]?.lines.push(line);
   }
-  const area = (
-    <textarea
-      className="fail2ban-text"
-      rows={Math.min(LONG_BLOCK, Math.max(2, lines))}
-      spellCheck={false}
-      readOnly={readOnly}
-      disabled={disabled}
-      value={text}
-      onChange={(event) => onText(event.target.value)}
-    />
-  );
-  if (readOnly && lines > LONG_BLOCK) {
-    return (
-      <details className="fail2ban-block">
-        <summary>
-          {header} <span className="muted">{t("{count} lines", { count: lines })}</span>
-        </summary>
-        {area}
-      </details>
-    );
+  for (const part of parts) {
+    const path = part.key.replace(/:\d+$/, "");
+    const byPath = blocks.filter((block) => block.path === path);
+    const block =
+      blocks.find((other) => headerKey(other) === part.key) ??
+      (byPath.length === 1 ? byPath[0] : undefined);
+    if (!block) {
+      result.unknown.push(part.key);
+      continue;
+    }
+    const body = normalise(part.lines.join("\n"));
+    if (body === normalise(block.text)) continue;
+    if (block.owner === "package") result.readOnly.push(block.path);
+    else result.texts[blockKey(block)] = body ? `${body}\n` : "";
   }
-  return (
-    <div className="fail2ban-block">
-      {header}
-      {area}
-    </div>
-  );
+  return result;
 }
 
 /** The files an edit changes, each as a diff. */

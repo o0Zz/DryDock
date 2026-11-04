@@ -44,11 +44,8 @@
   "package file, read only": "fichier du paquet, lecture seule",
   "your file": "votre fichier",
   "made by DryDock": "créé par DryDock",
-  "Every block with its file, to paste into an AI or a terminal": "Chaque bloc avec son fichier, à coller dans une IA ou un terminal",
   "Copied": "Copié",
   "Run the filter, as edited, over the end of the log": "Lancer le filtre, tel que modifié, sur la fin du log",
-  "Override here": "Surcharger ici",
-  "{count} lines": "{count} lignes",
   "Replaces every drydock-* jail with the default set for this log": "Remplace chaque jail drydock-* par le jeu par défaut pour ce log",
   "Reset default jails": "Réinitialiser les jails par défaut",
   "Edit": "Modifier",
@@ -64,7 +61,6 @@
   "Continue": "Continuer",
   "On": "Actif",
   "Apply removes this jail and its filter.": "Appliquer supprime ce jail et son filtre.",
-  "The blocks of /etc/fail2ban that define this jail, in the order fail2ban reads them: the last value of a key wins. Package files are read only; change them in the .local file.": "Les blocs de /etc/fail2ban qui définissent ce jail, dans l'ordre où fail2ban les lit : la dernière valeur d'une clé l'emporte. Les fichiers du paquet sont en lecture seule ; modifiez-les dans le fichier .local.",
   "Start over": "Recommencer",
   "New jail": "Nouveau jail",
   "Reads": "Lit",
@@ -72,5 +68,10 @@
   "Banned now": "Bannis",
   "Last ban": "Dernier ban",
   "Every drydock-* jail is replaced by the default set (401, 403, scanners, bad bots, unknown host names).": "Chaque jail drydock-* est remplacé par le jeu par défaut (401, 403, scanners, bad bots, noms d'hôte inconnus).",
-  "What protects the services you expose. fail2ban bans the IPs that misbehave in the proxy's access log; the blocklist drops known bad IPs before they connect. Both run on the host: DryDock reads their state and writes their config.": "Ce qui protège les services que vous exposez. fail2ban bannit les IP qui se comportent mal dans le log d'accès du proxy ; la liste de blocage bloque les IP malveillantes connues avant qu'elles ne se connectent. Les deux tournent sur l'hôte : DryDock lit leur état et écrit leur config."
+  "What protects the services you expose. fail2ban bans the IPs that misbehave in the proxy's access log; the blocklist drops known bad IPs before they connect. Both run on the host: DryDock reads their state and writes their config.": "Ce qui protège les services que vous exposez. fail2ban bannit les IP qui se comportent mal dans le log d'accès du proxy ; la liste de blocage bloque les IP malveillantes connues avant qu'elles ne se connectent. Les deux tournent sur l'hôte : DryDock lit leur état et écrit leur config.",
+  "empty, put your changes here": "vide, mettez vos modifications ici",
+  "The whole text, to paste into an AI": "Tout le texte, à coller dans une IA",
+  "Every file of /etc/fail2ban that defines this jail, in the order fail2ban reads them: the last value of a key wins. Each # --- line starts a file. Copy it all into an AI and paste the answer back here. Package files are read only, there for context; put a change in a .local file.": "Chaque fichier de /etc/fail2ban qui définit ce jail, dans l'ordre où fail2ban les lit : la dernière valeur d'une clé l'emporte. Chaque ligne # --- commence un fichier. Copiez tout dans une IA et recollez sa réponse ici. Les fichiers du paquet sont en lecture seule, là pour le contexte ; mettez une modification dans un fichier .local.",
+  "No file of this jail matches: {paths}. Fix or remove these # --- lines.": "Aucun fichier de ce jail ne correspond : {paths}. Corrigez ou supprimez ces lignes # ---.",
+  "Read-only files are not written: {paths}. Put the change in a .local file.": "Les fichiers en lecture seule ne sont pas écrits : {paths}. Mettez la modification dans un fichier .local."
 }

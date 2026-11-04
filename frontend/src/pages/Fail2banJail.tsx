@@ -1,18 +1,18 @@
 import { ChevronLeft, Copy, FileCode, FlaskConical, Save, Trash2, Undo2 } from "lucide-react";
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { api } from "../api";
 import { copyText } from "../clipboard";
 import {
-  Block,
   blockKey,
+  combineBlocks,
   PlanView,
   PROXY_LOG,
   ruleText,
+  splitBlocks,
   TEMPLATE_LABELS,
   TestResult,
   watches,
-  where,
 } from "../components/fail2banParts";
 import { useT } from "../i18n";
 import { waitForJob } from "../stackActions";
@@ -208,8 +208,11 @@ function JailEditor({
 }) {
   const t = useT();
   const navigate = useNavigate();
-  // Edited block text, by blockKey.
-  const [drafts, setDrafts] = useState<Record<string, string>>({});
+  // Every block in one text (see combineBlocks), so it copies and pastes as a whole.
+  const original = useMemo(() => combineBlocks(jail.blocks), [jail.blocks]);
+  const [combined, setCombined] = useState(original);
+  const split = useMemo(() => splitBlocks(combined, jail.blocks), [combined, jail.blocks]);
+  const drafts = split.texts;
   const [removing, setRemoving] = useState(false);
   const [plan, setPlan] = useState<Fail2banPlan | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -228,16 +231,13 @@ function JailEditor({
       if (block.owner === "drydock") files.push({ path: block.path, section: null, text: null });
     } else if (isNew) {
       files.push({ path: block.path, section: null, text: textOf(block), new: true });
-    } else if (textOf(block) !== block.text) {
+    } else if (blockKey(block) in drafts) {
       files.push({ path: block.path, section: block.section, text: textOf(block) });
     }
   }
   const edit: Fail2banEdit = { files };
-
-  function setText(block: Fail2banBlock, text: string): void {
-    setDrafts((current) => ({ ...current, [blockKey(block)]: text }));
-    setPlan(null);
-  }
+  // A header naming no file of this jail would lose its text: nothing applies until fixed.
+  const invalid = split.unknown.length > 0;
 
   async function run(label: string, action: () => Promise<void>): Promise<void> {
     setBusy(label);
@@ -264,7 +264,7 @@ function JailEditor({
     run(t("Testing…"), async () => {
       if (!jail.filter) return;
       const edited = jail.blocks.filter(
-        (block) => block.section === null && (isNew || textOf(block) !== block.text),
+        (block) => block.section === null && (isNew || blockKey(block) in drafts),
       );
       try {
         setTest(
@@ -279,13 +279,9 @@ function JailEditor({
       }
     });
 
-  // Every block with its file, ready to paste into an AI or a terminal.
+  // The whole text, ready to paste into an AI; its answer is pasted back as it is.
   async function copy(): Promise<void> {
-    const text = jail.blocks
-      .filter((block) => textOf(block))
-      .map((block) => `# ${where(block)} (${block.owner})\n${textOf(block).trimEnd()}\n`)
-      .join("\n");
-    if (await copyText(text)) {
+    if (await copyText(combined)) {
       setCopied(true);
       window.setTimeout(() => setCopied(false), 2000);
     }
@@ -320,7 +316,7 @@ function JailEditor({
           <button
             type="button"
             className="secondary"
-            title={t("Every block with its file, to paste into an AI or a terminal")}
+            title={t("The whole text, to paste into an AI")}
             onClick={() => void copy()}
           >
             <Copy size={15} /> {copied ? t("Copied") : t("Copy")}
@@ -354,18 +350,33 @@ function JailEditor({
         <>
           <p className="muted">
             {t(
-              "The blocks of /etc/fail2ban that define this jail, in the order fail2ban reads them: the last value of a key wins. Package files are read only; change them in the .local file.",
+              "Every file of /etc/fail2ban that defines this jail, in the order fail2ban reads them: the last value of a key wins. Each # --- line starts a file. Copy it all into an AI and paste the answer back here. Package files are read only, there for context; put a change in a .local file.",
             )}
           </p>
-          {jail.blocks.map((block) => (
-            <Block
-              key={blockKey(block)}
-              block={block}
-              text={textOf(block)}
-              disabled={false}
-              onText={(text) => setText(block, text)}
-            />
-          ))}
+          <textarea
+            className="fail2ban-text"
+            rows={Math.min(40, combined.split("\n").length + 1)}
+            spellCheck={false}
+            value={combined}
+            onChange={(event) => {
+              setCombined(event.target.value);
+              setPlan(null);
+            }}
+          />
+          {split.unknown.length > 0 && (
+            <div className="error">
+              {t("No file of this jail matches: {paths}. Fix or remove these # --- lines.", {
+                paths: split.unknown.join(", "),
+              })}
+            </div>
+          )}
+          {split.readOnly.length > 0 && (
+            <div className="notice">
+              {t("Read-only files are not written: {paths}. Put the change in a .local file.", {
+                paths: split.readOnly.join(", "),
+              })}
+            </div>
+          )}
           {jail.dump.length > 0 && (
             <details className="fail2ban-block">
               <summary className="muted">fail2ban-client -d</summary>
@@ -378,7 +389,7 @@ function JailEditor({
       <div className="button-row">
         <button
           type="button"
-          disabled={busy !== null || edit.files.length === 0}
+          disabled={busy !== null || invalid || edit.files.length === 0}
           onClick={() => void apply()}
         >
           <Save size={15} /> {busy ?? t("Apply")}
@@ -386,17 +397,17 @@ function JailEditor({
         <button
           type="button"
           className="secondary"
-          disabled={busy !== null || edit.files.length === 0}
+          disabled={busy !== null || invalid || edit.files.length === 0}
           onClick={() => void preview()}
         >
           <FileCode size={15} /> {t("Preview the files")}
         </button>
-        {!isNew && (Object.keys(drafts).length > 0 || removing) && (
+        {!isNew && (combined !== original || removing) && (
           <button
             type="button"
             className="secondary"
             onClick={() => {
-              setDrafts({});
+              setCombined(original);
               setRemoving(false);
               setPlan(null);
             }}
