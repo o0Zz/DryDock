@@ -185,3 +185,7 @@ CVE scans need [Trivy](https://github.com/aquasecurity/trivy) (`winget install A
 
 - Browsing and restoring Compose file backups from the UI.
 - Translated server messages: API errors and job output stay in English.
+
+## License
+
+[Apache License 2.0](LICENSE).
